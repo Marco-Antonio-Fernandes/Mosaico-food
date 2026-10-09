@@ -97,8 +97,8 @@ export function FoodOverviewPage({ onOpenNotifications }: { onOpenNotifications?
   const data = useMemo(() => periodData[period], [period]);
 
   return (
-    <div className="space-y-7">
-      <section className="mosaic-panel relative overflow-hidden rounded-[2rem] border border-orange-300/15 bg-gradient-to-br from-orange-400/[0.15] via-surface to-cyan-400/[0.06] p-6 shadow-panel sm:p-8">
+    <div className="space-y-5">
+      <section className="mosaic-panel relative overflow-hidden rounded-[2rem] border border-orange-300/15 bg-gradient-to-br from-orange-400/[0.15] via-surface to-cyan-400/[0.06] p-5 shadow-panel sm:p-6">
         <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-orange-400/[0.1] blur-3xl" />
         <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
           <div className="max-w-2xl">
@@ -175,8 +175,8 @@ export function FoodOverviewPage({ onOpenNotifications }: { onOpenNotifications?
         })}
       </div>
 
-      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
-        <section className="rounded-3xl border border-line bg-surface p-6 shadow-panel sm:p-7">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+        <section className="rounded-3xl border border-line bg-surface p-5 shadow-panel sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted">Comparativo</p>
@@ -197,7 +197,7 @@ export function FoodOverviewPage({ onOpenNotifications }: { onOpenNotifications?
           <p className="mt-4 text-xs text-muted">Dados demonstrativos para validar a hierarquia da visão geral. A API substituirá estes valores.</p>
         </section>
 
-        <section className="mosaic-panel rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-400/[0.1] via-surface to-rose-400/[0.05] p-6 shadow-panel sm:p-7">
+        <section className="mosaic-panel rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-400/[0.1] via-surface to-rose-400/[0.05] p-5 shadow-panel sm:p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-200">Atenção agora</p>

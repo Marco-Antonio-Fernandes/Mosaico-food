@@ -16,6 +16,7 @@ interface AppShellProps<T extends string> {
   navigationItems: NavigationItem<T>[];
   onNavigate: (view: T) => void;
   connectionStatus: ReactNode;
+  topAction?: ReactNode;
   children: ReactNode;
 }
 
@@ -24,6 +25,7 @@ export function AppShell<T extends string>({
   navigationItems,
   onNavigate,
   connectionStatus,
+  topAction,
   children,
 }: AppShellProps<T>) {
   const groups = navigationItems.reduce<Record<string, NavigationItem<T>[]>>(
@@ -114,7 +116,10 @@ export function AppShell<T extends string>({
               Gestão da loja · ambiente de desenvolvimento
             </p>
           </div>
-          {connectionStatus}
+          <div className="flex items-center gap-3">
+            {topAction}
+            {connectionStatus}
+          </div>
         </header>
 
         <nav
@@ -144,8 +149,8 @@ export function AppShell<T extends string>({
           })}
         </nav>
 
-        <main className="min-w-0 flex-1 px-3 py-5 sm:px-6 sm:py-7 xl:px-8">
-          <div className="mx-auto w-full max-w-7xl">{children}</div>
+        <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-6 xl:px-6">
+          <div className="mx-auto w-full max-w-none">{children}</div>
         </main>
       </div>
     </div>

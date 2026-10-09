@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
+import { GripVertical } from "lucide-react";
 import { Badge, Chat, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type MockRecord } from "@/components/shared/prototype-kit";
 
 export const foodModules = {
@@ -67,10 +68,49 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     </div><p role="status">{notice}</p>
   </div>;
 }
+type FoodOrder = {
+  id: string;
+  stage: number;
+  items: string;
+  channel: string;
+  payment: string;
+  total: string;
+};
+
 function Orders() {
   const stages = ["Recebido", "Em preparo", "Pronto", "Em trânsito", "Entregue"];
-  const [orders, setOrders] = useState([{ id: "1042", stage: 0, items: "2 hambúrgueres · 1 batata", channel: "WhatsApp", payment: "Pendente", total: "R$ 72,00" }, { id: "1043", stage: 1, items: "1 combo da casa", channel: "Balcão", payment: "Pago", total: "R$ 45,00" }, { id: "1044", stage: 2, items: "1 hambúrguer · 1 refrigerante", channel: "Retirada", payment: "Pendente", total: "R$ 35,00" }]);
-  return <><Metrics items={[["Pedidos", String(orders.length), "Canais reunidos"], ["Em preparo", String(orders.filter(order => order.stage === 1).length), "Fila de produção"], ["Pagamento", "Independente", "Preparo não confirma recebimento"]]} /><div className="proto-board">{stages.map((stage, i) => <Panel key={stage} title={stage} subtitle={orders.filter(order => order.stage === i).length + " pedidos"}><div className="proto-stack">{orders.filter(order => order.stage === i).map(order => <article className="proto-ticket" key={order.id}><div><Badge>{order.channel}</Badge><h3>#{order.id}</h3></div><p>{order.items}</p><strong>{order.total}</strong><small>Pagamento: {order.payment}</small>{i < stages.length - 1 && <button type="button" onClick={() => setOrders(current => current.map(item => item.id === order.id ? { ...item, stage: item.stage + 1 } : item))}>Mover para {stages[i + 1].toLowerCase()}</button>}</article>)}</div></Panel>)}</div></>;
+  const [orders, setOrders] = useState<FoodOrder[]>([
+    { id: "1042", stage: 0, items: "2 hambúrgueres · 1 batata", channel: "WhatsApp", payment: "Pendente", total: "R$ 72,00" },
+    { id: "1043", stage: 1, items: "1 combo da casa", channel: "Balcão", payment: "Pago", total: "R$ 45,00" },
+    { id: "1044", stage: 2, items: "1 hambúrguer · 1 refrigerante", channel: "Retirada", payment: "Pendente", total: "R$ 35,00" },
+  ]);
+  const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<number | null>(null);
+  const [statusMessage, setStatusMessage] = useState("Segure um pedido e arraste-o para outra etapa.");
+
+  function moveOrder(orderId: string, stage: number) {
+    const order = orders.find(item => item.id === orderId);
+    if (!order || order.stage === stage) return;
+
+    setOrders(current => current.map(item => item.id === orderId ? { ...item, stage } : item));
+    setStatusMessage(`Pedido #${orderId} movido para ${stages[stage]}.`);
+  }
+
+  function handleDragStart(event: DragEvent<HTMLElement>, orderId: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", orderId);
+    setDraggedOrderId(orderId);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>, stage: number) {
+    event.preventDefault();
+    const orderId = event.dataTransfer.getData("text/plain");
+    if (orderId) moveOrder(orderId, stage);
+    setDraggedOrderId(null);
+    setDragOverStage(null);
+  }
+
+  return <><p className="sr-only" role="status">{statusMessage}</p><div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => order.stage === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => <article aria-label={`Pedido ${order.id}. Segure e arraste para mudar de etapa.`} className={`proto-ticket order-card${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div><Badge>{order.channel}</Badge><h3>#{order.id}</h3></div><p>{order.items}</p><strong>{order.total}</strong><small>Pagamento: {order.payment}</small></article>)}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div></>;
 }
 function Inventory() {
   const [tab, setTab] = useState("Posição atual");
