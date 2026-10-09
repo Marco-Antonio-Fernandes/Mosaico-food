@@ -98,27 +98,30 @@ export function FoodOverviewPage({ onOpenNotifications }: { onOpenNotifications?
 
   return (
     <div className="space-y-5">
-      <section className="mosaic-panel relative overflow-hidden rounded-[2rem] border border-orange-300/15 bg-gradient-to-br from-orange-400/[0.15] via-surface to-cyan-400/[0.06] p-5 shadow-panel sm:p-6">
+      <section aria-label="Resumo da operação" className="mosaic-panel relative overflow-hidden rounded-3xl border border-orange-300/15 bg-gradient-to-br from-orange-400/[0.15] via-surface to-cyan-400/[0.06] p-3 shadow-panel sm:p-4">
         <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-orange-400/[0.1] blur-3xl" />
-        <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-          <div className="max-w-2xl">
-            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-orange-200">
-              <Sparkles aria-hidden="true" size={14} />
-              Visão geral da operação
-            </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-              O pulso da sua loja, em um só olhar.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-muted sm:text-base">
-              Acompanhe o movimento do salão, os pedidos e os sinais que merecem atenção antes que virem problema.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-muted backdrop-blur">
-            <div>
-              <p className="font-semibold text-ink">Mosaico Food</p>
-              <p className="text-xs text-muted">Painel de continuidade</p>
-            </div>
-          </div>
+        <div className="relative grid gap-2 sm:grid-cols-3">
+          {data.metrics.slice(0, 3).map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <article className="rounded-xl border border-white/10 bg-black/15 p-3 backdrop-blur" key={metric.label}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`flex size-8 items-center justify-center rounded-lg ring-1 ${metricIconStyles[metric.color]}`}>
+                    <Icon aria-hidden="true" size={15} />
+                  </span>
+                  <span className="text-[0.58rem] font-bold uppercase tracking-[0.1em] text-muted">
+                    {periodLabels[period]}
+                  </span>
+                </div>
+                <p className="mt-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">{metric.label}</p>
+                <p className="mt-0.5 text-xl font-bold tracking-tight text-ink">{metric.value}</p>
+                <p className={`mt-1 flex items-center gap-1 text-[0.65rem] font-semibold ${metric.positive ? "text-emerald-300" : "text-amber-200"}`}>
+                  {metric.positive ? <ArrowUpRight aria-hidden="true" size={12} /> : <ArrowDownRight aria-hidden="true" size={12} />}
+                  {metric.comparison}
+                </p>
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -151,30 +154,6 @@ export function FoodOverviewPage({ onOpenNotifications }: { onOpenNotifications?
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-        {data.metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <article className="rounded-2xl border border-line bg-surface/90 p-5 shadow-soft" key={metric.label}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`flex size-11 items-center justify-center rounded-2xl ring-1 ${metricIconStyles[metric.color]}`}>
-                  <Icon aria-hidden="true" size={20} />
-                </span>
-                <span className="rounded-full bg-white/[0.05] px-2 py-1 text-[0.65rem] font-bold uppercase tracking-[0.12em] text-muted">
-                  {periodLabels[period]}
-                </span>
-              </div>
-              <p className="mt-6 text-3xl font-bold tracking-tight text-ink">{metric.value}</p>
-              <p className="mt-1 text-sm font-semibold text-ink">{metric.label}</p>
-              <p className={`mt-2 flex items-center gap-1 text-xs font-semibold ${metric.positive ? "text-emerald-300" : "text-amber-200"}`}>
-                {metric.positive ? <ArrowUpRight aria-hidden="true" size={14} /> : <ArrowDownRight aria-hidden="true" size={14} />}
-                {metric.comparison}
-              </p>
-            </article>
-          );
-        })}
-      </div>
-
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
         <section className="rounded-3xl border border-line bg-surface p-5 shadow-panel sm:p-6">
           <div className="flex items-start justify-between gap-4">
@@ -194,7 +173,7 @@ export function FoodOverviewPage({ onOpenNotifications }: { onOpenNotifications?
               </div>
             ))}
           </div>
-          <p className="mt-4 text-xs text-muted">Dados demonstrativos para validar a hierarquia da visão geral. A API substituirá estes valores.</p>
+          <p className="mt-4 text-xs text-muted">Compare os períodos para acompanhar o ritmo de pedidos.</p>
         </section>
 
         <section className="mosaic-panel rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-400/[0.1] via-surface to-rose-400/[0.05] p-5 shadow-panel sm:p-6">

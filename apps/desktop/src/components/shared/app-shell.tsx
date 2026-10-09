@@ -95,12 +95,6 @@ export function AppShell<T extends string>({
               ))}
             </nav>
 
-            <div className="mt-4 shrink-0 rounded-2xl border border-line bg-canvas p-3">
-              <p className="text-xs font-semibold text-ink">Modo desenvolvimento</p>
-              <p className="mt-1 text-xs leading-5 text-muted">
-                Food e Life usam o mesmo backend.
-              </p>
-            </div>
           </div>
         </div>
       </aside>
@@ -113,7 +107,7 @@ export function AppShell<T extends string>({
               Mosaico Food
             </p>
             <p className="mt-1 text-sm font-semibold text-ink">
-              Gestão da loja · ambiente de desenvolvimento
+              Gestão da loja
             </p>
           </div>
           <div className="flex items-center gap-3">
