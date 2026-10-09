@@ -1,0 +1,24 @@
+{
+  "name": "mosaico-food",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/desktop run dev",
+    "dev:web": "npm --workspace apps/desktop run dev:web",
+    "dev:back": "npm --prefix ../mosaico-back run dev",
+    "build": "npm --workspace apps/desktop run build",
+    "build:back": "npm --prefix ../mosaico-back run build",
+    "typecheck": "npm --workspace apps/desktop run typecheck",
+    "typecheck:back": "npm --prefix ../mosaico-back run typecheck",
+    "db:generate": "npm --prefix ../mosaico-back run db:generate",
+    "db:push": "npm --prefix ../mosaico-back run db:push"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.21.5": true
+  }
+}
