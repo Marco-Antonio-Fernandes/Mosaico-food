@@ -95,6 +95,43 @@ function errorMessage(payload: unknown, fallback: string) {
   return typeof error.message === "string" ? error.message : fallback;
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function normalizeFoodProduct(value: unknown): FoodProduct | null {
+  const product = asRecord(value);
+  if (typeof product.id !== "string" || typeof product.name !== "string") return null;
+
+  const variants = Array.isArray(product.variants)
+    ? product.variants.flatMap((value) => {
+        const variant = asRecord(value);
+        if (typeof variant.id !== "string" || typeof variant.name !== "string") return [];
+        return [{
+          id: variant.id,
+          name: variant.name,
+          aliases: stringArray(variant.aliases),
+          priceDeltaCents: typeof variant.priceDeltaCents === "number" ? variant.priceDeltaCents : 0,
+        }];
+      })
+    : [];
+
+  return {
+    id: product.id,
+    name: product.name,
+    category: typeof product.category === "string" ? product.category : "Geral",
+    aliases: stringArray(product.aliases),
+    variants,
+    salePriceCents: typeof product.salePriceCents === "number" ? product.salePriceCents : 0,
+    stockQuantity: typeof product.stockQuantity === "number" ? product.stockQuantity : 0,
+    allowOnDemand: product.allowOnDemand === true,
+    fryToOrder: product.fryToOrder === true,
+    active: product.active !== false,
+    createdAt: typeof product.createdAt === "string" ? product.createdAt : "",
+    updatedAt: typeof product.updatedAt === "string" ? product.updatedAt : "",
+  };
+}
+
 async function foodApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
@@ -109,10 +146,15 @@ async function foodApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-export async function getFoodProducts(options: { activeOnly?: boolean } = {}) {
-  const query = options.activeOnly ? "?active=true" : "";
+export async function getFoodProducts(options: { activeOnly?: boolean; availableOnly?: boolean } = {}) {
+  const params = new URLSearchParams();
+  if (options.activeOnly) params.set("active", "true");
+  if (options.availableOnly) params.set("available", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
   const data = await foodApi<{ products: FoodProduct[] }>(`/api/v1/food/products${query}`);
-  return data.products;
+  return (Array.isArray(data.products) ? data.products : [])
+    .map(normalizeFoodProduct)
+    .filter((product): product is FoodProduct => Boolean(product));
 }
 
 export async function createFoodProduct(input: ProductInput) {
@@ -120,7 +162,9 @@ export async function createFoodProduct(input: ProductInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
-  return data.product;
+  const product = normalizeFoodProduct(data.product);
+  if (!product) throw new Error("O backend devolveu um produto inválido.");
+  return product;
 }
 
 export async function updateFoodProduct(id: string, input: Partial<ProductInput>) {
@@ -128,7 +172,9 @@ export async function updateFoodProduct(id: string, input: Partial<ProductInput>
     method: "PATCH",
     body: JSON.stringify(input),
   });
-  return data.product;
+  const product = normalizeFoodProduct(data.product);
+  if (!product) throw new Error("O backend devolveu um produto inválido.");
+  return product;
 }
 
 export async function getFoodConversations() {
