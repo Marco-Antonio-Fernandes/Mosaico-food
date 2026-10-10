@@ -10,9 +10,11 @@ Fundação do desktop iniciada pela task `MARCO-FOOD-00`: shell Electron,
 navegação, tokens visuais, estados compartilhados e placeholders estão
 preparados. O backend unificado está em `../mosaico-back/`, usando SQLite para
 desenvolvimento, com os módulos Food e Life, clientes, crediário e
-sincronização básica. Ainda não
-declarar a integração com o WhatsApp como funcional: ela só será considerada
-concluída depois de testes reais com a Cloud API oficial da Meta.
+sincronização básica. O atendimento Food usa uma sessão exclusiva do WA-AKG:
+o webhook recebe as mensagens, o catálogo e o estoque são mantidos no Mosaico
+e as respostas são enviadas pelo backend. A integração oficial com a Cloud API
+da Meta continua pendente e só será considerada concluída depois do teste real
+no número autorizado.
 
 ## Desenvolvimento local
 
@@ -39,17 +41,19 @@ npm run build
 npm run typecheck:back
 ```
 
-O frontend atual é uma prévia navegável com dados comerciais fictícios,
-explicitamente solicitada pelo usuário. Não chama a API nem registra vendas,
-mensagens, pagamentos ou documentos fiscais reais.
+O catálogo de produtos e a central de atendimento já usam o backend. O
+atendimento recebe mensagens pelo webhook da sessão WA-AKG, reconhece nomes e
+aliases cadastrados, responde pelo WhatsApp e só cria um pedido depois de
+confirmação explícita; endereço de entrega, modalidade, variação do produto e
+pedido para fritar/preparar na hora ficam salvos no pedido. A tela de Pedidos
+também lê o backend e persiste as mudanças de etapa.
 Para abrir no navegador, use `npm run dev:web` (porta padrão 5173).
 O backend unificado está publicado em `https://mosaico.rotatix.com.br`,
 com SQLite também no servidor nesta fase; PostgreSQL continua futuro.
 
 Veja o [plano de frontend](docs/PLANO-FRONTEND-MOCK.md) e o
 [status de frontend/backend/servidor](<../Servidor Rotatix/STATUS-MOSAICO.md>).
-Tasks concluídas no escopo visual estão riscadas; integrações reais seguem abertas.
-Nenhum teste ou build desta última versão foi executado por solicitação do usuário.
+Tasks concluídas no escopo visual estão riscadas; integrações oficiais seguem abertas.
 
 ## Escopo da primeira versão
 

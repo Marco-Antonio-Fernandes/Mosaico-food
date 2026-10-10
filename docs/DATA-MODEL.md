@@ -30,7 +30,7 @@
 | Entidade | Responsabilidade |
 |---|---|
 | `product_category` | categorias do catálogo |
-| `product` | nome, descrição, preço, disponibilidade, unidade, perfil fiscal |
+| `product` | nome, descrição, preço, disponibilidade, unidade, perfil fiscal e preparo na hora |
 | `product_alias` | sinônimos e frases reconhecidas |
 | `product_option_group` / `product_option` | adicionais e escolhas |
 | `ingredient` | item controlado no estoque |
@@ -57,7 +57,7 @@ Regras:
 | `credit_account` | limite e saldo do crediário |
 | `credit_entry` | débito, pagamento, estorno e ajuste |
 | `order` | pedido unificado por canal |
-| `order_item` | snapshot do produto, quantidade e preço |
+| `order_item` | snapshot do produto, variação escolhida, quantidade, preço e preparo na hora |
 | `order_status_history` | transições do Kanban |
 | `sale` | venda oficial e vínculo com pedido/caixa |
 | `sale_item` | snapshot fiscal/comercial da venda |

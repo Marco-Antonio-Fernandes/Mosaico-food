@@ -52,17 +52,18 @@ explícito; nunca cria uma segunda venda, mensagem, nota ou baixa.
 | Módulo | Rotas previstas |
 |---|---|
 | Conta | `/api/v1/auth`, `/api/v1/users`, `/api/v1/roles` |
-| Catálogo | `/api/v1/categories`, `/api/v1/products`, `/api/v1/product-aliases` |
+| Catálogo | `/api/v1/food/products`, `/api/v1/food/products/{id}` |
 | Estoque | `/api/v1/ingredients`, `/api/v1/stock`, `/api/v1/stock-movements` |
 | Clientes | `/api/v1/customers`, `/api/v1/customers/{id}/addresses` |
 | Crediário | `/api/v1/credit-accounts`, `/api/v1/credit-entries` |
 | PDV/caixa | `/api/v1/sales`, `/api/v1/cash-registers`, `/api/v1/payments` |
 | Pedidos | `/api/v1/orders`, `/api/v1/orders/{id}/status` |
-| Atendimento | `/api/v1/conversations`, `/api/v1/messages`, `/api/v1/carts` |
+| Atendimento | `/api/v1/food/conversations`, `/api/v1/food/conversations/{id}/messages` |
 | WhatsApp | `/api/v1/whatsapp/connection`, `/api/v1/webhooks/whatsapp/meta` |
 | Fiscal | `/api/v1/fiscal/...` |
 | Notificações | `/api/v1/notifications`, `/api/v1/realtime/cursor` |
 | Relatórios | `/api/v1/dashboard`, `/api/v1/reports` |
+| Automação Food | `/api/v1/food-automation/status`, `/api/v1/food-automation/config`, `/api/v1/food-automation/run` |
 
 ### Backend inicial em desenvolvimento
 
@@ -221,6 +222,37 @@ Eventos mínimos:
 
 Todo evento tem `eventId`, `eventType`, `aggregateId`, `organizationId`,
 `occurredAt`, `version`, `correlationId` e `idempotencyKey`.
+
+## Integração de teste com WA-AKG
+
+Durante o teste atual, o atendimento usa uma sessão exclusiva do WA-AKG. O
+Mosaico Food mantém clientes, conversas, catálogo, estoque e pedidos no próprio
+backend; o WA-AKG é usado somente para receber o webhook e enviar mensagens.
+
+- `GET /api/v1/food/products` lista o catálogo persistido;
+- `POST /api/v1/food/products` e `PATCH /api/v1/food/products/{id}` cadastram e atualizam produtos, aliases,
+  variações/sabores, preço, estoque e a opção de preparar/fritar na hora;
+- `GET /api/v1/food/conversations` lista os atendimentos;
+- `GET/POST /api/v1/food/conversations/{id}/messages` lê e envia mensagens;
+- `PATCH /api/v1/food/conversations/{id}/mode` assume ou devolve a automação;
+- `POST /api/v1/whatsapp/webhook` recebe eventos assinados da sessão.
+
+- `GET /api/v1/food-automation/status` retorna o estado da automação;
+- `PATCH /api/v1/food-automation/config` recebe `{ "enabled": true }` ou
+  `{ "enabled": false }`;
+- `POST /api/v1/food-automation/run` executa uma rodada de leitura e resposta.
+- `GET /api/v1/food/orders` lista os pedidos confirmados;
+- `PATCH /api/v1/food/orders/{id}/status` atualiza a etapa operacional do pedido.
+
+A rodada ignora mensagens antigas conforme `FOOD_AUTOMATION_MAX_MESSAGE_AGE_MINUTES`,
+grava a idempotência localmente e só cria o pedido depois da confirmação do
+cliente. As variáveis `WA_AKG_API_KEY` e `WA_AKG_WEBHOOK_SECRET` ficam somente
+no backend.
+
+O fluxo pergunta a variação quando o produto tem mais de uma opção (por
+exemplo, coxinha de frango ou carne), pergunta se o cliente prefere entrega ou
+retirada e registra a escolha de fritar/preparar na hora dentro do item do
+pedido.
 
 ## Permissões mínimas
 

@@ -1,6 +1,9 @@
-import { useState, type DragEvent } from "react";
+import { useEffect, useState, type DragEvent, type FormEvent } from "react";
 import { GripVertical } from "lucide-react";
-import { Badge, Chat, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
+import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
+import { FoodAutomationPanel } from "@/features/automation/food-automation-panel";
+import { FoodServicePanel } from "@/features/service/food-service-panel";
+import { createFoodProduct, getFoodOrders, getFoodProducts, updateFoodOrderStatus, updateFoodProduct, type FoodOrder, type FoodProduct, type ProductInput } from "@/lib/food-api";
 
 export const foodModules = {
   pos: ["PDV", "Monte a venda, confira os itens e escolha o pagamento."],
@@ -17,15 +20,8 @@ export const foodModules = {
   settings: ["Configurações", "Loja, equipe, permissões e preferências da operação."],
 } as const;
 export type FoodModule = keyof typeof foodModules;
-const products = [
-  { id: "burger", name: "Hambúrguer da casa", group: "Lanches", price: 28, icon: "🍔" },
-  { id: "fries", name: "Batata crocante", group: "Porções", price: 16, icon: "🍟" },
-  { id: "cola", name: "Refrigerante cola", group: "Bebidas", price: 7, icon: "🥤" },
-  { id: "juice", name: "Suco de laranja", group: "Bebidas", price: 9, icon: "🍊" },
-  { id: "combo", name: "Combo da casa", group: "Combos", price: 45, icon: "🍽️" },
-  { id: "cake", name: "Fatia de bolo", group: "Sobremesas", price: 12, icon: "🍰" },
-];
-const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const productIcon = (category: string) => ({ Lanches: "🍔", Porções: "🍟", Bebidas: "🥤", Combos: "🍽️", Sobremesas: "🍰" }[category] ?? "🍴");
 const clients: RecordItem[] = [
   { id: "c1", name: "Ana Oliveira", detail: "Retirada · contato autorizado", status: "Em dia", value: "R$ 0,00 em aberto" },
   { id: "c2", name: "Bruno Lima", detail: "Delivery · endereço cadastrado", status: "Crediário", value: "R$ 84,00 em aberto" },
@@ -41,14 +37,14 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "pos" && <Catalog pos />}
     {module === "products" && <Catalog />}
     {module === "orders" && <Orders />}
-    {module === "service" && <Chat />}
+    {module === "service" && <FoodServicePanel />}
     {module === "inventory" && <Inventory />}
     {module === "customers" && <Customers />}
     {module === "finance" && <Finance />}
     {module === "fiscal" && <Fiscal />}
     {module === "notifications" && <NotificationList />}
     {module === "offline" && <OfflinePreview />}
-    {module === "automation" && <div className="proto-stack"><Preferences groups={[{ title: "Atendimento automático", labels: ["Automação habilitada", "Pausar ao assumir atendimento", "Pedir confirmação antes do pedido"] }, { title: "Entrega e retirada", labels: ["Oferecer retirada", "Oferecer delivery", "Avisar quando o pedido estiver pronto"] }]} /><Editor title="Mensagens da loja" tabs={["Boas-vindas", "Fora do expediente", "Confirmação", "Status do pedido"]} labels={["Horário de abertura", "Horário de fechamento", "Tempo do carrinho (min)"]} initialText="Olá! Bem-vindo ao Mosaico Food. O que você gostaria de pedir hoje?" /></div>}
+    {module === "automation" && <FoodAutomationPanel />}
     {module === "settings" && <div className="proto-stack"><Editor title="Identidade da loja" tabs={["Dados da loja", "Entrega", "Impressão"]} labels={["Nome da loja", "Endereço", "Telefone público"]} /><Preferences groups={[{ title: "Equipe e acesso", labels: ["Operador de caixa", "Gerente", "Responsável fiscal"] }, { title: "Notificações", labels: ["Som de novo pedido", "Aviso de WhatsApp", "Alertas de estoque"] }]} /><Panel title="Integrações"><dl className="proto-facts"><div><dt>WhatsApp Cloud API</dt><dd>Não conectado</dd></div><div><dt>Fiscal</dt><dd>Configuração pendente</dd></div></dl></Panel></div>}
   </div>;
 }
@@ -57,43 +53,154 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
-  const [editing, setEditing] = useState(false);
-  const selected = products.filter(product => cart[product.id]);
-  const total = selected.reduce((sum, product) => sum + product.price * cart[product.id], 0);
-  return <div className="proto-stack"><Tabs items={["Todos", "Lanches", "Porções", "Bebidas", "Combos", "Sobremesas"]} value={category} onChange={setCategory} />
-    <div className="proto-toolbar"><label>Buscar no catálogo<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Produto, categoria ou alias…" /></label>{!pos && <button type="button" onClick={() => setEditing(!editing)}>Cadastrar produto</button>}</div>
-    {editing && <Editor title="Cadastro de produto" tabs={["Produto", "Adicionais e opções", "Aliases", "Ficha técnica", "Perfil fiscal"]} labels={["Nome", "Categoria", "Preço", "Unidade"]} />}
-    <div className={pos ? "proto-two" : ""}><div className="proto-three">{products.filter(product => (category === "Todos" || category === product.group) && product.name.toLowerCase().includes(search.toLowerCase())).map(product => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{product.icon}</div><small>{product.group}</small><h3>{product.name}</h3><strong>{money(product.price)}</strong><Badge>Disponível</Badge><button type="button" onClick={() => pos ? setCart({ ...cart, [product.id]: (cart[product.id] ?? 0) + 1 }) : setNotice("Produto selecionado: " + product.name)}>{pos ? "Adicionar à venda" : "Ver cadastro"}</button></article>)}</div>
-      {pos && <Panel title="Venda de balcão" subtitle="Carrinho de venda"><label>Cliente<select><option>Consumidor final</option><option>Ana Oliveira</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map(product => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.price * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento<select><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={!selected.length} onClick={() => { setNotice("Venda finalizada."); setCart({}); }}>Finalizar venda</button></div></Panel>}
-    </div><p role="status">{notice}</p>
+  const [products, setProducts] = useState<FoodProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [editingProduct, setEditingProduct] = useState<FoodProduct | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const loadProducts = async () => {
+    try {
+      setProducts(await getFoodProducts({ activeOnly: pos }));
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o catálogo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProducts();
+  }, [pos]);
+
+  const categories = ["Todos", ...new Set(products.map((product) => product.category))];
+  const selected = products.filter((product) => cart[product.id]);
+  const filtered = products.filter((product) => (!pos || product.active) && (category === "Todos" || category === product.category) && `${product.name} ${product.aliases.join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
+  const total = selected.reduce((sum, product) => sum + product.salePriceCents * cart[product.id], 0);
+
+  const saveProduct = async (input: ProductInput) => {
+    setSaving(true);
+    try {
+      const product = editingProduct ? await updateFoodProduct(editingProduct.id, input) : await createFoodProduct(input);
+      setProducts((current) => editingProduct ? current.map((item) => item.id === product.id ? product : item) : [product, ...current]);
+      setShowForm(false);
+      setEditingProduct(null);
+      setNotice(editingProduct ? "Produto atualizado no catálogo." : "Produto cadastrado no catálogo.");
+      setError("");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar o produto.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <div className="proto-stack">
+    <Tabs items={categories} value={category} onChange={setCategory} />
+    <div className="proto-toolbar"><label>Buscar no catálogo<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Produto, categoria ou alias…" /></label>{!pos && <button type="button" onClick={() => { setEditingProduct(null); setShowForm((current) => !current); }}>Cadastrar produto</button>}</div>
+    {!pos && showForm && <ProductForm initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{filtered.map((product) => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div><small>{product.category}{!product.active ? " · inativo" : ""}</small><h3>{product.name}</h3><strong>{money(product.salePriceCents)}</strong><Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.allowOnDemand ? "Preparo sob demanda" : "Indisponível"}</Badge>{product.variants.length > 0 && <small>Opções: {product.variants.map((variant) => variant.name).join(", ")}</small>}{product.fryToOrder && <small>Permite fritar/preparar na hora</small>}<small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small><button type="button" onClick={() => { if (pos) setCart({ ...cart, [product.id]: (cart[product.id] ?? 0) + 1 }); else { setEditingProduct(product); setShowForm(true); } }}>{pos ? "Adicionar à venda" : "Editar cadastro"}</button></article>)}</div>
+      {!filtered.length && <p className="proto-empty">Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo.</p>}
+      {pos && <Panel title="Venda de balcão" subtitle="Carrinho local do PDV"><label>Cliente<select><option>Consumidor final</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map((product) => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.salePriceCents * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento<select><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={!selected.length} onClick={() => { setNotice("Venda do PDV ainda precisa da rota de vendas; o carrinho usa o catálogo real."); setCart({}); }}>Finalizar venda</button></div></Panel>}
+    </div>}
+    {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
+    {notice && <p role="status">{notice}</p>}
   </div>;
 }
-type FoodOrder = {
-  id: string;
-  stage: number;
-  items: string;
-  channel: string;
-  payment: string;
-  total: string;
+
+type ProductFormProps = {
+  initial: FoodProduct | null;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (input: ProductInput) => void;
 };
 
+function ProductForm({ initial, saving, onCancel, onSubmit }: ProductFormProps) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "Lanches");
+  const [price, setPrice] = useState(initial ? String(initial.salePriceCents / 100).replace(".", ",") : "");
+  const [stock, setStock] = useState(String(initial?.stockQuantity ?? 0));
+  const [aliases, setAliases] = useState(initial?.aliases.join(", ") ?? "");
+  const [variants, setVariants] = useState(initial?.variants.map((variant) => variant.name).join(", ") ?? "");
+  const [allowOnDemand, setAllowOnDemand] = useState(initial?.allowOnDemand ?? true);
+  const [fryToOrder, setFryToOrder] = useState(initial?.fryToOrder ?? false);
+  const [active, setActive] = useState(initial?.active ?? true);
+  const [formError, setFormError] = useState("");
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const salePriceCents = Math.round(Number(price.replace(",", ".")) * 100);
+    const stockQuantity = Number(stock);
+    if (!name.trim() || !category.trim() || !Number.isFinite(salePriceCents) || salePriceCents < 0 || !Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      setFormError("Informe nome, categoria, preço válido e estoque inteiro maior ou igual a zero.");
+      return;
+    }
+    const variantNames = variants.split(",").map((item) => item.trim()).filter(Boolean);
+    onSubmit({
+      name: name.trim(),
+      category: category.trim(),
+      aliases: aliases.split(",").map((item) => item.trim()).filter(Boolean),
+      variants: variantNames.map((variantName) => {
+        const existing = initial?.variants.find((variant) => variant.name.toLocaleLowerCase("pt-BR") === variantName.toLocaleLowerCase("pt-BR"));
+        return { id: existing?.id ?? crypto.randomUUID(), name: variantName, aliases: [], priceDeltaCents: existing?.priceDeltaCents ?? 0 };
+      }),
+      salePriceCents,
+      stockQuantity,
+      allowOnDemand,
+      fryToOrder,
+      active,
+    });
+  };
+
+  return <form className="proto-form" onSubmit={submit}><h3>{initial ? "Editar produto" : "Cadastrar produto"}</h3><label>Nome<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Coxinha" /></label><label>Categoria<input required value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Ex.: Salgados" /></label><label>Preço base (R$)<input required inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" /></label><label>Estoque pronto<input required type="number" min="0" step="1" value={stock} onChange={(event) => setStock(event.target.value)} /></label><label>Variações / sabores<input value={variants} onChange={(event) => setVariants(event.target.value)} placeholder="Ex.: frango, carne" /><small className="text-muted">Se houver mais de uma opção, o WhatsApp pergunta antes de confirmar.</small></label><label>Aliases para o WhatsApp<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="Ex.: coxinha, salgado" /></label><label className="proto-switch"><span>Permitir preparo sob demanda</span><input type="checkbox" checked={allowOnDemand} onChange={(event) => setAllowOnDemand(event.target.checked)} /></label><label className="proto-switch"><span>Permitir fritar/preparar na hora</span><input type="checkbox" checked={fryToOrder} onChange={(event) => setFryToOrder(event.target.checked)} /></label><label className="proto-switch"><span>Produto ativo</span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>{formError && <p role="alert" className="text-sm text-red-200">{formError}</p>}<div className="proto-toolbar"><button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar produto"}</button><button type="button" className="proto-subtle" onClick={onCancel}>Cancelar</button></div></form>;
+}
 function Orders() {
   const stages = ["Recebido", "Em preparo", "Pronto", "Em trânsito", "Entregue"];
-  const [orders, setOrders] = useState<FoodOrder[]>([
-    { id: "1042", stage: 0, items: "2 hambúrgueres · 1 batata", channel: "WhatsApp", payment: "Pendente", total: "R$ 72,00" },
-    { id: "1043", stage: 1, items: "1 combo da casa", channel: "Balcão", payment: "Pago", total: "R$ 45,00" },
-    { id: "1044", stage: 2, items: "1 hambúrguer · 1 refrigerante", channel: "Retirada", payment: "Pendente", total: "R$ 35,00" },
-  ]);
+  const [orders, setOrders] = useState<FoodOrder[]>([]);
   const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<number | null>(null);
-  const [statusMessage, setStatusMessage] = useState("Segure um pedido e arraste-o para outra etapa.");
+  const [statusMessage, setStatusMessage] = useState("Carregando pedidos…");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  function moveOrder(orderId: string, stage: number) {
+  const loadOrders = async () => {
+    try {
+      setOrders(await getFoodOrders());
+      setError("");
+      setStatusMessage("Segure um pedido e arraste-o para outra etapa.");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os pedidos.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadOrders();
+    const timer = window.setInterval(() => void loadOrders(), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const stageForStatus = (status: string) => ({ confirmed: 0, preparing: 1, ready: 2, out_for_delivery: 3, delivered: 4 }[status] ?? 0);
+  const statusForStage = (stage: number) => (["confirmed", "preparing", "ready", "out_for_delivery", "delivered"] as const)[stage];
+  const orderItemsLabel = (order: FoodOrder) => order.items.map((item) => `${item.quantity}x ${item.productName}${item.variantName ? ` (${item.variantName})` : ""}${item.fryNow ? " · frita na hora" : ""}`).join(" · ");
+  const formatOrderTotal = (order: FoodOrder) => money(order.totalCents);
+
+  async function moveOrder(orderId: string, stage: number) {
     const order = orders.find(item => item.id === orderId);
-    if (!order || order.stage === stage) return;
+    if (!order || stageForStatus(order.status) === stage) return;
 
-    setOrders(current => current.map(item => item.id === orderId ? { ...item, stage } : item));
-    setStatusMessage(`Pedido #${orderId} movido para ${stages[stage]}.`);
+    const previousStatus = order.status;
+    setOrders(current => current.map(item => item.id === orderId ? { ...item, status: statusForStage(stage) } : item));
+    try {
+      await updateFoodOrderStatus(orderId, statusForStage(stage));
+      setStatusMessage(`Pedido #${orderId.slice(0, 8)} movido para ${stages[stage]}.`);
+      setError("");
+    } catch (moveError) {
+      setOrders(current => current.map(item => item.id === orderId ? { ...item, status: previousStatus } : item));
+      setError(moveError instanceof Error ? moveError.message : "Não foi possível atualizar a etapa do pedido.");
+    }
   }
 
   function handleDragStart(event: DragEvent<HTMLElement>, orderId: string) {
@@ -110,7 +217,9 @@ function Orders() {
     setDragOverStage(null);
   }
 
-  return <><p className="sr-only" role="status">{statusMessage}</p><div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => order.stage === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => <article aria-label={`Pedido ${order.id}. Segure e arraste para mudar de etapa.`} className={`proto-ticket order-card${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div><Badge>{order.channel}</Badge><h3>#{order.id}</h3></div><p>{order.items}</p><strong>{order.total}</strong><small>Pagamento: {order.payment}</small></article>)}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div></>;
+  if (loading) return <p className="proto-empty">Carregando pedidos…</p>;
+  if (error && !orders.length) return <div className="proto-stack"><p role="alert" className="text-sm text-red-200">{error}</p><button type="button" onClick={() => { setLoading(true); void loadOrders(); }}>Tentar novamente</button></div>;
+  return <><p className="sr-only" role="status">{statusMessage}</p>{error && <p role="alert" className="mb-4 text-sm text-red-200">{error}</p>}{!orders.length ? <Panel title="Pedidos"><p className="proto-empty">Nenhum pedido registrado ainda. Quando um cliente confirmar pelo WhatsApp, ele aparecerá aqui.</p></Panel> : <div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => stageForStatus(order.status) === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => <article aria-label={`Pedido ${order.id}. Segure e arraste para mudar de etapa.`} className={`proto-ticket order-card${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div><Badge>{order.source === "whatsapp" ? "WhatsApp" : order.source}</Badge><h3>#{order.id.slice(0, 8)}</h3></div><p>{orderItemsLabel(order)}</p><strong>{formatOrderTotal(order)}</strong><small>{order.fulfillment === "delivery" ? `Entrega · ${order.deliveryAddress || "endereço pendente"}` : "Retirada na loja"}</small></article>)}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div>}</>;
 }
 function Inventory() {
   const [tab, setTab] = useState("Posição atual");
