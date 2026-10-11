@@ -1,6 +1,6 @@
 import { useEffect, useState, type DragEvent, type FormEvent } from "react";
 import { GripVertical } from "lucide-react";
-import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
+import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type NotificationEntry, type RecordItem } from "@/components/shared/prototype-kit";
 import { FoodAutomationPanel } from "@/features/automation/food-automation-panel";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { createFoodProduct, getFoodOrders, getFoodProducts, updateFoodOrderStatus, updateFoodProduct, type FoodOrder, type FoodProduct, type ProductInput } from "@/lib/food-api";
@@ -32,7 +32,7 @@ const movements: RecordItem[] = [
   { id: "m2", name: "Compra de ingredientes", detail: "Despesa · fornecedores", status: "Pago", value: "R$ 180,00" },
   { id: "m3", name: "Venda #1043", detail: "Crediário · Bruno Lima", status: "Pendente", value: "R$ 84,00" },
 ];
-export function FoodPrototype({ module }: { module: FoodModule }) {
+export function FoodPrototype({ module, notifications, onReadNotifications }: { module: FoodModule; notifications?: NotificationEntry[]; onReadNotifications?: () => void }) {
   return <div className="prototype"><header className="proto-heading"><Badge>Mosaico Food</Badge><h1>{foodModules[module][0]}</h1><p>{foodModules[module][1]}</p></header>
     {module === "pos" && <Catalog pos />}
     {module === "products" && <Catalog />}
@@ -42,7 +42,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "customers" && <Customers />}
     {module === "finance" && <Finance />}
     {module === "fiscal" && <Fiscal />}
-    {module === "notifications" && <NotificationList />}
+    {module === "notifications" && <NotificationList notifications={notifications} onReadAll={onReadNotifications} />}
     {module === "offline" && <OfflinePreview />}
     {module === "automation" && <FoodAutomationPanel />}
     {module === "settings" && <div className="proto-stack"><Editor title="Identidade da loja" tabs={["Dados da loja", "Entrega", "Impressão"]} labels={["Nome da loja", "Endereço", "Telefone público"]} /><Preferences groups={[{ title: "Equipe e acesso", labels: ["Operador de caixa", "Gerente", "Responsável fiscal"] }, { title: "Notificações", labels: ["Som de novo pedido", "Aviso de WhatsApp", "Alertas de estoque"] }]} /><Panel title="Integrações"><dl className="proto-facts"><div><dt>WhatsApp Cloud API</dt><dd>Não conectado</dd></div><div><dt>Fiscal</dt><dd>Configuração pendente</dd></div></dl></Panel></div>}

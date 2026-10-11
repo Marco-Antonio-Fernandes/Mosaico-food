@@ -47,6 +47,16 @@ export type FoodConversation = {
   lastMessage: FoodMessage | null;
 };
 
+export type FoodNotification = {
+  id: string;
+  conversationId: string;
+  providerMessageId: string;
+  body: string | null;
+  createdAt: string;
+  customerName: string;
+  remoteJid: string;
+};
+
 export type ProductInput = {
   name: string;
   category: string;
@@ -187,6 +197,12 @@ export async function getFoodMessages(conversationId: string) {
   return data.messages;
 }
 
+export async function getFoodNotifications(after?: string) {
+  const query = after ? `?after=${encodeURIComponent(after)}` : "";
+  const data = await foodApi<{ notifications: FoodNotification[] }>(`/api/v1/whatsapp/notifications${query}`);
+  return Array.isArray(data.notifications) ? data.notifications : [];
+}
+
 export async function sendFoodMessage(conversationId: string, body: string) {
   const data = await foodApi<{ message: FoodMessage }>(`/api/v1/food/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -227,4 +243,3 @@ export async function updateFoodOrderStatus(id: string, status: string) {
   });
   return data.order;
 }
-

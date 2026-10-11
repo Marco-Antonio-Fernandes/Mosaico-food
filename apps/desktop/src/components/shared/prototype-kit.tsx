@@ -82,12 +82,27 @@ export function Preferences({ groups }: { groups: { title: string; labels: strin
   </form>;
 }
 
-export function NotificationList({ health = false }: { health?: boolean }) {
+export type NotificationEntry = {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+};
+
+export function NotificationList({ health = false, notifications, onReadAll }: { health?: boolean; notifications?: NotificationEntry[]; onReadAll?: () => void }) {
   const [read, setRead] = useState<string[]>([]);
-  const entries = health ? ["Próxima sessão em 30 minutos", "Confirmação de horário recebida", "Pedido de reagendamento", "Recebimento aguardando identificação", "Conflito de sincronização para revisar"] : ["Novo pedido recebido", "WhatsApp aguardando atendimento", "Pedido pronto para retirada", "Ingrediente próximo do estoque mínimo", "Documento fiscal aguardando revisão"];
+  const staticEntries = health ? ["Próxima sessão em 30 minutos", "Confirmação de horário recebida", "Pedido de reagendamento", "Recebimento aguardando identificação", "Conflito de sincronização para revisar"] : ["Novo pedido recebido", "WhatsApp aguardando atendimento", "Pedido pronto para retirada", "Ingrediente próximo do estoque mínimo", "Documento fiscal aguardando revisão"];
+  const entries: NotificationEntry[] = notifications === undefined
+    ? staticEntries.map((title, index) => ({ id: `mock-${index}`, title, body: "Aviso demonstrativo", createdAt: new Date(Date.now() - index * 300_000).toISOString() }))
+    : notifications;
+  const formatDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const markAll = () => {
+    setRead(entries.map(entry => entry.id));
+    onReadAll?.();
+  };
   return <Panel title="Central de notificações" subtitle="Atualizações recentes">
-    <div className="proto-toolbar"><Badge>{entries.length - read.length} não lidas</Badge><button type="button" onClick={() => setRead(entries)}>Marcar todas como lidas</button></div>
-    <div className="proto-stack">{entries.map((entry, i) => <article className="proto-notification" key={entry}><span className="proto-avatar">{i + 1}</span><div><strong>{entry}</strong><p>{i === 0 ? "Agora" : i * 5 + " min atrás"}</p></div><button type="button" className="proto-subtle" disabled={read.includes(entry)} onClick={() => setRead([...read, entry])}>{read.includes(entry) ? "Lida" : "Marcar lida"}</button></article>)}</div>
+    <div className="proto-toolbar"><Badge>{entries.filter(entry => !read.includes(entry.id)).length} não lidas</Badge><button type="button" onClick={markAll}>Marcar todas como lidas</button></div>
+    {entries.length ? <div className="proto-stack">{entries.map((entry, i) => <article className="proto-notification" key={entry.id}><span className="proto-avatar">{i + 1}</span><div><strong>{entry.title}</strong><p>{entry.body} · {formatDate(entry.createdAt)}</p></div><button type="button" className="proto-subtle" disabled={read.includes(entry.id)} onClick={() => setRead(current => [...current, entry.id])}>{read.includes(entry.id) ? "Lida" : "Marcar lida"}</button></article>)}</div> : <p className="proto-empty">Nenhuma mensagem nova do WhatsApp.</p>}
   </Panel>;
 }
 
