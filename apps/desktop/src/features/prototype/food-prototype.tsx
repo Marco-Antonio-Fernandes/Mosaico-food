@@ -3,6 +3,7 @@ import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type NotificationEntry, type RecordItem } from "@/components/shared/prototype-kit";
 import { FoodAutomationPanel } from "@/features/automation/food-automation-panel";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
+import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
 import { createFoodProduct, registerCounterSale, getFoodOrders, getFoodProducts, updateFoodOrderStatus, updateFoodProduct, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput } from "@/lib/food-api";
 
@@ -12,7 +13,7 @@ export const foodModules = {
   service: ["Atendimento", "Conversas, carrinho e acompanhamento do WhatsApp."],
   products: ["Produtos", "Um catálogo para o balcão, o atendimento e os pedidos."],
   inventory: ["Estoque e ingredientes", "Entradas, perdas, receitas e disponibilidade."],
-  customers: ["Clientes e crediário", "Relacionamento, histórico e valores em aberto."],
+  customers: ["Clientes", "Cadastre os contatos e os dados de entrega dos seus clientes."],
   finance: ["Caixa e financeiro", "Abertura, recebimentos, despesas e fechamento."],
   fiscal: ["Fiscal", "Documentos, revisão de rejeições e histórico por venda."],
   notifications: ["Notificações", "Pedidos, atendimento e alertas que precisam de atenção."],
@@ -23,11 +24,6 @@ export const foodModules = {
 export type FoodModule = keyof typeof foodModules;
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const productIcon = (category: string) => ({ Lanches: "🍔", Porções: "🍟", Bebidas: "🥤", Combos: "🍽️", Sobremesas: "🍰" }[category] ?? "🍴");
-const clients: RecordItem[] = [
-  { id: "c1", name: "Ana Oliveira", detail: "Retirada · contato autorizado", status: "Em dia", value: "R$ 0,00 em aberto" },
-  { id: "c2", name: "Bruno Lima", detail: "Delivery · endereço cadastrado", status: "Crediário", value: "R$ 84,00 em aberto" },
-  { id: "c3", name: "Carla Mendes", detail: "Balcão · limite R$ 200,00", status: "Crediário", value: "R$ 35,00 em aberto" },
-];
 const movements: RecordItem[] = [
   { id: "m1", name: "Venda #1042", detail: "Pix · balcão", status: "Recebido", value: "R$ 45,00" },
   { id: "m2", name: "Compra de ingredientes", detail: "Despesa · fornecedores", status: "Pago", value: "R$ 180,00" },
@@ -40,7 +36,7 @@ export function FoodPrototype({ module, notifications, onReadNotifications }: { 
     {module === "orders" && <Orders />}
     {module === "service" && <FoodServicePanel />}
     {module === "inventory" && <Catalog />}
-    {module === "customers" && <Customers />}
+    {module === "customers" && <CustomersPage />}
     {module === "finance" && <Finance />}
     {module === "fiscal" && <Fiscal />}
     {module === "notifications" && <NotificationList notifications={notifications} onReadAll={onReadNotifications} />}
@@ -329,10 +325,6 @@ function Orders() {
 function Inventory() {
   const [tab, setTab] = useState("Posição atual");
   return <><Metrics items={[["Itens controlados", "18", "Itens cadastrados"], ["Abaixo do mínimo", "2", "Reposição sugerida"], ["Movimentações", "7", "Entradas e saídas do dia"]]} /><Tabs items={["Posição atual", "Movimentações", "Fichas técnicas"]} value={tab} onChange={setTab} />{tab === "Fichas técnicas" ? <Editor title="Receita do hambúrguer" tabs={["Ingredientes", "Rendimento", "Perdas"]} labels={["Produto vendido", "Rendimento", "Unidade"]} initialText="1 pão · 150 g de carne · 30 g de queijo." /> : <Records key={tab} title={tab} action="Nova movimentação" fields={["Item", "Unidade / origem", "Situação", "Quantidade"]} rows={tab === "Posição atual" ? [{ id: "i1", name: "Pão de hambúrguer", detail: "Unidade · mínimo 20", status: "Baixo", value: "12 un" }, { id: "i2", name: "Queijo", detail: "Quilograma · mínimo 2", status: "Regular", value: "5,2 kg" }, { id: "i3", name: "Refrigerante cola", detail: "Unidade · mínimo 12", status: "Regular", value: "36 un" }] : [{ id: "im1", name: "Entrada de queijo", detail: "Compra · fornecedor local", status: "Entrada", value: "+3 kg" }, { id: "im2", name: "Pão de hambúrguer", detail: "Venda #1043", status: "Saída", value: "−1 un" }]} />}</>;
-}
-function Customers() {
-  const [tab, setTab] = useState("Clientes");
-  return <><Metrics items={[["Clientes", "3", "Cadastros ativos"], ["Crediário em aberto", "R$ 119,00", "Saldo em aberto"], ["Sincronização", "Ativa", "Lançamentos atualizados"]]} /><Tabs items={["Clientes", "Crediário", "Histórico"]} value={tab} onChange={setTab} /><Records key={tab} title={tab} action={tab === "Clientes" ? "Novo cliente" : "Novo lançamento"} rows={tab === "Clientes" ? clients : [{ id: "cr1", name: "Bruno Lima", detail: "Débito · pedido #1043", status: "Em aberto", value: "R$ 84,00" }, { id: "cr2", name: "Carla Mendes", detail: "Débito · balcão", status: "Em aberto", value: "R$ 35,00" }, { id: "cr3", name: "Ana Oliveira", detail: "Pagamento · Pix", status: "Recebido", value: "R$ 28,00" }]} /></>;
 }
 function Finance() {
   const [tab, setTab] = useState("Movimentações");

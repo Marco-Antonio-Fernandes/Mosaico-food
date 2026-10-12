@@ -16,7 +16,7 @@ const navigationItems: NavigationItem<ViewId>[] = [
   { id: "service", label: "Atendimento", group: "Operação", icon: Headset },
   { id: "products", label: "Produtos", group: "Gestão", icon: Package },
   { id: "inventory", label: "Estoque", group: "Gestão", icon: Boxes },
-  { id: "customers", label: "Clientes e crediário", group: "Gestão", icon: UsersRound },
+  { id: "customers", label: "Clientes", group: "Gestão", icon: UsersRound },
   { id: "finance", label: "Caixa e financeiro", group: "Gestão", icon: WalletCards },
   { id: "fiscal", label: "Fiscal", group: "Gestão", icon: FileText },
   { id: "automation", label: "Automação", group: "Sistema", icon: Wand2 },
