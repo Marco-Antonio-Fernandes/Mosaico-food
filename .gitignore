@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+.coucou-release/
 .env
 .env.*
 !.env.example
