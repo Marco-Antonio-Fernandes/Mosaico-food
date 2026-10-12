@@ -10,6 +10,8 @@ export type FoodProduct = {
   preparationCapacity: number;
   productionMode: "resale" | "recipe" | "ingredient";
   stockUnit: "un" | "g" | "ml";
+  unitWeightGrams: number | null;
+  unitVolumeMl: number | null;
   recipe: { ingredientId: string; quantity: number }[];
   allowOnDemand: boolean;
   fryToOrder: boolean;
@@ -67,6 +69,8 @@ export type FoodNotification = {
 export type ProductInput = {
   productionMode: FoodProduct["productionMode"];
   stockUnit: FoodProduct["stockUnit"];
+  unitWeightGrams: number | null;
+  unitVolumeMl: number | null;
   recipe: FoodProduct["recipe"];
   unpreparedQuantity: number;
   name: string;
@@ -118,22 +122,41 @@ function getApiBaseUrl() {
   return apiBaseUrlPromise;
 }
 
-export type AssistantDraft = { id: string; action: "sale" | "prepare"; quantity: number; productName: string; totalCents: number; paymentMethod: "pix" | "cash" | "card" | null };
+export type AssistantDraft = { id: string; action: "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: "pix" | "cash" | "card" | null };
+export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
+export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
 export function assistantPreview(text: string, productId?: string) {
-  return foodApi<{ draft?: AssistantDraft; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
+  return foodApi<{ draft?: AssistantDraft; drafts?: AssistantDraft[]; registration?: AssistantRegistrationDraft; registrationQuestion?: AssistantRegistrationQuestion; stockQuestion?: boolean; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
 }
 export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: "pix" | "cash" | "card" | null) {
   return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ draftId, totalCents, paymentMethod }) });
 }
-export function transcribeFoodAudio(audio: Blob) {
+export function assistantConfirmBatch(drafts: { draftId: string; totalCents: number; paymentMethod: "pix" | "cash" | "card" | null }[], registrations: { draftId: string }[] = []) {
+  return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ ...(drafts.length ? { drafts } : {}), ...(registrations.length ? { registrations } : {}) }) });
+}
+export type FoodTranscriptionResult = {
+  available: boolean;
+  text: string | null;
+  understood: boolean;
+};
+
+export function transcribeFoodAudio(audio: Blob, prompt = ""): Promise<FoodTranscriptionResult> {
   const localTranscriber = window.mosaicoDesktop?.transcribeAudio;
   if (localTranscriber) {
-    return audio.arrayBuffer().then((buffer) => localTranscriber(buffer, audio.type || "audio/wav")).then((localResult) => {
-      if (localResult.available) return { text: localResult.text, understood: localResult.understood };
-      return { text: null, understood: false };
+    return audio.arrayBuffer().then((buffer) => localTranscriber(buffer, audio.type || "audio/wav", prompt)).then((localResult) => {
+      if (localResult.available) return { available: true, text: localResult.text, understood: localResult.understood };
+      return { available: false, text: null, understood: false };
     });
   }
-  return foodApi<{ text: string | null; understood: boolean }>("/api/v1/food/speech", { method: "POST", headers: { "Content-Type": audio.type || "application/octet-stream" }, body: audio });
+  return foodApi<FoodTranscriptionResult>("/api/v1/food/speech", { method: "POST", headers: { "Content-Type": audio.type || "application/octet-stream", ...(prompt ? { "X-Whisper-Prompt": prompt } : {}) }, body: audio });
+}
+
+export function interpretFoodText(text: string, products: FoodProduct[]): Promise<FoodTranscriptionResult> {
+  const localInterpreter = window.mosaicoDesktop?.interpretText;
+  if (!localInterpreter) return Promise.resolve({ available: false, text: null, understood: false });
+  return localInterpreter(text, products.map(product => ({ name: product.name, aliases: product.aliases })))
+    .then(result => ({ available: result.available, text: result.text, understood: result.understood }))
+    .catch(() => ({ available: true, text: null, understood: false }));
 }
 
 export function registerCounterSale(input: { operationId: string; paymentMethod: "pix" | "cash" | "card" | null; items: { productId: string; quantity: number; unitPriceCents: number }[] }) {
@@ -182,6 +205,8 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
     preparationCapacity: typeof product.preparationCapacity === "number" ? product.preparationCapacity : 0,
     productionMode: product.productionMode === "recipe" || product.productionMode === "ingredient" ? product.productionMode : "resale",
     stockUnit: product.stockUnit === "g" || product.stockUnit === "ml" ? product.stockUnit : "un",
+    unitWeightGrams: typeof product.unitWeightGrams === "number" ? product.unitWeightGrams : null,
+    unitVolumeMl: typeof product.unitVolumeMl === "number" ? product.unitVolumeMl : null,
     recipe: Array.isArray(product.recipe) ? product.recipe.flatMap(value => {
       const row = asRecord(value);
       return typeof row.ingredientId === "string" && typeof row.quantity === "number" ? [{ ingredientId: row.ingredientId, quantity: row.quantity }] : [];
@@ -244,13 +269,28 @@ export async function getFoodConversations() {
   return data.conversations;
 }
 
-export async function registerFoodStock(id: string, input: { operationId: string; action: "receive_ready" | "receive_unprepared" | "prepare"; quantity: number }) {
+export async function registerFoodStock(id: string, input: { operationId: string; action: "receive_ready" | "receive_unprepared" | "prepare" | "loss"; quantity: number }) {
   return foodApi(`/api/v1/food/products/${encodeURIComponent(id)}/stock`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function getFoodMessages(conversationId: string) {
   const data = await foodApi<{ messages: FoodMessage[] }>(`/api/v1/food/conversations/${encodeURIComponent(conversationId)}/messages`);
   return data.messages;
+}
+
+export async function getFoodMessageAudio(conversationId: string, messageId: string) {
+  const headers = new Headers({ Accept: "audio/*" });
+  if (apiKey) headers.set("X-API-Key", apiKey);
+  const response = await fetch(`${await getApiBaseUrl()}/api/v1/food/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/audio`, { headers });
+  if (!response.ok) throw new Error("Não foi possível baixar o áudio do atendimento.");
+  return response.blob();
+}
+
+export async function submitFoodMessageTranscription(conversationId: string, messageId: string, text: string) {
+  return foodApi<{ message: FoodMessage }>(`/api/v1/food/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/transcription`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
 }
 
 export async function getFoodNotifications(after?: string) {

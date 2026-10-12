@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
     };
   },
   getBackendUrl: () => ipcRenderer.invoke("mosaico:backend-url"),
-  transcribeAudio: (audio, mimeType) => ipcRenderer.invoke("mosaico:transcribe-audio", audio, mimeType),
+  transcribeAudio: (audio, mimeType, prompt) => ipcRenderer.invoke("mosaico:transcribe-audio", audio, mimeType, prompt),
+  interpretText: (text, products) => ipcRenderer.invoke("mosaico:interpret-text", text, products),
   getPlatform: () => process.platform,
 });

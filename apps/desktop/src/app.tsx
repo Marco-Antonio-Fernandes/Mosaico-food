@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Boxes, ClipboardList, Cloud, FileText, Gauge, Headset, Package, Settings, ShoppingBasket, UsersRound, WalletCards, Wand2 } from "lucide-react";
+import { Bell, Boxes, ClipboardList, Cloud, FileText, Gauge, Headset, Package, Settings, UsersRound, WalletCards, Wand2 } from "lucide-react";
 import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
 import { FoodOverviewPage } from "@/components/shared/food-overview-page";
 import { FoodPrototype, type FoodModule } from "@/features/prototype/food-prototype";
@@ -12,7 +12,6 @@ import { ConnectionStatus, type DesktopConnectionStatus } from "@/components/sha
 type ViewId = "dashboard" | FoodModule;
 const navigationItems: NavigationItem<ViewId>[] = [
   { id: "dashboard", label: "Visão geral", group: "Operação", icon: Gauge },
-  { id: "pos", label: "PDV", group: "Operação", icon: ShoppingBasket },
   { id: "orders", label: "Pedidos", group: "Operação", icon: ClipboardList },
   { id: "service", label: "Atendimento", group: "Operação", icon: Headset },
   { id: "products", label: "Produtos", group: "Gestão", icon: Package },

@@ -10,12 +10,16 @@ files:
 extraResources:
   - from: ../../../mosaico-back/dist
     to: backend/dist
+  - from: ../../../mosaico-back/package.json
+    to: backend/package.json
   - from: ../../../mosaico-back/node_modules
     to: backend/node_modules
   - from: ../../../mosaico-back/prisma
     to: backend/prisma
   - from: electron/speech-runtime
     to: speech
+  - from: electron/interpreter-runtime
+    to: interpreter
 linux:
   target:
     - AppImage

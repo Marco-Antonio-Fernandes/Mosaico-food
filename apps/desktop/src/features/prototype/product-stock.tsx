@@ -19,13 +19,16 @@ export function ProductStock({ product, onSaved }: { product: FoodProduct; onSav
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível registrar."); }
     finally { setBusy(false); }
   }
+  const unitDetails = product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl)
+    ? ` · 1 unidade = ${[product.unitWeightGrams ? `${product.unitWeightGrams} g` : "", product.unitVolumeMl ? `${product.unitVolumeMl} ml` : ""].filter(Boolean).join(" e ")}`
+    : "";
   return <div className="proto-stack">
-    <small>{product.productionMode === "ingredient" ? `${product.stockQuantity} ${product.stockUnit} disponíveis` : `${product.stockQuantity} prontos · ${product.unpreparedQuantity} para finalizar · pode preparar mais ${product.preparationCapacity}`}</small>
+    <small>{product.productionMode === "ingredient" ? `${product.stockQuantity} ${product.stockUnit} disponíveis para usar${unitDetails}` : `${product.stockQuantity} prontos · ${product.unpreparedQuantity} para fritar / assar / finalizar · pode preparar mais ${product.preparationCapacity}`}</small>
     <button type="button" className="proto-subtle" onClick={() => setOpen(!open)}>{product.productionMode === "recipe" ? "Registrar produção" : "Registrar estoque"}</button>
     {open && <form className="proto-stack" onSubmit={event => void submit(event)}>
       <label>O que aconteceu?<select disabled={busy} value={action} onChange={event => { setAction(event.target.value as typeof action); setOperationId(crypto.randomUUID()); }}>
         {product.productionMode !== "recipe" && <option value="receive_ready">{product.productionMode === "ingredient" ? "Recebi ingredientes" : "Recebi produtos prontos"}</option>}
-        {product.productionMode === "resale" && <option value="receive_unprepared">Recebi unidades para fritar / finalizar</option>}
+        {product.productionMode !== "ingredient" && <option value="receive_unprepared">Recebi unidades para fritar / assar / finalizar</option>}
         {product.productionMode !== "ingredient" && <option value="prepare">Preparei unidades para vender</option>}
       </select></label>
       <label>Quantidade ({product.stockUnit})<input required disabled={busy} type="number" min="1" step="1" value={quantity} onChange={event => { setQuantity(event.target.value); setOperationId(crypto.randomUUID()); }} /></label>

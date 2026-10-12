@@ -37,7 +37,7 @@ function runNodeScript(script, args, environment, cwd) {
 
 async function prepareDatabase(root, databaseUrl) {
   const databaseFile = databaseUrl.replace(/^file:/, "");
-  if (fs.existsSync(databaseFile)) return;
+  fs.mkdirSync(path.dirname(databaseFile), { recursive: true });
 
   const prismaCli = path.join(root, "node_modules", "prisma", "build", "index.js");
   const schema = path.join(root, "prisma", "schema.prisma");
@@ -93,12 +93,14 @@ async function startLocalBackend() {
       ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: "development",
       PORT: String(LOCAL_PORT),
+      HOST: "127.0.0.1",
       DATABASE_URL: databaseUrl,
       CORS_ORIGIN: "",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
+  backendProcess.once("error", (error) => console.error(`[Mosaico local] Falha ao iniciar o backend: ${error.message}`));
   backendProcess.stdout.on("data", (chunk) => console.log(`[Mosaico local] ${chunk.toString().trim()}`));
   backendProcess.stderr.on("data", (chunk) => console.error(`[Mosaico local] ${chunk.toString().trim()}`));
   backendProcess.once("exit", (code, signal) => {

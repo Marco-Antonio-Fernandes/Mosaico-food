@@ -52,7 +52,7 @@ async function startLocalSpeech() {
     const executable = findRuntimeFile(process.platform === "win32"
       ? ["whisper-server.exe", "whisper-whisper-server.exe", "whisper-server", "whisper-whisper-server"]
       : ["whisper-server", "whisper-whisper-server"]);
-    const model = findRuntimeFile(["models/ggml-tiny.bin", "ggml-tiny.bin"]);
+    const model = findRuntimeFile(["models/ggml-base.bin", "ggml-base.bin", "models/ggml-tiny.bin", "ggml-tiny.bin"]);
     if (!executable || !model) {
       console.warn("[Mosaico Food] Motor local de voz não foi incluído no instalador.");
       return false;
@@ -68,7 +68,6 @@ async function startLocalSpeech() {
       "--language", "pt",
       "--threads", "2",
       "--no-gpu",
-      "--no-context",
       "--no-timestamps",
     ], {
       cwd: path.dirname(executable),
@@ -90,7 +89,7 @@ async function startLocalSpeech() {
   return startPromise;
 }
 
-async function transcribeAudio(audio, mimeType = "audio/wav") {
+async function transcribeAudio(audio, mimeType = "audio/wav", prompt = "") {
   if (ArrayBuffer.isView(audio)) {
     audio = audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
   }
@@ -103,6 +102,7 @@ async function transcribeAudio(audio, mimeType = "audio/wav") {
   form.append("file", new Blob([audio], { type: mimeType }), "mosaico-audio.wav");
   form.append("language", "pt");
   form.append("temperature", "0");
+  if (prompt) form.append("prompt", prompt.slice(0, 4000));
   form.append("response_format", "json");
   try {
     const response = await fetch(`http://127.0.0.1:${SPEECH_PORT}/inference`, {

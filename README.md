@@ -15,7 +15,7 @@ com a Cloud API da Meta continua pendente.
 
 O `faster-whisper` instalado na virtualenv do backend não é usado pelo
 instalador atual: ele baixa outro formato de modelo. Para o desktop, compile o
-`whisper-server` do whisper.cpp e deixe o script baixar `ggml-tiny.bin`.
+`whisper-server` do whisper.cpp e deixe o script baixar `ggml-base.bin`.
 
 ## Desenvolvimento local
 

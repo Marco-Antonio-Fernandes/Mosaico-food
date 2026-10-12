@@ -4,7 +4,7 @@ O instalador deve colocar os arquivos nativos do `whisper.cpp` nestas pastas:
 
 ```text
 speech/
-├── models/ggml-tiny.bin
+├── models/ggml-base.bin
 ├── linux-x64/whisper-server
 ├── linux-arm64/whisper-server
 ├── win32-x64/whisper-server.exe
@@ -13,12 +13,12 @@ speech/
 
 O binário deve ser compilado para a plataforma que será empacotada e informado
 em `MOSAICO_WHISPER_SERVER` ao rodar `npm run prepare:speech`. O script baixa o
-modelo tiny automaticamente para a pasta do instalador. Nem o executável nem o
+modelo base automaticamente para a pasta do instalador. Nem o executável nem o
 modelo entram no Git.
 
 `faster-whisper` não substitui esses arquivos neste pacote. A instalação Python
 de `faster-whisper` baixa um modelo CTranslate2 para o cache da virtualenv; ela
-não cria `whisper-server` nem `ggml-tiny.bin`. Para manter o instalador sem
+não cria `whisper-server` nem `ggml-base.bin`. Para manter o instalador sem
 Python, compile o servidor do projeto `whisper.cpp` e informe o caminho real do
 executável, em vez de usar o texto de exemplo `/caminho/whisper-server`.
 
@@ -46,6 +46,6 @@ MOSAICO_WHISPER_SERVER="/tmp/whisper.cpp/build/bin/whisper-server" \
 npm run package:linux
 ```
 
-O comando compila o backend, baixa `ggml-tiny.bin`, copia o executável para
+O comando compila o backend, baixa `ggml-base.bin`, copia o executável para
 `speech/linux-x64/` e gera o instalador em `release/`. Para Windows, compile
 `whisper-server.exe` para Windows e use `npm run package:win`.

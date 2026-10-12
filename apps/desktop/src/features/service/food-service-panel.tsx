@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Bot, LoaderCircle, MessageCircle, Send, UserRound } from "lucide-react";
 
 import { Badge, Panel } from "@/components/shared/prototype-kit";
 import {
   getFoodConversations,
+  getFoodMessageAudio,
   getFoodMessages,
   sendFoodMessage,
   setFoodCustomerAutomation,
   setFoodConversationMode,
+  submitFoodMessageTranscription,
+  transcribeFoodAudio,
   type FoodConversation,
   type FoodMessage,
 } from "@/lib/food-api";
+import { audioToWav } from "@/lib/audio";
 
 const formatDate = (value: string | null) => {
   if (!value) return "Sem mensagens";
@@ -33,6 +37,7 @@ export function FoodServicePanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const audioAttempts = useRef(new Map<string, number>());
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
@@ -89,6 +94,30 @@ export function FoodServicePanel() {
       window.clearInterval(timer);
     };
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const pendingAudio = messages.filter(message => message.direction === "inbound" && message.mediaType === "audio" && message.transcriptionStatus !== "completed");
+    for (const message of pendingAudio) {
+      const lastAttempt = audioAttempts.current.get(message.id) ?? 0;
+      if (Date.now() - lastAttempt < 30_000) continue;
+      audioAttempts.current.set(message.id, Date.now());
+      void (async () => {
+        try {
+          const audio = await getFoodMessageAudio(selectedId, message.id);
+          const transcription = await transcribeFoodAudio(await audioToWav(audio), "Áudio de atendimento de cliente. Preserve nomes de produtos, quantidades e pedidos.");
+          if (!transcription.understood || !transcription.text) throw new Error("Não consegui entender o áudio do cliente.");
+          await submitFoodMessageTranscription(selectedId, message.id, transcription.text);
+          setNotice(`Áudio transcrito: ${transcription.text}`);
+          const refreshed = await getFoodMessages(selectedId);
+          setMessages(refreshed);
+          setError("");
+        } catch (audioError) {
+          setError(audioError instanceof Error ? audioError.message : "Não foi possível transcrever o áudio do cliente.");
+        }
+      })();
+    }
+  }, [messages, selectedId]);
 
   const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

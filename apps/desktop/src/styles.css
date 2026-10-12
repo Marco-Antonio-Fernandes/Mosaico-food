@@ -1,20 +1,128 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-.food-assistant { position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 60; display: grid; justify-items: end; gap: 12px; }
-.food-assistant-panel { width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 120px); overflow-y: auto; box-shadow: 0 12px 48px #0008; }
-.food-assistant-heading { display: flex; align-items: center; justify-content: space-between; }
+.food-assistant { position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 60; display: grid; justify-items: end; gap: 12px; width: min(560px, calc(100vw - 48px)); }
+.food-assistant-panel { width: 100%; max-height: min(760px, calc(100dvh - 112px)); overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 12px 48px #0008; padding: 22px; }
+.food-assistant-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.food-assistant-heading h2 { min-width: 0; }
 .food-assistant.prototype .food-assistant-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 11px; min-width: 224px; min-height: 68px; padding: 16px 24px; border: 2px solid #ffd29d; border-radius: 999px; background: linear-gradient(135deg, #ffbd73, #f28b35); color: #17212b; box-shadow: 0 10px 30px #0008, 0 0 0 5px #ffb26925; font-size: 1rem; font-weight: 800; letter-spacing: .01em; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .food-assistant.prototype .food-assistant-toggle:hover { transform: translateY(-2px); filter: brightness(1.08); }
 .food-assistant.prototype .food-assistant-toggle:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
 .food-assistant.prototype .food-assistant-toggle.is-recording { border-color: #ff9aa7; background: linear-gradient(135deg, #ff7184, #c9314a); color: #fff; animation: food-assistant-recording 1.2s ease-in-out infinite; }
-.food-assistant .proto-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 54px; padding-inline: 17px; touch-action: manipulation; }
-.food-assistant-record-button { min-width: 132px; }
+.food-assistant form { display: grid; gap: 12px; }
+.food-assistant form > label { gap: 8px; }
+.food-assistant form textarea { min-height: 116px; line-height: 1.5; }
+.food-assistant .proto-toolbar { width: 100%; align-items: stretch; margin: 0; }
+.food-assistant .proto-toolbar button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 54px; padding: 11px 14px; line-height: 1.2; touch-action: manipulation; }
+.food-assistant-record-button { min-width: 0; }
 .food-assistant-record-button.is-recording { background: #c9314a; color: #fff; }
 .food-assistant p { font-size: .85rem; margin-bottom: 12px; }
+.food-assistant-drafts, .food-assistant-choices { display: grid; gap: 10px; margin-top: 14px; }
+.food-assistant-drafts > header { display: grid; gap: 3px; padding-bottom: 4px; }
+.food-assistant-drafts > header small { color: var(--proto-muted); }
+.food-assistant-drafts .proto-ticket { gap: 12px; }
+.food-assistant-drafts .proto-ticket > div { display: grid; gap: 4px; }
+.food-assistant-drafts .proto-ticket > div strong { font-size: .95rem; }
+.food-assistant-choices > strong { font-size: .82rem; }
+.food-assistant-choices > button { width: 100%; min-height: 52px; text-align: left; background: var(--proto-canvas); color: var(--proto-ink); border: 1px solid var(--proto-line); }
+.food-assistant-guided { display: grid; gap: 14px; }
+.food-assistant-intro, .food-assistant-step-heading { display: grid; gap: 4px; }
+.food-assistant-intro span, .food-assistant-step-heading span, .food-assistant-guided-footer span { color: var(--proto-muted); font-size: .82rem; line-height: 1.45; }
+.food-assistant-guided-menu, .food-assistant-guided-products, .food-assistant-state-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.food-assistant-guided-choice, .food-assistant-state-grid button { display: flex; align-items: flex-start; gap: 11px; min-height: 90px; padding: 14px; text-align: left; border: 1px solid var(--proto-line); border-radius: 13px; background: var(--proto-canvas); color: var(--proto-ink); }
+.food-assistant-guided-choice:hover, .food-assistant-state-grid button:hover, .food-assistant-guided-products button:hover { border-color: var(--proto-accent); background: var(--proto-accent-soft); }
+.food-assistant-guided-choice > span, .food-assistant-state-grid button { display: grid; align-content: start; gap: 5px; }
+.food-assistant-guided-choice svg, .food-assistant-state-grid svg { flex: 0 0 auto; color: var(--proto-accent); margin-top: 2px; }
+.food-assistant-guided-choice small, .food-assistant-state-grid small, .food-assistant-guided-products small { display: block; color: var(--proto-muted); font-size: .76rem; line-height: 1.35; }
+.food-assistant-guided-products { grid-template-columns: minmax(0, 1fr); max-height: 310px; overflow-y: auto; padding-right: 2px; }
+.food-assistant-guided-product-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-width: 0; }
+.food-assistant-guided-products button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; min-height: 60px; padding: 11px 13px; text-align: left; border: 1px solid var(--proto-line); border-radius: 11px; background: var(--proto-canvas); color: var(--proto-ink); }
+.food-assistant-guided-product-main { width: 100%; }
+.food-assistant-guided-add-stock { min-height: 42px !important; padding: 8px 11px !important; color: var(--proto-accent) !important; font-size: .76rem; white-space: nowrap; }
+.food-assistant-guided-products button > span { min-width: 0; display: grid; gap: 3px; }
+.food-assistant-guided-products button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.food-assistant-guided-products button b { flex: 0 0 auto; font-size: .82rem; }
+.food-assistant-search, .food-assistant-guided-fields { display: grid; gap: 6px; }
+.food-assistant-guided-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.food-assistant-guided-fields label:last-child { grid-column: 1 / -1; }
+.food-assistant-confirm-box { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); }
+.food-assistant-confirm-box span { color: var(--proto-muted); font-size: .84rem; }
+.food-assistant-confirm { width: 100%; min-height: 56px; }
+.food-assistant-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 5px 8px; }
+.food-assistant-guided-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 3px; border-top: 1px solid var(--proto-line); }
+.food-assistant-success, .food-assistant-error { display: flex; align-items: flex-start; gap: 7px; padding: 10px 12px; border-radius: 10px; }
+.food-assistant-success { color: #155b38; background: #e7f7ed; border: 1px solid #99d5af; }
+.food-assistant-error { color: #8f1d2c; background: #fff0f1; border: 1px solid #e5a0aa; }
+.product-mode-field { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
+.product-mode-field legend { padding: 0; margin-bottom: 9px; color: var(--proto-muted); font-size: .8rem; }
+.product-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.product-mode-grid button { display: grid; align-content: start; gap: 7px; min-height: 112px; text-align: left; background: #f8fafc; color: #17212b; border: 1px solid #b8c7d1; }
+.product-mode-grid button strong { color: #102b35; }
+.product-mode-grid button small { color: #4a606b; line-height: 1.45; }
+.product-mode-grid button.is-selected { border-color: #16737a; background: #e8f4f5; color: #102b35; box-shadow: inset 0 0 0 2px #16737a; }
+.product-mode-grid button.is-selected strong, .product-mode-grid button.is-selected small { color: #102b35; }
+.product-mode-field[disabled] { opacity: .72; }
+.ingredient-measurement-field { align-self: stretch; }
+.ingredient-measurement-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.proto-form-error { color: #a61b2b !important; background: #fff0f1; border: 1px solid #e5a0aa; border-radius: 10px; padding: 10px 12px; }
 @keyframes food-assistant-recording { 50% { box-shadow: 0 10px 30px #0008, 0 0 0 10px #ff526955; } }
-@media (max-width: 560px) { .food-assistant { right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); } .food-assistant.prototype .food-assistant-toggle { min-width: 206px; min-height: 64px; padding-inline: 19px; } .food-assistant-panel { width: calc(100vw - 28px); max-height: calc(100dvh - 102px); } }
+@media (max-width: 560px) { .food-assistant { left: 14px; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); width: auto; justify-items: stretch; } .food-assistant.prototype .food-assistant-toggle { width: 100%; min-width: 0; min-height: 64px; padding-inline: 19px; } .food-assistant-panel { max-height: calc(100dvh - 96px); padding: 16px; border-radius: 18px; } .food-assistant .proto-toolbar { flex-direction: column; } .food-assistant .proto-toolbar button { width: 100%; flex-basis: auto; } }
+@media (max-width: 560px) { .food-assistant-guided-menu, .food-assistant-state-grid, .food-assistant-guided-fields, .food-assistant-guided-product-row { grid-template-columns: minmax(0, 1fr); } .food-assistant-guided-fields label:last-child { grid-column: auto; } .food-assistant-guided-choice, .food-assistant-state-grid button { min-height: 74px; } .food-assistant-guided-add-stock { width: 100%; } }
+@media (max-width: 680px) { .product-mode-grid { grid-template-columns: minmax(0, 1fr); } .product-mode-grid button { min-height: 78px; } }
+@media (max-width: 680px) { .ingredient-measurement-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .food-assistant-toggle.is-recording { animation: none; } }
+.food-assistant.prototype .food-assistant-panel { background: #f7fafb; color: #172630; border-color: #c7d4da; box-shadow: 0 18px 44px #10232e35; }
+.food-assistant.prototype .food-assistant-panel h2, .food-assistant.prototype .food-assistant-panel strong { color: #172630; }
+.food-assistant.prototype .food-assistant-panel small, .food-assistant.prototype .food-assistant-panel span { color: #52636d; }
+.food-assistant.prototype .food-assistant-toggle { background: #12636c; border-color: #94d7d7; color: #fff; box-shadow: 0 10px 30px #10232e55, 0 0 0 5px #12636c22; }
+.food-assistant.prototype .food-assistant-toggle:hover { background: #0f535b; filter: none; }
+.food-assistant.prototype .proto-subtle, .food-assistant.prototype .food-assistant-back { background: #e8eef1; color: #243640; border-color: #bdcbd2; }
+.food-assistant.prototype .food-assistant-guided-choice, .food-assistant.prototype .food-assistant-state-grid button, .food-assistant.prototype .food-assistant-guided-products button { background: #fff; color: #172630; border-color: #b8c8cf; }
+.food-assistant.prototype .food-assistant-guided-add-stock { color: #12636c !important; }
+.food-assistant.prototype .food-assistant-guided-choice strong, .food-assistant.prototype .food-assistant-state-grid button strong, .food-assistant.prototype .food-assistant-guided-products button strong { color: #172630; }
+.food-assistant.prototype .food-assistant-guided-choice small, .food-assistant.prototype .food-assistant-state-grid button small, .food-assistant.prototype .food-assistant-guided-products button small { color: #52636d; }
+.food-assistant.prototype .food-assistant-guided-choice:hover, .food-assistant.prototype .food-assistant-state-grid button:hover, .food-assistant.prototype .food-assistant-guided-products button:hover { background: #e8f4f3; border-color: #19727a; }
+.food-assistant.prototype .food-assistant-guided-choice svg, .food-assistant.prototype .food-assistant-state-grid svg { color: #12636c; }
+.food-assistant.prototype .food-assistant-search, .food-assistant.prototype .food-assistant-guided-fields label, .food-assistant.prototype .food-assistant-register-form label { color: #40545e; }
+.food-assistant.prototype .food-assistant-panel input, .food-assistant.prototype .food-assistant-panel select, .food-assistant.prototype .food-assistant-panel textarea { background: #fff; color: #172630; border-color: #b8c8cf; }
+.food-assistant.prototype .food-assistant-panel input::placeholder, .food-assistant.prototype .food-assistant-panel textarea::placeholder { color: #73828a; opacity: 1; }
+.food-assistant.prototype .food-assistant-message { background: #fff; color: #172630; border-color: #c5d2d8; }
+.food-assistant.prototype .food-assistant-message small, .food-assistant.prototype .proto-empty, .food-assistant.prototype .food-assistant-panel p { color: #52636d; }
+.food-assistant.prototype .food-assistant-message.is-user { background: #e8f4f3; border-color: #a8d0d0; }
+.food-assistant.prototype .food-assistant-confirm, .food-assistant.prototype .food-assistant-add-row { background: #12636c; color: #fff; border-color: #12636c; }
+.food-assistant.prototype .food-assistant-confirm:hover, .food-assistant.prototype .food-assistant-add-row:hover { background: #0f535b; filter: none; }
+.food-assistant.prototype .food-assistant-confirm-box, .food-assistant.prototype .food-assistant-register-section { background: #fff; border-color: #c5d2d8; }
+.food-assistant.prototype .food-assistant-confirm-box strong, .food-assistant.prototype .food-assistant-register-section strong { color: #172630; }
+.food-assistant.prototype .food-assistant-confirm-box span, .food-assistant.prototype .food-assistant-register-section small, .food-assistant.prototype .food-assistant-intro span, .food-assistant.prototype .food-assistant-step-heading span, .food-assistant.prototype .food-assistant-guided-footer span { color: #52636d; }
+.food-assistant.prototype .food-assistant-success { color: #155b38; background: #e7f7ed; border-color: #99d5af; }
+.food-assistant.prototype .food-assistant-error { color: #8f1d2c; background: #fff0f1; border-color: #e5a0aa; }
+.food-assistant.prototype .food-assistant-flow { display: flex; align-items: center; gap: 5px; overflow-x: auto; padding: 3px 0 8px; border-bottom: 1px solid #d6e0e4; }
+.food-assistant.prototype .food-assistant-flow span { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: #7a8990; font-size: .72rem; font-weight: 700; }
+.food-assistant.prototype .food-assistant-flow span.is-current { background: #d9efee; color: #12636c; }
+.food-assistant.prototype .food-assistant-flow span.is-done { color: #25734f; }
+.food-assistant.prototype .food-assistant-flow-count { display: none; }
+.food-assistant.prototype .food-assistant-register-form { display: grid; gap: 14px; }
+.food-assistant.prototype .food-assistant-register-modes { margin: 0; padding: 0; border: 0; }
+.food-assistant.prototype .food-assistant-register-modes legend { margin-bottom: 8px; color: #40545e; font-size: .8rem; }
+.food-assistant.prototype .food-assistant-register-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.food-assistant.prototype .food-assistant-register-mode-grid button { display: grid; align-content: start; gap: 5px; min-height: 106px; padding: 12px; text-align: left; background: #fff; color: #172630; border: 1px solid #b8c8cf; }
+.food-assistant.prototype .food-assistant-register-mode-grid button strong { color: #172630; }
+.food-assistant.prototype .food-assistant-register-mode-grid button small { color: #52636d; line-height: 1.35; }
+.food-assistant.prototype .food-assistant-register-mode-grid button.is-selected { background: #e8f4f3; color: #12636c; border-color: #19727a; box-shadow: inset 0 0 0 2px #19727a; }
+.food-assistant.prototype .food-assistant-register-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.food-assistant.prototype .food-assistant-register-section { display: grid; gap: 10px; padding: 13px; border: 1px solid #c5d2d8; border-radius: 12px; }
+.food-assistant.prototype .food-assistant-register-section > small { line-height: 1.4; }
+.food-assistant.prototype .food-assistant-register-details { display: grid; gap: 10px; padding: 12px; border: 1px solid #c5d2d8; border-radius: 12px; background: #fff; }
+.food-assistant.prototype .food-assistant-register-details summary { cursor: pointer; color: #12636c; font-weight: 750; }
+.food-assistant.prototype .food-assistant-register-recipe-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, .45fr) auto; gap: 8px; align-items: end; padding-top: 10px; border-top: 1px solid #d9e2e6; }
+.food-assistant.prototype .food-assistant-register-recipe-row button { min-height: 42px; }
+.food-assistant.prototype .food-assistant-register-checks { display: grid; gap: 7px; }
+.food-assistant.prototype .food-assistant-register-checks label { display: flex; align-items: center; gap: 8px; color: #263d47; }
+.food-assistant.prototype .food-assistant-register-checks input { width: 18px; min-height: 18px; accent-color: #12636c; }
+.food-assistant.prototype .food-assistant-review { display: grid; gap: 8px; padding: 14px; border: 1px solid #c5d2d8; border-radius: 12px; background: #fff; }
+.food-assistant.prototype .food-assistant-review strong { padding-bottom: 4px; border-bottom: 1px solid #d9e2e6; }
+.food-assistant.prototype .food-assistant-review span { color: #40545e; font-size: .84rem; }
+@media (max-width: 560px) { .food-assistant.prototype .food-assistant-register-mode-grid, .food-assistant.prototype .food-assistant-register-grid { grid-template-columns: minmax(0, 1fr); } .food-assistant.prototype .food-assistant-register-recipe-row { grid-template-columns: minmax(0, 1fr) minmax(90px, .5fr); } .food-assistant.prototype .food-assistant-register-recipe-row button { grid-column: 2; } }
 .food-order-alert { position: fixed; bottom: 22px; left: 24px; z-index: 50; max-width: min(540px, calc(100vw - 200px)); display: flex; flex-wrap: wrap; gap: 6px; font-size: .8rem; }
 .food-order-alert button { background: #192530; color: #fff; border: 1px solid #657485; border-radius: 12px; padding: 10px; }
 .food-order-alert.is-urgent button:first-child { background: #651d28; border-color: #ff5269; }
@@ -225,5 +333,136 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+/* Assistente: tema escuro e formulário de cadastro mais legível. */
+.food-assistant.prototype .food-assistant-panel {
+  background: #17242d;
+  color: #f2f6f7;
+  border-color: #3b505a;
+  box-shadow: 0 18px 44px #0009;
+}
+.food-assistant.prototype .food-assistant-panel h2,
+.food-assistant.prototype .food-assistant-panel strong {
+  color: #f2f6f7;
+}
+.food-assistant.prototype .food-assistant-panel small,
+.food-assistant.prototype .food-assistant-panel span,
+.food-assistant.prototype .food-assistant-panel p {
+  color: #b9c9ce;
+}
+.food-assistant.prototype .food-assistant-toggle {
+  background: #12636c;
+  border-color: #79c8ca;
+  color: #ffffff;
+}
+.food-assistant.prototype .proto-subtle,
+.food-assistant.prototype .food-assistant-back {
+  background: #263740;
+  color: #f2f6f7;
+  border-color: #4b626c;
+}
+.food-assistant.prototype .food-assistant-guided-choice,
+.food-assistant.prototype .food-assistant-state-grid button,
+.food-assistant.prototype .food-assistant-guided-products button,
+.food-assistant.prototype .food-assistant-register-mode-grid button {
+  background: #22343e;
+  color: #f2f6f7;
+  border-color: #4b626c;
+}
+.food-assistant.prototype .food-assistant-guided-choice:hover,
+.food-assistant.prototype .food-assistant-state-grid button:hover,
+.food-assistant.prototype .food-assistant-guided-products button:hover,
+.food-assistant.prototype .food-assistant-register-mode-grid button:hover {
+  background: #2b4a50;
+  border-color: #7dd3d0;
+}
+.food-assistant.prototype .food-assistant-guided-choice strong,
+.food-assistant.prototype .food-assistant-state-grid button strong,
+.food-assistant.prototype .food-assistant-guided-products button strong,
+.food-assistant.prototype .food-assistant-register-mode-grid button strong {
+  color: #f2f6f7;
+}
+.food-assistant.prototype .food-assistant-guided-choice small,
+.food-assistant.prototype .food-assistant-state-grid button small,
+.food-assistant.prototype .food-assistant-guided-products button small,
+.food-assistant.prototype .food-assistant-register-mode-grid button small {
+  color: #b9c9ce;
+}
+.food-assistant.prototype .food-assistant-panel input,
+.food-assistant.prototype .food-assistant-panel select,
+.food-assistant.prototype .food-assistant-panel textarea {
+  background: #22343e;
+  color: #f2f6f7;
+  border-color: #4b626c;
+}
+.food-assistant.prototype .food-assistant-panel input::placeholder,
+.food-assistant.prototype .food-assistant-panel textarea::placeholder {
+  color: #a5b7bd;
+}
+.food-assistant.prototype .food-assistant-panel label {
+  color: #d0dce0;
+}
+.food-assistant.prototype .food-assistant-confirm,
+.food-assistant.prototype .food-assistant-add-row {
+  background: #17808a;
+  border-color: #7dd3d0;
+  color: #ffffff;
+}
+.food-assistant.prototype .food-assistant-confirm:hover,
+.food-assistant.prototype .food-assistant-add-row:hover {
+  background: #209ba1;
+}
+.food-assistant.prototype .food-assistant-record-button {
+  background: #2b434d;
+  border-color: #6eabb1;
+  color: #f2f6f7;
+}
+.food-assistant.prototype .food-assistant-record-button span {
+  color: inherit;
+}
+.food-assistant.prototype .food-assistant-record-button.is-recording {
+  background: #b33449;
+  border-color: #ff9aa7;
+  color: #ffffff;
+}
+.food-assistant.prototype .food-assistant-panel textarea:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.food-assistant.prototype .food-assistant-confirm-box,
+.food-assistant.prototype .food-assistant-register-section,
+.food-assistant.prototype .food-assistant-review,
+.food-assistant.prototype .food-assistant-details {
+  background: #1e3039;
+  border-color: #4b626c;
+}
+.food-assistant.prototype .food-assistant-flow {
+  border-color: #344a54;
+}
+.food-assistant.prototype .food-assistant-flow span {
+  color: #9fb1b7;
+}
+.food-assistant.prototype .food-assistant-flow span.is-current {
+  background: #28585b;
+  color: #e7ffff;
+}
+.food-assistant.prototype .food-assistant-success {
+  background: #174431;
+  border-color: #4cae7d;
+  color: #c6f5d7;
+}
+.food-assistant.prototype .food-assistant-error {
+  background: #51232a;
+  border-color: #d36b76;
+  color: #ffd9dc;
+}
+.food-assistant.prototype .food-assistant-basic-grid {
+  grid-template-columns: minmax(0, 1.4fr) minmax(120px, .75fr) minmax(0, 1fr);
+}
+@media (max-width: 560px) {
+  .food-assistant.prototype .food-assistant-basic-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

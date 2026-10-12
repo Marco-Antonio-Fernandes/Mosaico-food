@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const { getBackendUrl, startLocalBackend, stopLocalBackend } = require("./local-backend.cjs");
 const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
+const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
 
 const isDevelopment = !app.isPackaged;
 const configuredBackendUrl = process.env.MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br";
@@ -77,8 +78,9 @@ function configureMediaPermissions() {
 app.whenReady().then(() => {
   configureMediaPermissions();
   ipcMain.handle("mosaico:backend-url", () => getBackendUrl(configuredBackendUrl));
-  ipcMain.handle("mosaico:transcribe-audio", (_event, audio, mimeType) => transcribeAudio(audio, mimeType));
-  void Promise.all([startLocalBackend(), startLocalSpeech()])
+  ipcMain.handle("mosaico:transcribe-audio", (_event, audio, mimeType, prompt) => transcribeAudio(audio, mimeType, prompt));
+  ipcMain.handle("mosaico:interpret-text", (_event, text, products) => interpretFoodText(text, products));
+  void Promise.all([startLocalBackend(), startLocalSpeech(), startLocalInterpreter()])
     .catch((error) => console.error("[Mosaico Food] Falha ao iniciar recursos locais", error))
     .finally(() => createWindow());
 
@@ -97,5 +99,6 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopLocalSpeech();
+  stopLocalInterpreter();
   stopLocalBackend();
 });
