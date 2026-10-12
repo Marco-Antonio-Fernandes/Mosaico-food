@@ -1,18 +1,21 @@
 # Mosaico Food — roadmap
 
-## Andamento em 09/10/2026
+## Andamento em 11/10/2026
 
 - [x] ~~Fundação visual, shell e execução web.~~
-- [x] ~~Protótipo mock de todos os módulos principais do roadmap.~~
+- [x] ~~Catálogo Food, estoque, receitas, produção, venda de balcão e assistente universal.~~
 - [x] ~~Backend único mosaico-back com SQLite, clientes, crediário e sync inicial.~~
 - [x] ~~Deploy via systemd/Nginx/Cloudflare e health com banco conectado, confirmado pelo usuário.~~
-- [ ] Integração real das telas, regras comerciais, permissões e testes.
-- [ ] WhatsApp Cloud API, fiscal, offline completo, atualizações desktop e produção.
+- [x] ~~Atendimento Food pelo WA-AKG, carrinho, confirmação e status de pedido.~~
+- [x] ~~Empacotamento Electron preparado para Linux/Windows e voz local Whisper.~~
+- [ ] Testes de aceitação em máquina limpa e pacote completo com binário/modelo Whisper.
+- [ ] Sincronização Food entre SQLite local e backend remoto.
+- [ ] Login, permissões, WhatsApp Cloud API oficial, fiscal e atualizações desktop.
 
-As fases abaixo permanecem abertas onde incluem backend, integração ou testes.
-Uma tela mock entregue não conclui a fase funcional.
-Detalhes: [plano visual](PLANO-FRONTEND-MOCK.md) e
-[status consolidado](<../../Servidor Rotatix/STATUS-MOSAICO.md>).
+As fases abaixo são histórico de planejamento. O estado funcional deve ser
+conferido em [HANDOFF-IMPLEMENTACAO.md](HANDOFF-IMPLEMENTACAO.md). Ainda há
+pendências de integração, segurança e testes; a existência de uma tela não
+significa que todos os cenários de produção estejam validados.
 
 As fases mantêm a ordem de dependências. A emissão fiscal foi incluída sem
 remover os módulos administrativos e sem depender de credenciais externas para

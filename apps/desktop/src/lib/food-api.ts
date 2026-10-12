@@ -6,6 +6,11 @@ export type FoodProduct = {
   variants: FoodProductVariant[];
   salePriceCents: number;
   stockQuantity: number;
+  unpreparedQuantity: number;
+  preparationCapacity: number;
+  productionMode: "resale" | "recipe" | "ingredient";
+  stockUnit: "un" | "g" | "ml";
+  recipe: { ingredientId: string; quantity: number }[];
   allowOnDemand: boolean;
   fryToOrder: boolean;
   active: boolean;
@@ -21,6 +26,8 @@ export type FoodProductVariant = {
 };
 
 export type FoodMessage = {
+  mediaType?: string | null;
+  transcriptionStatus?: string | null;
   id: string;
   conversationId: string;
   providerMessageId: string;
@@ -58,6 +65,10 @@ export type FoodNotification = {
 };
 
 export type ProductInput = {
+  productionMode: FoodProduct["productionMode"];
+  stockUnit: FoodProduct["stockUnit"];
+  recipe: FoodProduct["recipe"];
+  unpreparedQuantity: number;
   name: string;
   category: string;
   aliases: string[];
@@ -93,8 +104,41 @@ export type FoodOrder = {
   items: FoodOrderItem[];
 };
 
-const apiBaseUrl = (import.meta.env.VITE_MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br").replace(/\/$/, "");
+const configuredApiBaseUrl = (import.meta.env.VITE_MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br").replace(/\/$/, "");
 const apiKey = import.meta.env.VITE_MOSAICO_API_KEY || "";
+let apiBaseUrlPromise: Promise<string> | null = null;
+
+function getApiBaseUrl() {
+  if (!apiBaseUrlPromise) {
+    const bridge = window.mosaicoDesktop;
+    apiBaseUrlPromise = bridge
+      ? bridge.getBackendUrl().then((url) => url.replace(/\/$/, "")).catch(() => configuredApiBaseUrl)
+      : Promise.resolve(configuredApiBaseUrl);
+  }
+  return apiBaseUrlPromise;
+}
+
+export type AssistantDraft = { id: string; action: "sale" | "prepare"; quantity: number; productName: string; totalCents: number; paymentMethod: "pix" | "cash" | "card" | null };
+export function assistantPreview(text: string, productId?: string) {
+  return foodApi<{ draft?: AssistantDraft; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
+}
+export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: "pix" | "cash" | "card" | null) {
+  return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ draftId, totalCents, paymentMethod }) });
+}
+export function transcribeFoodAudio(audio: Blob) {
+  const localTranscriber = window.mosaicoDesktop?.transcribeAudio;
+  if (localTranscriber) {
+    return audio.arrayBuffer().then((buffer) => localTranscriber(buffer, audio.type || "audio/wav")).then((localResult) => {
+      if (localResult.available) return { text: localResult.text, understood: localResult.understood };
+      return { text: null, understood: false };
+    });
+  }
+  return foodApi<{ text: string | null; understood: boolean }>("/api/v1/food/speech", { method: "POST", headers: { "Content-Type": audio.type || "application/octet-stream" }, body: audio });
+}
+
+export function registerCounterSale(input: { operationId: string; paymentMethod: "pix" | "cash" | "card" | null; items: { productId: string; quantity: number; unitPriceCents: number }[] }) {
+  return foodApi<{ message: string }>("/api/v1/food/sales", { method: "POST", body: JSON.stringify(input) });
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -134,6 +178,14 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
     variants,
     salePriceCents: typeof product.salePriceCents === "number" ? product.salePriceCents : 0,
     stockQuantity: typeof product.stockQuantity === "number" ? product.stockQuantity : 0,
+    unpreparedQuantity: typeof product.unpreparedQuantity === "number" ? product.unpreparedQuantity : 0,
+    preparationCapacity: typeof product.preparationCapacity === "number" ? product.preparationCapacity : 0,
+    productionMode: product.productionMode === "recipe" || product.productionMode === "ingredient" ? product.productionMode : "resale",
+    stockUnit: product.stockUnit === "g" || product.stockUnit === "ml" ? product.stockUnit : "un",
+    recipe: Array.isArray(product.recipe) ? product.recipe.flatMap(value => {
+      const row = asRecord(value);
+      return typeof row.ingredientId === "string" && typeof row.quantity === "number" ? [{ ingredientId: row.ingredientId, quantity: row.quantity }] : [];
+    }) : [],
     allowOnDemand: product.allowOnDemand === true,
     fryToOrder: product.fryToOrder === true,
     active: product.active !== false,
@@ -145,10 +197,10 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
 async function foodApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body) headers.set("Content-Type", "application/json");
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (apiKey) headers.set("X-API-Key", apiKey);
 
-  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
+  const response = await fetch(`${await getApiBaseUrl()}${path}`, { ...init, headers });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new Error(errorMessage(payload, "Não foi possível acessar o backend do Mosaico Food."));
 
@@ -190,6 +242,10 @@ export async function updateFoodProduct(id: string, input: Partial<ProductInput>
 export async function getFoodConversations() {
   const data = await foodApi<{ conversations: FoodConversation[] }>("/api/v1/food/conversations");
   return data.conversations;
+}
+
+export async function registerFoodStock(id: string, input: { operationId: string; action: "receive_ready" | "receive_unprepared" | "prepare"; quantity: number }) {
+  return foodApi(`/api/v1/food/products/${encodeURIComponent(id)}/stock`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function getFoodMessages(conversationId: string) {
@@ -237,9 +293,9 @@ export async function getFoodOrders(status?: string) {
 }
 
 export async function updateFoodOrderStatus(id: string, status: string) {
-  const data = await foodApi<{ order: FoodOrder }>(`/api/v1/food/orders/${encodeURIComponent(id)}/status`, {
+  const data = await foodApi<{ order: FoodOrder; notification?: { sent: boolean; skipped: boolean } }>(`/api/v1/food/orders/${encodeURIComponent(id)}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
-  return data.order;
+  return data;
 }

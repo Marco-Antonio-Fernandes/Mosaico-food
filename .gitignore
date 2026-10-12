@@ -8,3 +8,6 @@ release/
 .DS_Store
 *.db
 *.db-journal
+apps/desktop/electron/speech-runtime/models/*.bin
+apps/desktop/electron/speech-runtime/linux-*/
+apps/desktop/electron/speech-runtime/win32-*/

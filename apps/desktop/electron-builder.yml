@@ -1,0 +1,30 @@
+appId: br.com.mosaico.food
+productName: Mosaico Food
+icon: electron/assets/mosaico-food.png
+directories:
+  output: release
+files:
+  - dist/**
+  - electron/**
+  - package.json
+extraResources:
+  - from: ../../../mosaico-back/dist
+    to: backend/dist
+  - from: ../../../mosaico-back/node_modules
+    to: backend/node_modules
+  - from: ../../../mosaico-back/prisma
+    to: backend/prisma
+  - from: electron/speech-runtime
+    to: speech
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false

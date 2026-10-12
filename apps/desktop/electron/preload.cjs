@@ -1,9 +1,8 @@
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("mosaicoDesktop", {
   getConnectionStatus: async () => {
-    const defaultBackendUrl = "https://mosaico.rotatix.com.br";
-    const backendUrl = process.env.MOSAICO_BACKEND_URL || defaultBackendUrl;
+    const backendUrl = await ipcRenderer.invoke("mosaico:backend-url");
 
     try {
       const response = await fetch(`${backendUrl}/api/health`);
@@ -12,7 +11,7 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
       if (response.ok && payload?.data?.status === "ok") {
         return {
           state: "online",
-          label: "Backend conectado",
+          label: backendUrl.startsWith("http://127.0.0.1") ? "Food local" : "Backend conectado",
         };
       }
 
@@ -34,5 +33,7 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
       label: "Backend não configurado",
     };
   },
+  getBackendUrl: () => ipcRenderer.invoke("mosaico:backend-url"),
+  transcribeAudio: (audio, mimeType) => ipcRenderer.invoke("mosaico:transcribe-audio", audio, mimeType),
   getPlatform: () => process.platform,
 });

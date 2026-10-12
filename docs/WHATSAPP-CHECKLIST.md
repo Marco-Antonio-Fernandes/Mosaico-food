@@ -1,5 +1,10 @@
 # Mosaico Food — checklist da WhatsApp Cloud API
 
+> **Estado atual:** este arquivo descreve a integração futura com a WhatsApp
+> Cloud API da Meta. O canal já implementado é o WA-AKG, com webhook em
+> `POST /api/v1/whatsapp/webhook`. Leia primeiro
+> [HANDOFF-IMPLEMENTACAO.md](HANDOFF-IMPLEMENTACAO.md) para o fluxo atual.
+
 ## Objetivo
 
 Usar a API oficial da Meta como canal de atendimento e pedidos, sem depender

@@ -5,6 +5,9 @@ import { FoodOverviewPage } from "@/components/shared/food-overview-page";
 import { FoodPrototype, type FoodModule } from "@/features/prototype/food-prototype";
 import { getFoodNotifications, type FoodNotification } from "@/lib/food-api";
 import type { NotificationEntry } from "@/components/shared/prototype-kit";
+import { FoodAssistant } from "@/features/assistant/food-assistant";
+import { OrderAlerts } from "@/features/assistant/order-alerts";
+import { ConnectionStatus, type DesktopConnectionStatus } from "@/components/shared/connection-status";
 
 type ViewId = "dashboard" | FoodModule;
 const navigationItems: NavigationItem<ViewId>[] = [
@@ -72,6 +75,7 @@ function toNotificationEntry(notification: FoodNotification): NotificationEntry 
 
 export function App() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const [connectionStatus, setConnectionStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "Iniciando Food local" });
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const notificationCursorRef = useRef(new Date(Date.now() - 15_000).toISOString());
@@ -116,12 +120,26 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const status = await window.mosaicoDesktop?.getConnectionStatus().catch(() => undefined);
+      if (active && status) setConnectionStatus(status);
+      else if (active && !window.mosaicoDesktop) setConnectionStatus({ state: "online", label: "Modo navegador" });
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
   const openNotifications = () => {
     setActiveView("notifications");
     setUnreadNotifications(0);
   };
 
-  return <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={setActiveView} topAction={<button aria-current={activeView === "notifications" ? "page" : undefined} aria-label="Abrir notificações" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${activeView === "notifications" ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={openNotifications} type="button"><Bell aria-hidden="true" size={19} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-slate-950">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button>} connectionStatus={<span className="rounded-full border border-amber-200/30 bg-amber-200/10 px-3 py-2 text-xs font-semibold text-amber-100">API conectada</span>}>
+  return <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={setActiveView} topAction={<button aria-current={activeView === "notifications" ? "page" : undefined} aria-label="Abrir notificações" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${activeView === "notifications" ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={openNotifications} type="button"><Bell aria-hidden="true" size={19} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-slate-950">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button>} connectionStatus={<ConnectionStatus status={connectionStatus} />}>
     {activeView === "dashboard" ? <FoodOverviewPage onOpenNotifications={openNotifications} /> : <FoodPrototype key={activeView} module={activeView} notifications={notifications} onReadNotifications={() => setUnreadNotifications(0)} />}
+    <FoodAssistant />
+    <OrderAlerts onOpen={() => setActiveView("orders")} />
   </AppShell>;
 }

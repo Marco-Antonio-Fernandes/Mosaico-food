@@ -122,8 +122,9 @@ export function FoodAutomationPanel() {
             {status?.enabled ? "Ativo" : "Pausado"}
           </span>
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-line bg-canvas p-3"><span className="text-xs text-muted">Estoque</span><strong className="mt-1 block text-sm text-ink">Consulta real</strong></div>
+          <div className="rounded-xl border border-line bg-canvas p-3"><span className="text-xs text-muted">Variações</span><strong className="mt-1 block text-sm text-ink">Reconhecidas</strong></div>
           <div className="rounded-xl border border-line bg-canvas p-3"><span className="text-xs text-muted">Confirmação</span><strong className="mt-1 block text-sm text-ink">Obrigatória</strong></div>
           <div className="rounded-xl border border-line bg-canvas p-3"><span className="text-xs text-muted">Pedido</span><strong className="mt-1 block text-sm text-ink">Com endereço</strong></div>
         </div>
@@ -152,7 +153,7 @@ export function FoodAutomationPanel() {
     <article className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
       <div className="flex items-center gap-2 text-sm font-bold text-ink"><LoaderCircle className={status?.enabled ? "animate-spin text-brand-400" : "text-muted"} size={18} />Como o teste funciona</div>
       <div className="mt-4 grid gap-3 md:grid-cols-4">
-        {["Envie uma mensagem para o WhatsApp conectado à sessão do Mosaico.", "O catálogo e o estoque são consultados antes da resposta.", "Responda SIM quando a loja puder preparar ou confirmar.", "Na entrega, envie rua, número e bairro; o endereço fica no pedido."].map((text, index) => <div className="rounded-xl border border-line bg-canvas p-3 text-sm leading-5 text-muted" key={text}><span className="mb-2 flex size-6 items-center justify-center rounded-full bg-brand-500/15 text-xs font-bold text-brand-300">{index + 1}</span>{text}</div>)}
+        {["Envie uma mensagem para o WhatsApp conectado à sessão do Mosaico.", "Pode escrever quantidade, produto e sabor na mesma mensagem; o catálogo interpreta as variações.", "O catálogo e o estoque são consultados antes da resposta, inclusive a opção de fritar na hora.", "Responda SIM quando a loja puder preparar ou confirmar.", "Na entrega, envie rua, número e bairro; o endereço fica no pedido."].map((text, index) => <div className="rounded-xl border border-line bg-canvas p-3 text-sm leading-5 text-muted" key={text}><span className="mb-2 flex size-6 items-center justify-center rounded-full bg-brand-500/15 text-xs font-bold text-brand-300">{index + 1}</span>{text}</div>)}
       </div>
       {lastRun && <p className="mt-4 text-sm text-muted">Última rodada: {lastRun.processedMessages} mensagem(ns) processada(s), {lastRun.repliesSent} resposta(s) enviada(s) e {lastRun.ordersCreated} pedido(s) criado(s).</p>}
       {error && <p className="mt-4 flex items-start gap-2 rounded-xl border border-red-300/20 bg-red-300/10 p-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0" size={16} />{error}</p>}

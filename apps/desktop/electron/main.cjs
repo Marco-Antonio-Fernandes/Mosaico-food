@@ -1,7 +1,10 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
+const { getBackendUrl, startLocalBackend, stopLocalBackend } = require("./local-backend.cjs");
+const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
 
 const isDevelopment = !app.isPackaged;
+const configuredBackendUrl = process.env.MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br";
 
 if (process.env.MOSAICO_ELECTRON_NO_SANDBOX === "1") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -19,10 +22,11 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: "#f4f7f8",
     title: "Mosaico Food",
+    icon: path.join(__dirname, "assets/mosaico-food.png"),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: process.env.MOSAICO_ELECTRON_NO_SANDBOX !== "1",
       preload: path.join(__dirname, "preload.cjs"),
     },
   });
@@ -59,8 +63,24 @@ function createWindow() {
   void window.loadFile(path.join(__dirname, "../dist/index.html"));
 }
 
+function configureMediaPermissions() {
+  const defaultSession = require("electron").session.defaultSession;
+  // The voice assistant uses navigator.mediaDevices.getUserMedia() in the
+  // renderer. Without these handlers Electron can silently deny the request,
+  // especially when the packaged window is loaded from file://.
+  defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === "media");
+  defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "media");
+  });
+}
+
 app.whenReady().then(() => {
-  createWindow();
+  configureMediaPermissions();
+  ipcMain.handle("mosaico:backend-url", () => getBackendUrl(configuredBackendUrl));
+  ipcMain.handle("mosaico:transcribe-audio", (_event, audio, mimeType) => transcribeAudio(audio, mimeType));
+  void Promise.all([startLocalBackend(), startLocalSpeech()])
+    .catch((error) => console.error("[Mosaico Food] Falha ao iniciar recursos locais", error))
+    .finally(() => createWindow());
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -73,4 +93,9 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  stopLocalSpeech();
+  stopLocalBackend();
 });
