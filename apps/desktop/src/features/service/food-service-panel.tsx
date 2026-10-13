@@ -1,20 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Bot, LoaderCircle, MessageCircle, Send, UserRound } from "lucide-react";
 
 import { Badge, Panel } from "@/components/shared/prototype-kit";
 import {
   getFoodConversations,
-  getFoodMessageAudio,
   getFoodMessages,
-  sendFoodMessage,
+  ingestFoodRelayMessage,
+  sendFoodRelayMessage,
   setFoodCustomerAutomation,
   setFoodConversationMode,
-  submitFoodMessageTranscription,
-  transcribeFoodAudio,
   type FoodConversation,
   type FoodMessage,
 } from "@/lib/food-api";
-import { audioToWav } from "@/lib/audio";
 
 const formatDate = (value: string | null) => {
   if (!value) return "Sem mensagens";
@@ -37,7 +34,6 @@ export function FoodServicePanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const audioAttempts = useRef(new Map<string, number>());
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
@@ -95,30 +91,6 @@ export function FoodServicePanel() {
     };
   }, [selectedId]);
 
-  useEffect(() => {
-    if (!selectedId) return;
-    const pendingAudio = messages.filter(message => message.direction === "inbound" && message.mediaType === "audio" && message.transcriptionStatus !== "completed");
-    for (const message of pendingAudio) {
-      const lastAttempt = audioAttempts.current.get(message.id) ?? 0;
-      if (Date.now() - lastAttempt < 30_000) continue;
-      audioAttempts.current.set(message.id, Date.now());
-      void (async () => {
-        try {
-          const audio = await getFoodMessageAudio(selectedId, message.id);
-          const transcription = await transcribeFoodAudio(await audioToWav(audio), "Áudio de atendimento de cliente. Preserve nomes de produtos, quantidades e pedidos.");
-          if (!transcription.understood || !transcription.text) throw new Error("Não consegui entender o áudio do cliente.");
-          await submitFoodMessageTranscription(selectedId, message.id, transcription.text);
-          setNotice(`Áudio transcrito: ${transcription.text}`);
-          const refreshed = await getFoodMessages(selectedId);
-          setMessages(refreshed);
-          setError("");
-        } catch (audioError) {
-          setError(audioError instanceof Error ? audioError.message : "Não foi possível transcrever o áudio do cliente.");
-        }
-      })();
-    }
-  }, [messages, selectedId]);
-
   const send = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedId || !draft.trim() || sending) return;
@@ -126,11 +98,19 @@ export function FoodServicePanel() {
     setSending(true);
     setNotice("");
     try {
-      const message = await sendFoodMessage(selectedId, draft.trim());
-      setMessages((current) => [...current, message]);
-      setConversations((current) => current.map((conversation) => conversation.id === selectedId ? { ...conversation, automationPaused: true } : conversation));
+      const text = draft.trim();
+      const sent = await sendFoodRelayMessage(selectedConversation?.remoteJid || "", text);
+      const local = await ingestFoodRelayMessage({
+        providerMessageId: sent.providerMessageId || `outbound:${Date.now()}`,
+        sessionId: selectedConversation?.sessionId || "local",
+        remoteJid: selectedConversation?.remoteJid || "",
+        body: text,
+        direction: "outbound",
+      });
+      setMessages((current) => [...current, local.message]);
+      setConversations((current) => current.map((conversation) => conversation.id === selectedId ? { ...conversation, automationPaused: true, lastMessage: local.message, lastMessageAt: local.message.createdAt } : conversation));
       setDraft("");
-      setNotice("Mensagem enviada pelo WhatsApp; automação pausada para este atendimento.");
+      setNotice("Mensagem enviada pelo WhatsApp e salva no atendimento local; automação pausada para este contato.");
       setError("");
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Não foi possível enviar a mensagem.");
@@ -203,7 +183,7 @@ export function FoodServicePanel() {
       {selectedConversation ? <dl className="proto-facts"><div><dt>Cliente</dt><dd>{displayName(selectedConversation)}</dd></div><div><dt>Telefone</dt><dd>{selectedConversation.remoteJid.replace(/@.*$/, "")}</dd></div><div><dt>Teste automático</dt><dd>{selectedConversation.customer?.automationEnabled ? "Ativo" : "Inativo"}</dd></div><div><dt>Modo</dt><dd>{automationLabel(selectedConversation)}</dd></div><div><dt>Última mensagem</dt><dd>{formatDate(selectedConversation.lastMessageAt)}</dd></div></dl> : <p className="proto-empty">Nenhuma conversa selecionada.</p>}
       {notice && <p role="status" className="mt-4 text-sm text-emerald-200">{notice}</p>}
       {error && <p role="alert" className="mt-4 text-sm text-red-200">{error}</p>}
-      <p className="mt-4 flex items-center gap-2 text-xs text-muted"><MessageCircle size={14} />As mensagens são enviadas pelo backend usando a sessão WA-AKG configurada.</p>
+      <p className="mt-4 flex items-center gap-2 text-xs text-muted"><MessageCircle size={14} />O aplicativo ouve e processa localmente; a ponte remota só entrega e envia mensagens do WhatsApp.</p>
     </Panel>
   </div>;
 }

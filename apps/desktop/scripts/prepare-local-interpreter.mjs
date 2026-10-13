@@ -1,8 +1,7 @@
-import { chmodSync, copyFileSync, createWriteStream, mkdirSync, statSync, unlinkSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
-import { Readable } from "node:stream";
 
 const root = fileURLToPath(new URL("../electron/interpreter-runtime/", import.meta.url));
 const platform = process.env.MOSAICO_TARGET_PLATFORM || process.platform;
@@ -58,18 +57,32 @@ async function downloadModel() {
   if (validFile(modelPath)) return;
   mkdirSync(modelDirectory, { recursive: true });
   console.log("==> baixando Qwen3-1.7B-Q8_0 (aproximadamente 1,83 GB)");
-  const response = await fetch(modelUrl, { redirect: "follow" });
-  if (!response.ok || !response.body) throw new Error(`Download do Qwen falhou: HTTP ${response.status}`);
-  await new Promise((resolvePromise, rejectPromise) => {
-    const file = createWriteStream(modelPath);
-    const fail = error => {
-      try { unlinkSync(modelPath); } catch { /* arquivo parcial não será usado */ }
-      rejectPromise(error);
-    };
-    file.once("finish", resolvePromise);
-    file.once("error", fail);
-    Readable.fromWeb(response.body).once("error", fail).pipe(file);
-  });
+  const partialPath = `${modelPath}.part`;
+  try {
+    // curl suporta retomada por HTTP Range e várias tentativas. O fetch do
+    // Node pode abortar downloads grandes quando o servidor passa alguns
+    // minutos sem enviar um pacote, mesmo que a conexão ainda esteja viva.
+    execFileSync("curl", [
+      "--location",
+      "--fail",
+      "--retry", "8",
+      "--retry-delay", "5",
+      "--retry-all-errors",
+      "--connect-timeout", "30",
+      "--max-time", "0",
+      "--continue-at", "-",
+      "--output", partialPath,
+      modelUrl,
+    ], { stdio: "inherit" });
+
+    if (!validFile(partialPath) || statSync(partialPath).size < 100_000_000) {
+      throw new Error("O arquivo do modelo foi baixado incompleto.");
+    }
+    renameSync(partialPath, modelPath);
+  } catch (error) {
+    // Preserve o .part para que a próxima execução continue de onde parou.
+    throw new Error(`Download do Qwen falhou: ${error instanceof Error ? error.message : "erro desconhecido"}`);
+  }
 }
 
 requireSupportedTarget();

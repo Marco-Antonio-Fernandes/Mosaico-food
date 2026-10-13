@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Boxes, ClipboardList, Cloud, FileText, Gauge, Headset, Package, Settings, UsersRound, WalletCards, Wand2, CreditCard } from "lucide-react";
+import { Bell, Boxes, ClipboardList, Cloud, FileText, Gauge, Headset, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
 import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
 import { FoodOverviewPage } from "@/components/shared/food-overview-page";
 import { FoodPrototype, type FoodModule } from "@/features/prototype/food-prototype";
-import { getFoodNotifications, type FoodNotification } from "@/lib/food-api";
-import type { NotificationEntry } from "@/components/shared/prototype-kit";
+import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNotifications, getFoodStockNotifications, type FoodNotification, type FoodStockNotification } from "@/lib/food-api";
+import { NotificationList, type NotificationEntry } from "@/components/shared/prototype-kit";
 import { FoodAssistant } from "@/features/assistant/food-assistant";
 import { OrderAlerts } from "@/features/assistant/order-alerts";
 import { ConnectionStatus, type DesktopConnectionStatus } from "@/components/shared/connection-status";
+import { FoodRelayAgent } from "@/features/service/food-relay-agent";
 
-type ViewId = "dashboard" | FoodModule;
+type ViewId = FoodModule;
 const navigationItems: NavigationItem<ViewId>[] = [
-  { id: "dashboard", label: "Visão geral", group: "Operação", icon: Gauge },
   { id: "orders", label: "Pedidos", group: "Operação", icon: ClipboardList },
   { id: "service", label: "Atendimento", group: "Operação", icon: Headset },
   { id: "credit", label: "Crediário", group: "Operação", icon: CreditCard },
@@ -20,9 +20,7 @@ const navigationItems: NavigationItem<ViewId>[] = [
   { id: "customers", label: "Clientes", group: "Gestão", icon: UsersRound },
   { id: "finance", label: "Caixa e financeiro", group: "Gestão", icon: WalletCards },
   { id: "fiscal", label: "Fiscal", group: "Gestão", icon: FileText },
-  { id: "automation", label: "Automação", group: "Sistema", icon: Wand2 },
-  { id: "notifications", label: "Notificações", group: "Sistema", icon: Bell },
-  { id: "offline", label: "Offline", group: "Sistema", icon: Cloud },
+  { id: "backup", label: "Backup", group: "Sistema", icon: Cloud },
   { id: "settings", label: "Configurações", group: "Sistema", icon: Settings },
 ];
 
@@ -70,12 +68,28 @@ function toNotificationEntry(notification: FoodNotification): NotificationEntry 
     title: `WhatsApp · ${notification.customerName}`,
     body: notification.body || "Nova mensagem recebida.",
     createdAt: notification.createdAt,
+    priority: notification.automationPaused ? "urgent" : "high",
+  };
+}
+
+function toStockNotificationEntry(notification: FoodStockNotification): NotificationEntry {
+  return {
+    id: notification.id,
+    kind: "stock",
+    title: "Confirmar baixa de insumo",
+    body: `Você vendeu produtos suficientes para consumir ${notification.quantity} unidade${notification.quantity === 1 ? "" : "s"} de ${notification.ingredientName} no preparo de ${notification.productName}. O rendimento cadastrado é de ${notification.yieldQuantity} produtos por unidade. Deseja remover do estoque?`,
+    createdAt: notification.createdAt,
+    priority: "high",
   };
 }
 
 export function App() {
-  const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const [activeView, setActiveView] = useState<ViewId>("orders");
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "Iniciando Food local" });
+  const [whatsappStatus, setWhatsappStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "WhatsApp remoto iniciando" });
+  const [relayIssue, setRelayIssue] = useState("");
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const notificationCursorRef = useRef(new Date(Date.now() - 15_000).toISOString());
@@ -87,20 +101,23 @@ export function App() {
     const poll = async () => {
       try {
         const cursor = new Date(new Date(notificationCursorRef.current).getTime() - 15_000).toISOString();
-        const incoming = await getFoodNotifications(cursor);
+        const [incomingWhatsapp, incomingStock] = await Promise.all([getFoodNotifications(cursor), getFoodStockNotifications()]);
         if (!active) return;
-        const unseen = incoming.filter(notification => !seenNotificationIdsRef.current.has(notification.id));
-        incoming.forEach(notification => seenNotificationIdsRef.current.add(notification.id));
-        const newest = incoming.reduce((latest, notification) => Math.max(latest, new Date(notification.createdAt).getTime()), 0);
+        const incomingEntries = [...incomingWhatsapp.map(toNotificationEntry), ...incomingStock.map(toStockNotificationEntry)];
+        const unseen = incomingEntries.filter(notification => !seenNotificationIdsRef.current.has(notification.id));
+        incomingEntries.forEach(notification => seenNotificationIdsRef.current.add(notification.id));
+        const newest = incomingWhatsapp.reduce((latest, notification) => Math.max(latest, new Date(notification.createdAt).getTime()), 0);
         notificationCursorRef.current = new Date(Math.max(Date.now(), newest)).toISOString();
 
         if (!notificationPollInitializedRef.current) {
           notificationPollInitializedRef.current = true;
+          const initialStockEntries = incomingStock.map(toStockNotificationEntry);
+          if (initialStockEntries.length) setNotifications(current => [...initialStockEntries, ...current].slice(0, 50));
           return;
         }
         if (!unseen.length) return;
 
-        const entries = unseen.map(toNotificationEntry);
+        const entries = unseen;
         setNotifications(current => [...entries, ...current].slice(0, 50));
         setUnreadNotifications(current => current + entries.length);
         entries.forEach(entry => {
@@ -121,6 +138,28 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const onRelayStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ state?: string; label?: string; message?: string }>).detail;
+      const state: DesktopConnectionStatus["state"] = detail?.state === "online" ? "online" : detail?.state === "offline" ? "offline" : "unknown";
+      const label = detail?.label || (state === "online" ? "WhatsApp remoto conectado" : "WhatsApp remoto aguardando status");
+      setWhatsappStatus({ state, label });
+      setRelayIssue(state === "offline" ? detail?.message || label : "");
+    };
+    window.addEventListener("food-relay-status", onRelayStatus);
+    return () => window.removeEventListener("food-relay-status", onRelayStatus);
+  }, []);
+
+  useEffect(() => {
+    const openOrders = () => {
+      setActiveView("orders");
+      setOverviewOpen(false);
+      setNotificationsOpen(false);
+    };
+    window.addEventListener("food-open-orders", openOrders);
+    return () => window.removeEventListener("food-open-orders", openOrders);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const refresh = async () => {
       const status = await window.mosaicoDesktop?.getConnectionStatus().catch(() => undefined);
@@ -133,13 +172,39 @@ export function App() {
   }, []);
 
   const openNotifications = () => {
-    setActiveView("notifications");
+    setNotificationsOpen(true);
+    setOverviewOpen(false);
     setUnreadNotifications(0);
   };
 
-  return <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={setActiveView} topAction={<button aria-current={activeView === "notifications" ? "page" : undefined} aria-label="Abrir notificações" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${activeView === "notifications" ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={openNotifications} type="button"><Bell aria-hidden="true" size={19} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-slate-950">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button>} connectionStatus={<ConnectionStatus status={connectionStatus} />}>
-    {activeView === "dashboard" ? <FoodOverviewPage onOpenNotifications={openNotifications} /> : <FoodPrototype key={activeView} module={activeView} notifications={notifications} onReadNotifications={() => setUnreadNotifications(0)} />}
+  const openOverview = () => {
+    setOverviewOpen(true);
+    setNotificationsOpen(false);
+  };
+
+  const navigate = (view: ViewId) => {
+    setActiveView(view);
+    setOverviewOpen(false);
+    setNotificationsOpen(false);
+  };
+
+  const confirmStockNotification = async (id: string) => {
+    await confirmFoodStockNotification(id);
+    setNotifications(current => current.filter(notification => notification.id !== id));
+  };
+
+  const dismissStockNotification = async (id: string) => {
+    await dismissFoodStockNotification(id);
+    setNotifications(current => current.filter(notification => notification.id !== id));
+  };
+
+  return <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={navigate} topAction={<div className="flex items-center gap-2"><ConnectionStatus status={whatsappStatus} /><button aria-pressed={overviewOpen} aria-label="Abrir visão geral" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${overviewOpen ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => overviewOpen ? setOverviewOpen(false) : openOverview()} type="button"><Gauge aria-hidden="true" size={19} /><span className="sr-only">Visão geral</span></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={19} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-slate-950">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></div>} connectionStatus={<ConnectionStatus status={connectionStatus} />}>
+    <FoodRelayAgent />
+    {(connectionStatus.state === "offline" || whatsappStatus.state === "offline" || relayIssue) && <div className="mosaic-system-alert" role="alert">{connectionStatus.state === "offline" ? connectionStatus.label : relayIssue || whatsappStatus.label}. Avise o suporte técnico.</div>}
+    <FoodPrototype key={activeView} module={activeView} />
+    {overviewOpen && <div className="mosaic-top-popover mosaic-overview-popover"><FoodOverviewPage onOpenNotifications={openNotifications} /></div>}
+    {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
     <FoodAssistant />
-    <OrderAlerts onOpen={() => setActiveView("orders")} />
+    <OrderAlerts onOpen={() => navigate("orders")} />
   </AppShell>;
 }

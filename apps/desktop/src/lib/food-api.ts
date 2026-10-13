@@ -1,23 +1,37 @@
 export type FoodProduct = {
   id: string;
   name: string;
+  productName: string;
+  flavor: string | null;
+  familyName: string;
   category: string;
   aliases: string[];
   variants: FoodProductVariant[];
+  customization: FoodProductCustomization | null;
   salePriceCents: number;
   stockQuantity: number;
   unpreparedQuantity: number;
   preparationCapacity: number;
+  saleCapacity: number;
   productionMode: "resale" | "recipe" | "ingredient";
   stockUnit: "un" | "g" | "ml";
   unitWeightGrams: number | null;
   unitVolumeMl: number | null;
   recipe: { ingredientId: string; quantity: number }[];
+  ingredientDependencies: { ingredientId: string; name: string; stockQuantity: number; stockUnit: "un" | "g" | "ml"; available: boolean }[];
   allowOnDemand: boolean;
   fryToOrder: boolean;
   active: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FoodProductCustomization = {
+  label: string;
+  unit: string;
+  baseQuantity: number;
+  additionalUnitPriceCents: number;
+  allowRemoval: boolean;
 };
 
 export type FoodProductVariant = {
@@ -48,6 +62,7 @@ export type FoodCustomer = {
 
 export type FoodConversation = {
   id: string;
+  sessionId: string;
   remoteJid: string;
   state: string;
   automationPaused: boolean;
@@ -64,6 +79,35 @@ export type FoodNotification = {
   createdAt: string;
   customerName: string;
   remoteJid: string;
+  automationPaused: boolean;
+};
+
+export type FoodStockNotification = {
+  id: string;
+  productName: string;
+  ingredientName: string;
+  quantity: number;
+  yieldQuantity: number;
+  createdAt: string;
+};
+
+export type FoodRelayMessage = {
+  id: string;
+  providerMessageId: string;
+  sessionId: string;
+  conversationId: string;
+  remoteJid: string;
+  customerName: string | null;
+  body: string | null;
+  mediaType: string | null;
+  transcriptionStatus: string | null;
+  createdAt: string;
+};
+
+export type FoodRelayReply = {
+  conversationId: string;
+  remoteJid: string;
+  body: string;
 };
 
 export type ProductInput = {
@@ -74,6 +118,8 @@ export type ProductInput = {
   recipe: FoodProduct["recipe"];
   unpreparedQuantity: number;
   name: string;
+  productName?: string;
+  flavor?: string | null;
   category: string;
   aliases: string[];
   variants: FoodProductVariant[];
@@ -82,6 +128,7 @@ export type ProductInput = {
   allowOnDemand: boolean;
   fryToOrder: boolean;
   active: boolean;
+  customization?: FoodProductCustomization | null;
 };
 
 export type FoodOrderItem = {
@@ -93,6 +140,9 @@ export type FoodOrderItem = {
   unitPriceCents: number;
   totalCents: number;
   fryNow: boolean;
+  adjustmentCents: number;
+  adjustmentNote: string | null;
+  isGift: boolean;
 };
 
 export type FoodOrder = {
@@ -102,13 +152,17 @@ export type FoodOrder = {
   deliveryAddress: string | null;
   totalCents: number;
   source: string;
+  paymentMethod: SalePaymentMethod | null;
+  paymentStatus: string;
   createdAt: string;
   updatedAt: string;
   customer: FoodCustomer | null;
   items: FoodOrderItem[];
 };
 
-const configuredApiBaseUrl = (import.meta.env.VITE_MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br").replace(/\/$/, "");
+// O Electron usa o backend local para produtos, estoque, vendas e banco.
+// As rotas da integração do WhatsApp usam sempre o servidor remoto.
+const remoteApiBaseUrl = (import.meta.env.VITE_MOSAICO_REMOTE_BACKEND_URL || import.meta.env.VITE_MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br").replace(/\/$/, "");
 const apiKey = import.meta.env.VITE_MOSAICO_API_KEY || "";
 let apiBaseUrlPromise: Promise<string> | null = null;
 
@@ -116,18 +170,21 @@ function getApiBaseUrl() {
   if (!apiBaseUrlPromise) {
     const bridge = window.mosaicoDesktop;
     apiBaseUrlPromise = bridge
-      ? bridge.getBackendUrl().then((url) => url.replace(/\/$/, "")).catch(() => configuredApiBaseUrl)
-      : Promise.resolve(configuredApiBaseUrl);
+      ? bridge.getBackendUrl().then((url) => url.replace(/\/$/, "")).catch(() => {
+        apiBaseUrlPromise = null;
+        throw new Error("Backend local do Mosaico Food indisponível.");
+      })
+      : Promise.resolve(remoteApiBaseUrl);
   }
   return apiBaseUrlPromise;
 }
 
-export type SalePaymentMethod = "pix" | "cash" | "card" | "crediario";
-export type AssistantDraft = { id: string; action: "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: SalePaymentMethod | null };
+export type SalePaymentMethod = "pix" | "cash" | "card_credit" | "card_debit" | "meal_voucher" | "crediario";
+export type AssistantDraft = { id: string; action: "order" | "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
 export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
 export function assistantPreview(text: string, productId?: string) {
-  return foodApi<{ draft?: AssistantDraft; drafts?: AssistantDraft[]; registration?: AssistantRegistrationDraft; registrationQuestion?: AssistantRegistrationQuestion; stockQuestion?: boolean; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
+  return foodApi<{ draft?: AssistantDraft; drafts?: AssistantDraft[]; registration?: AssistantRegistrationDraft; registrationQuestion?: AssistantRegistrationQuestion; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
 }
 export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: SalePaymentMethod | null) {
   return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ draftId, totalCents, paymentMethod }) });
@@ -160,8 +217,54 @@ export function interpretFoodText(text: string, products: FoodProduct[]): Promis
     .catch(() => ({ available: true, text: null, understood: false }));
 }
 
-export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod | null; items: { productId: string; quantity: number; unitPriceCents: number }[] }) {
+export type CounterSaleItemInput = {
+  productId: string;
+  quantity: number;
+  unitPriceCents: number;
+  customization?: { selectedQuantity?: number; removedQuantity?: number; addedItems?: string[] } | null;
+  adjustmentCents?: number;
+  adjustmentNote?: string | null;
+  isGift?: boolean;
+};
+
+export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod | null; items: CounterSaleItemInput[] }) {
   return foodApi<{ message: string }>("/api/v1/food/sales", { method: "POST", body: JSON.stringify(input) });
+}
+
+export type FoodCashSnapshot = {
+  session: {
+    id: string;
+    businessDate: string;
+    status: "open" | "closed" | string;
+    openingCashCents: number;
+    expectedCashCents: number | null;
+    countedCashCents: number | null;
+    differenceCents: number | null;
+    openedAt: string;
+    closedAt: string | null;
+    notes: string | null;
+  } | null;
+  totals: {
+    pix: number;
+    cash: number;
+    card_credit: number;
+    card_debit: number;
+    meal_voucher: number;
+    crediario: number;
+  };
+  expectedCashCents: number;
+};
+
+export function getFoodCashToday() {
+  return foodApi<FoodCashSnapshot>("/api/v1/food/cash/today");
+}
+
+export function openFoodCash(openingCashCents: number) {
+  return foodApi<FoodCashSnapshot>("/api/v1/food/cash/open", { method: "POST", body: JSON.stringify({ openingCashCents }) });
+}
+
+export function closeFoodCash(countedCashCents: number, notes?: string) {
+  return foodApi<FoodCashSnapshot>("/api/v1/food/cash/close", { method: "POST", body: JSON.stringify({ countedCashCents, notes: notes?.trim() || null }) });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -197,13 +300,28 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
   return {
     id: product.id,
     name: product.name,
+    productName: typeof product.productName === "string" && product.productName.trim() ? product.productName : (typeof product.familyName === "string" && product.familyName.trim() ? product.familyName : product.name),
+    flavor: typeof product.flavor === "string" && product.flavor.trim() ? product.flavor : null,
+    familyName: typeof product.familyName === "string" && product.familyName.trim() ? product.familyName : product.name.split(/\s+(?:de|da|do|das|dos|com)\s+/i)[0].trim() || product.name,
     category: typeof product.category === "string" ? product.category : "Geral",
     aliases: stringArray(product.aliases),
     variants,
+    customization: (() => {
+      const customization = asRecord(product.customization);
+      if (typeof customization.label !== "string" || typeof customization.unit !== "string" || typeof customization.baseQuantity !== "number" || typeof customization.additionalUnitPriceCents !== "number") return null;
+      return {
+        label: customization.label,
+        unit: customization.unit,
+        baseQuantity: customization.baseQuantity,
+        additionalUnitPriceCents: customization.additionalUnitPriceCents,
+        allowRemoval: customization.allowRemoval !== false,
+      } satisfies FoodProductCustomization;
+    })(),
     salePriceCents: typeof product.salePriceCents === "number" ? product.salePriceCents : 0,
     stockQuantity: typeof product.stockQuantity === "number" ? product.stockQuantity : 0,
     unpreparedQuantity: typeof product.unpreparedQuantity === "number" ? product.unpreparedQuantity : 0,
     preparationCapacity: typeof product.preparationCapacity === "number" ? product.preparationCapacity : 0,
+    saleCapacity: typeof product.saleCapacity === "number" ? product.saleCapacity : (typeof product.stockQuantity === "number" ? product.stockQuantity : 0),
     productionMode: product.productionMode === "recipe" || product.productionMode === "ingredient" ? product.productionMode : "resale",
     stockUnit: product.stockUnit === "g" || product.stockUnit === "ml" ? product.stockUnit : "un",
     unitWeightGrams: typeof product.unitWeightGrams === "number" ? product.unitWeightGrams : null,
@@ -211,6 +329,17 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
     recipe: Array.isArray(product.recipe) ? product.recipe.flatMap(value => {
       const row = asRecord(value);
       return typeof row.ingredientId === "string" && typeof row.quantity === "number" ? [{ ingredientId: row.ingredientId, quantity: row.quantity }] : [];
+    }) : [],
+    ingredientDependencies: Array.isArray(product.ingredientDependencies) ? product.ingredientDependencies.flatMap(value => {
+      const dependency = asRecord(value);
+      if (typeof dependency.ingredientId !== "string" || typeof dependency.name !== "string") return [];
+      return [{
+        ingredientId: dependency.ingredientId,
+        name: dependency.name,
+        stockQuantity: typeof dependency.stockQuantity === "number" ? dependency.stockQuantity : 0,
+        stockUnit: dependency.stockUnit === "g" || dependency.stockUnit === "ml" ? dependency.stockUnit : "un" as const,
+        available: dependency.available === true,
+      }];
     }) : [],
     allowOnDemand: product.allowOnDemand === true,
     fryToOrder: product.fryToOrder === true,
@@ -232,6 +361,113 @@ export async function foodApi<T>(path: string, init: RequestInit = {}): Promise<
 
   const data = asRecord(payload).data;
   return data as T;
+}
+
+async function remoteFoodApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (apiKey) headers.set("X-API-Key", apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(`${remoteApiBaseUrl}${path}`, { ...init, headers });
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+    throw new Error(`Servidor remoto do WhatsApp indisponível em ${remoteApiBaseUrl}${detail}`);
+  }
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(errorMessage(payload, "Não foi possível acessar a ponte do WhatsApp."));
+  return asRecord(payload).data as T;
+}
+
+export type FoodRemoteWhatsappStatus = {
+  state: "unknown" | "online" | "offline";
+  label: string;
+  message?: string;
+};
+
+function normalizeRemoteWhatsappStatus(payload: unknown): FoodRemoteWhatsappStatus {
+  const root = asRecord(payload);
+  const nested = asRecord(root.data);
+  const candidates = [
+    root.status,
+    root.state,
+    root.connection,
+    root.connectionState,
+    nested.status,
+    nested.state,
+    nested.connection,
+    nested.connectionState,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const rawStatus = candidates[0]?.trim() || "";
+  const normalized = rawStatus.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const connected = [root.connected, root.isConnected, nested.connected, nested.isConnected].find(value => typeof value === "boolean");
+
+  if (connected === false || /disconnected|desconectad|offline|closed|fechado|logout|logged.?out|not.?configured|unavailable|indisponivel|error|erro/.test(normalized)) {
+    return {
+      state: "offline",
+      label: "WhatsApp remoto indisponível",
+      message: rawStatus ? `O servidor informou: ${rawStatus}.` : undefined,
+    };
+  }
+  if (connected === true || /connected|conectad|online|open|aberto|ready|pronto|authenticated|autenticad/.test(normalized)) {
+    return { state: "online", label: "WhatsApp remoto conectado" };
+  }
+  return { state: "unknown", label: "WhatsApp remoto aguardando status" };
+}
+
+export async function getFoodRemoteWhatsappStatus() {
+  const data = await remoteFoodApi<unknown>("/api/v1/whatsapp/status");
+  return normalizeRemoteWhatsappStatus(data);
+}
+
+export async function getFoodRelayMessages() {
+  const data = await remoteFoodApi<{ messages: FoodRelayMessage[] }>("/api/v1/whatsapp/relay/messages");
+  return Array.isArray(data.messages) ? data.messages : [];
+}
+
+export async function getFoodRelayAudio(messageId: string) {
+  const headers = new Headers({ Accept: "audio/*" });
+  if (apiKey) headers.set("X-API-Key", apiKey);
+  let response: Response;
+  try {
+    response = await fetch(`${remoteApiBaseUrl}/api/v1/whatsapp/relay/messages/${encodeURIComponent(messageId)}/audio`, { headers });
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+    throw new Error(`Servidor remoto do WhatsApp indisponível em ${remoteApiBaseUrl}${detail}`);
+  }
+  if (!response.ok) throw new Error("Não foi possível baixar o áudio do WhatsApp.");
+  return response.blob();
+}
+
+export async function acknowledgeFoodRelayMessage(messageId: string) {
+  return remoteFoodApi<{ ok: boolean }>(`/api/v1/whatsapp/relay/messages/${encodeURIComponent(messageId)}/ack`, { method: "POST" });
+}
+
+export async function sendFoodRelayMessage(remoteJid: string, text: string) {
+  return remoteFoodApi<{ providerMessageId: string | null }>("/api/v1/whatsapp/relay/send", {
+    method: "POST",
+    body: JSON.stringify({ remoteJid, text }),
+  });
+}
+
+export async function ingestFoodRelayMessage(input: {
+  providerMessageId: string;
+  sessionId: string;
+  remoteJid: string;
+  customerName?: string | null;
+  body: string | null;
+  mediaType?: string | null;
+  createdAt?: string;
+  direction?: "inbound" | "outbound";
+}) {
+  return foodApi<{
+    conversationId: string;
+    message: FoodMessage;
+    replies: FoodRelayReply[];
+    errors?: string[];
+  }>("/api/v1/food/relay/ingest", { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function getFoodProducts(options: { activeOnly?: boolean; availableOnly?: boolean } = {}) {
@@ -270,7 +506,7 @@ export async function getFoodConversations() {
   return data.conversations;
 }
 
-export async function registerFoodStock(id: string, input: { operationId: string; action: "receive_ready" | "receive_unprepared" | "prepare" | "loss"; quantity: number }) {
+export async function registerFoodStock(id: string, input: { operationId: string; action: "receive_ready" | "receive_unprepared" | "prepare" | "loss" | "loss_ready" | "loss_unprepared" | "loss_split"; quantity?: number; readyQuantity?: number; unpreparedQuantity?: number }) {
   return foodApi(`/api/v1/food/products/${encodeURIComponent(id)}/stock`, { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -298,6 +534,19 @@ export async function getFoodNotifications(after?: string) {
   const query = after ? `?after=${encodeURIComponent(after)}` : "";
   const data = await foodApi<{ notifications: FoodNotification[] }>(`/api/v1/whatsapp/notifications${query}`);
   return Array.isArray(data.notifications) ? data.notifications : [];
+}
+
+export async function getFoodStockNotifications() {
+  const data = await foodApi<{ notifications: FoodStockNotification[] }>("/api/v1/food/stock-notifications");
+  return Array.isArray(data.notifications) ? data.notifications : [];
+}
+
+export function confirmFoodStockNotification(id: string) {
+  return foodApi<{ message: string }>(`/api/v1/food/stock-notifications/${encodeURIComponent(id)}/confirm`, { method: "POST", body: JSON.stringify({}) });
+}
+
+export function dismissFoodStockNotification(id: string) {
+  return foodApi<{ message: string }>(`/api/v1/food/stock-notifications/${encodeURIComponent(id)}/dismiss`, { method: "POST", body: JSON.stringify({}) });
 }
 
 export async function sendFoodMessage(conversationId: string, body: string) {
@@ -333,10 +582,55 @@ export async function getFoodOrders(status?: string) {
   return data.orders;
 }
 
+export type FoodBackup = {
+  format: "mosaico-food-backup";
+  version: 1;
+  exportedAt: string;
+  tables: Record<string, unknown[]>;
+};
+
+export async function exportFoodBackup() {
+  const data = await foodApi<{ backup: FoodBackup }>("/api/v1/food/backups/export");
+  return data.backup;
+}
+
+export async function importFoodBackup(backup: FoodBackup) {
+  return foodApi<{ summary: { inserted: number; updated: number; skipped: number } }>("/api/v1/food/backups/import", {
+    method: "POST",
+    body: JSON.stringify(backup),
+  });
+}
+
+export type FoodOrderItemInput = {
+  productId: string;
+  quantity: number;
+  unitPriceCents: number;
+  variantName?: string | null;
+  fryNow?: boolean;
+  adjustmentCents?: number;
+  adjustmentNote?: string | null;
+  isGift?: boolean;
+};
+
+export function createFoodOrder(input: { source?: string; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; items: FoodOrderItemInput[] }) {
+  return foodApi<{ order: FoodOrder }>("/api/v1/food/orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }).then(data => data.order);
+}
+
 export async function updateFoodOrderStatus(id: string, status: string) {
   const data = await foodApi<{ order: FoodOrder; notification?: { sent: boolean; skipped: boolean } }>(`/api/v1/food/orders/${encodeURIComponent(id)}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+  return data;
+}
+
+export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod) {
+  const data = await foodApi<{ order: FoodOrder; notification?: { sent: boolean; skipped: boolean } }>(`/api/v1/food/orders/${encodeURIComponent(id)}/finalize`, {
+    method: "POST",
+    body: JSON.stringify({ paymentMethod }),
   });
   return data;
 }

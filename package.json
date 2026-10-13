@@ -12,6 +12,7 @@
     "dev:back": "npm --prefix ../mosaico-back run dev",
     "build": "npm --workspace apps/desktop run build",
     "build:back": "npm --prefix ../mosaico-back run build",
+    "build:start": "npm run build:back && npm run build && MOSAICO_USE_LOCAL_BACKEND=1 MOSAICO_USE_BUILT_RENDERER=1 MOSAICO_ELECTRON_NO_SANDBOX=1 MOSAICO_LOCAL_BACKEND_ROOT=../mosaico-back electron --no-sandbox apps/desktop/electron/main.cjs",
     "typecheck": "npm --workspace apps/desktop run typecheck",
     "typecheck:back": "npm --prefix ../mosaico-back run typecheck",
     "db:generate": "npm --prefix ../mosaico-back run db:generate",

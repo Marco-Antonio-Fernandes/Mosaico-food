@@ -56,7 +56,7 @@ explícito; nunca cria uma segunda venda, mensagem, nota ou baixa.
 | Estoque | `/api/v1/ingredients`, `/api/v1/stock`, `/api/v1/stock-movements` |
 | Clientes | `/api/v1/customers`, `/api/v1/customers/{id}/addresses` |
 | Crediário | `/api/v1/credit-accounts`, `/api/v1/credit-entries` |
-| PDV/caixa | `/api/v1/sales`, `/api/v1/cash-registers`, `/api/v1/payments` |
+| PDV/caixa | `/api/v1/sales`, `/api/v1/cash-registers`, `/api/v1/payments`, `/api/v1/checkouts` |
 | Pedidos | `/api/v1/orders`, `/api/v1/orders/{id}/status` |
 | Atendimento | `/api/v1/food/conversations`, `/api/v1/food/conversations/{id}/messages` |
 | WhatsApp | `/api/v1/whatsapp/connection`, `/api/v1/webhooks/whatsapp/meta` |
@@ -87,6 +87,54 @@ Os valores do crediário são inteiros em centavos. O banco centraliza o saldo e
 as operações de sincronização; o cliente offline nunca deve sobrescrever um
 pagamento confirmado sem conflito explícito. O `sync/push` inicial aceita
 `credit_entry/create`; edição offline de clientes será adicionada depois.
+
+## Atendimento presencial: pagamento, compra ou os dois
+
+O caixa deve iniciar um atendimento com uma intenção explícita: `credit_payment`,
+`sale` ou `credit_payment_and_sale`. A intenção não substitui os lançamentos
+reais; serve para impedir que um pagamento de dívida seja confundido com uma
+venda.
+
+### `POST /api/v1/checkouts`
+
+Cria o fechamento atômico de uma visita presencial. O cliente é obrigatório
+quando houver pagamento de crediário. Para `credit_payment`, `items` fica vazio;
+para `sale`, `creditPaymentCents` é zero; para o caso combinado, os dois podem
+ser preenchidos.
+
+```json
+{
+  "intent": "credit_payment_and_sale",
+  "customerId": "uuid",
+  "items": [
+    { "productId": "uuid", "quantity": 2, "options": [] }
+  ],
+  "creditPaymentCents": 5000,
+  "salePayments": [
+    { "method": "pix", "amountCents": 1800 }
+  ],
+  "salePaymentMethod": "cash",
+  "idempotencyKey": "uuid"
+}
+```
+
+O backend deve revalidar saldo, preço, estoque, caixa e permissões dentro da
+transação. O retorno informa o `checkout`, o lançamento de pagamento da dívida
+(quando houver), a venda (quando houver), o novo saldo e os movimentos de caixa.
+Não é permitido transformar o pagamento da dívida em desconto da compra nem
+criar venda de valor zero. Se a mesma chave for reenviada, o resultado original
+é devolvido.
+
+Casos mínimos:
+
+- `credit_payment`: baixa o saldo pelo valor recebido e não cria venda, pedido,
+  estoque ou documento fiscal;
+- `sale`: cria somente a venda e seus pagamentos;
+- `credit_payment_and_sale`: cria ambos, com valores e meios separados, ou
+  desfaz tudo em caso de erro.
+
+Se a compra for lançada no crediário, o débito da venda aumenta o saldo depois
+da quitação registrada, sem misturar os dois lançamentos.
 
 ## Pedido e confirmação
 
@@ -230,8 +278,10 @@ Mosaico Food mantém clientes, conversas, catálogo, estoque e pedidos no própr
 backend; o WA-AKG é usado somente para receber o webhook e enviar mensagens.
 
 - `GET /api/v1/food/products` lista o catálogo persistido;
-- `POST /api/v1/food/products` e `PATCH /api/v1/food/products/{id}` cadastram e atualizam produtos, aliases,
-  variações/sabores, preço, estoque e a opção de preparar/fritar na hora;
+- `POST /api/v1/food/products` e `PATCH /api/v1/food/products/{id}` cadastram e atualizam o produto-base,
+  sabor opcional, aliases, preço, estoque e a opção de preparar/fritar na hora;
+- `POST /api/v1/food/sales` registra a venda de balcão com personalização por item,
+  adicionais/remoções justificadas e marcação de brinde;
 - `GET /api/v1/food/conversations` lista os atendimentos;
 - `GET/POST /api/v1/food/conversations/{id}/messages` lê e envia mensagens;
 - `PATCH /api/v1/food/conversations/{id}/mode` assume ou devolve a automação;
@@ -249,10 +299,10 @@ grava a idempotência localmente e só cria o pedido depois da confirmação do
 cliente. As variáveis `WA_AKG_API_KEY` e `WA_AKG_WEBHOOK_SECRET` ficam somente
 no backend.
 
-O fluxo pergunta a variação quando o produto tem mais de uma opção (por
-exemplo, coxinha de frango ou carne), pergunta se o cliente prefere entrega ou
-retirada e registra a escolha de fritar/preparar na hora dentro do item do
-pedido.
+O fluxo reconhece o produto-base mesmo quando o operador digita apenas parte do
+nome, separa o sabor como uma escolha própria (por exemplo, Esfirra → Carne),
+pergunta se o cliente prefere entrega ou retirada e registra a escolha de
+fritar/preparar na hora dentro do item do pedido.
 
 ## Permissões mínimas
 

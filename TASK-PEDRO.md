@@ -59,8 +59,17 @@ produto ou altera preço.
 ## PEDRO-FOOD-02 — Clientes, PDV e financeiro
 
 Implementar clientes, telefone normalizado, endereços, crediário, vendas,
-pagamentos, caixa, despesas e conciliação manual. Pagamento confirmado exige
-fluxo autorizado; mensagem do cliente não basta.
+pagamentos, caixa, despesas e conciliação manual. O atendimento do caixa deve
+suportar três intenções: somente quitar crediário, somente comprar ou quitar
+crediário e comprar na mesma visita. Pagamento confirmado exige fluxo
+autorizado; mensagem do cliente não basta.
+
+No primeiro caso, registrar `credit_entry` do tipo `payment` e movimento de
+caixa, sem criar venda, pedido, baixa de estoque ou documento fiscal. No caso
+combinado, usar um agrupador de atendimento e uma transação idempotente, mas
+manter separados o pagamento da dívida, a venda, os meios de pagamento, o
+troco e o novo saldo. Se a compra for no crediário, seu débito é um lançamento
+novo e não deve ser abatido pelo pagamento da dívida.
 
 ### Crediário e sincronização básica
 
@@ -123,6 +132,9 @@ Entregar ao Marco:
 - pedido sem confirmação não criado;
 - revalidação de preço/estoque;
 - pagamento não confundido com confirmação;
+- pagamento de crediário sem compra não cria venda de valor zero;
+- visita com pagamento e compra separa os lançamentos e atualiza o novo saldo;
+- falha no caso combinado não deixa pagamento sem venda ou venda sem pagamento;
 - webhook/evento duplicado não duplica pedido ou documento;
 - emissão autorizada em homologação;
 - rejeição, consulta, cancelamento e contingência;

@@ -174,6 +174,28 @@ Uma confirmação de pedido não equivale a pagamento. O `payment_status` só mu
 por fluxo financeiro autorizado, conciliação ou confirmação manual com usuário
 responsável.
 
+O atendimento presencial deve distinguir três situações, sem obrigar o caixa a
+criar uma venda que não aconteceu:
+
+1. **Somente pagamento:** o cliente veio quitar parte ou todo o crediário. O
+   sistema registra um lançamento `credit_entry` do tipo `payment` e a entrada
+   correspondente no caixa, mas não cria venda, pedido, baixa de estoque ou
+   documento fiscal.
+2. **Somente compra:** o cliente veio comprar. A venda segue o fluxo normal; um
+   eventual saldo antigo do crediário não é alterado automaticamente.
+3. **Pagamento + compra:** o cliente quita uma dívida e também faz uma compra na
+   mesma visita. A interface pode mostrar um único atendimento e um único
+   comprovante, mas grava separadamente o pagamento da dívida e a venda nova.
+   Cada valor recebido deve ter destinação explícita — dívida, venda à vista ou
+   troco — e a venda pode continuar no crediário sem consumir o pagamento da
+   dívida por engano.
+
+O caixa deve identificar o cliente antes de registrar pagamento de crediário,
+mostrar saldo anterior, valor destinado à dívida, total da compra e novo saldo.
+As duas operações do caso combinado devem ser atômicas e idempotentes: ou as
+duas são gravadas, ou nenhuma é. O fiscal incide somente sobre a venda elegível,
+enquanto o pagamento de dívida é financeiro e não gera novo documento fiscal.
+
 ### Fiscal
 
 O sistema terá um módulo fiscal integrado ao fluxo de vendas. Para uma

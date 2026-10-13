@@ -27,7 +27,7 @@ const stateStyles: Record<
     Icon: CircleCheck,
   },
   offline: {
-    className: "border-white/10 bg-white/[0.06] text-slate-300",
+    className: "border-red-300/30 bg-red-300/10 text-red-100",
     Icon: CircleOff,
   },
 };

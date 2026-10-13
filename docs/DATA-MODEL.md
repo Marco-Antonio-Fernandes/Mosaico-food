@@ -29,10 +29,9 @@
 
 | Entidade | Responsabilidade |
 |---|---|
-| `product_category` | categorias do catálogo |
-| `product` | nome, descrição, preço, disponibilidade, unidade, perfil fiscal e preparo na hora |
+| `product` | produto-base, sabor opcional, preço, disponibilidade, unidade, perfil fiscal e preparo na hora |
 | `product_alias` | sinônimos e frases reconhecidas |
-| `product_option_group` / `product_option` | adicionais e escolhas |
+| `product_option_group` / `product_option` | adicionais e escolhas configuráveis, como quantidade-base e preço por fatia |
 | `ingredient` | item controlado no estoque |
 | `recipe` / `recipe_item` | composição opcional do produto |
 | `stock_balance` | saldo por item e local |
@@ -46,6 +45,9 @@ Regras:
 - `stock_movement` nunca é apagado;
 - produto sem foto continua plenamente utilizável;
 - alias pertence ao produto e tem normalização para busca;
+- o sabor é nulo quando o produto não possui sabor; produtos com sabores diferentes
+  têm estoque e preço próprios;
+- a venda preserva personalização, ajuste, justificativa e marcação de brinde no snapshot;
 - baixa e reserva seguem política da loja e não ficam dentro do interpretador.
 
 ## Clientes, pedidos e vendas
@@ -64,11 +66,19 @@ Regras:
 | `payment` | estado e meio de pagamento |
 | `cash_register` | abertura e fechamento |
 | `cash_movement` | entrada, saída, sangria e suprimento |
+| `checkout` | agrupador do atendimento presencial, sem substituir venda ou pagamento |
 
 `order_item` e `sale_item` armazenam nome, unidade e preço no momento da
 operação. Alterar o cadastro atual não reescreve histórico. `order.status`,
 `payment.status`, `stock.status` e `fiscal.status` não devem ser condensados em
 um único campo.
+
+`checkout` é opcional para uma operação simples e obrigatório quando uma visita
+combina quitação de crediário com compra. Ele referencia o cliente, operador,
+caixa, venda e/ou lançamentos financeiros, além dos totais separados de
+`credit_payment_cents`, `sale_paid_cents`, `sale_on_credit_cents` e `change_cents`.
+Pagamento de dívida sem compra tem somente o lançamento `credit_entry` do tipo
+`payment`; não deve ser representado como venda de valor zero.
 
 ## Conversas e automação
 
@@ -142,6 +152,8 @@ store ──< product ──< product_alias
   │      ├──< payment
   │      ├──< stock_reservation
   │      └──< fiscal_document ──< fiscal_event
+  ├──< checkout ──< credit_entry/payment/cash_movement
+  │              └──> sale (opcional)
   └──< conversation ──< conversation_message
                └──< cart ──< cart_item
 ```
@@ -157,6 +169,11 @@ store ──< product ──< product_alias
 - documento autorizado não é editável;
 - cancelamento fiscal cria evento e não apaga documento;
 - pagamento confirmado não é excluído por conflito de sincronização;
+- pagamento de crediário não cria venda, pedido, baixa de estoque ou documento
+  fiscal;
+- uma visita com pagamento e compra mantém o pagamento da dívida separado da
+  venda, mesmo quando ambos usam o mesmo recebimento do caixa;
+- a operação combinada é atômica e idempotente;
 - mudança de status do pedido gera histórico;
 - modo humano impede outbox automático de resposta de negócio;
 - exclusão lógica não quebra auditoria nem referência fiscal.

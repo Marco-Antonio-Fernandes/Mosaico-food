@@ -14,7 +14,7 @@ Mocks identificados; não chamar backend nem provedores para experimentar a pré
 | Atalho | Composição | Interação local entregue | Task responsável |
 |---|---|---|---|
 | Visão geral | Hero, indicadores, gráfico, período, avisos | Seleção de período/data; acesso à central | Pedro: dashboard |
-| PDV | Catálogo + carrinho | Adicionar/remover quantidade, pagamento e fechar simulação | PEDRO-FOOD-02 |
+| PDV | Catálogo + carrinho + quitação | Escolher somente pagamento, somente compra ou ambos; separar dívida, compra, troco e novo saldo | PEDRO-FOOD-02 |
 | Pedidos | Kanban com cinco etapas | Avançar cartões; pagamento independente | PEDRO-FOOD-03 |
 | Atendimento | Conversas + chat + carrinho | Trocar conversa, mensagem local e takeover visual | MARCO-FOOD-03 |
 | Produtos | Grade por categoria + formulário | Busca, filtro e abrir cadastro | PEDRO-FOOD-01 |
@@ -41,6 +41,9 @@ Mocks identificados; não chamar backend nem provedores para experimentar a pré
 - [ ] Formulários completos de domínio; as prévias possuem campos representativos.
 - [ ] Agregação por data/comparação histórica real; os gráficos ainda usam fixtures.
 - [ ] Conectar clientes/crediário ao backend já existente.
+- [ ] No PDV, iniciar o atendimento pela intenção `somente pagamento`,
+  `somente compra` ou `pagamento + compra`; pagamento de dívida não pode criar
+  venda de valor zero.
 - [ ] Demais integrações, acessibilidade completa, validação e estados de erro reais.
 
 Fixtures e cálculos de carrinho são apenas representação visual; não são a regra comercial.

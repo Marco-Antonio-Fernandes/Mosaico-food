@@ -87,29 +87,51 @@ export type NotificationEntry = {
   title: string;
   body: string;
   createdAt: string;
+  kind?: "default" | "stock";
+  priority?: "urgent" | "high" | "normal";
 };
 
-export function NotificationList({ health = false, notifications, onReadAll }: { health?: boolean; notifications?: NotificationEntry[]; onReadAll?: () => void }) {
+export function NotificationList({ health = false, notifications, onReadAll, onConfirmStock, onDismissStock }: { health?: boolean; notifications?: NotificationEntry[]; onReadAll?: () => void; onConfirmStock?: (id: string) => Promise<void>; onDismissStock?: (id: string) => Promise<void> }) {
   const [read, setRead] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const staticEntries = health ? ["Próxima sessão em 30 minutos", "Confirmação de horário recebida", "Pedido de reagendamento", "Recebimento aguardando identificação", "Conflito de sincronização para revisar"] : ["Novo pedido recebido", "WhatsApp aguardando atendimento", "Pedido pronto para retirada", "Ingrediente próximo do estoque mínimo", "Documento fiscal aguardando revisão"];
   const entries: NotificationEntry[] = notifications === undefined
     ? staticEntries.map((title, index) => ({ id: `mock-${index}`, title, body: "Aviso demonstrativo", createdAt: new Date(Date.now() - index * 300_000).toISOString() }))
     : notifications;
+  const priorityWeight = { urgent: 0, high: 1, normal: 2 } as const;
+  const orderedEntries = [...entries].sort((a, b) => (priorityWeight[a.priority ?? "normal"] - priorityWeight[b.priority ?? "normal"]) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
   const formatDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
   const markAll = () => {
-    setRead(entries.map(entry => entry.id));
+    setRead(orderedEntries.map(entry => entry.id));
     onReadAll?.();
   };
-  return <Panel title="Central de notificações" subtitle="Atualizações recentes">
-    <div className="proto-toolbar"><Badge>{entries.filter(entry => !read.includes(entry.id)).length} não lidas</Badge><button type="button" onClick={markAll}>Marcar todas como lidas</button></div>
-    {entries.length ? <div className="proto-stack">{entries.map((entry, i) => <article className="proto-notification" key={entry.id}><span className="proto-avatar">{i + 1}</span><div><strong>{entry.title}</strong><p>{entry.body} · {formatDate(entry.createdAt)}</p></div><button type="button" className="proto-subtle" disabled={read.includes(entry.id)} onClick={() => setRead(current => [...current, entry.id])}>{read.includes(entry.id) ? "Lida" : "Marcar lida"}</button></article>)}</div> : <p className="proto-empty">Nenhuma mensagem nova do WhatsApp.</p>}
+  const runStockAction = async (entry: NotificationEntry, action: "confirm" | "dismiss") => {
+    if (busy || entry.kind !== "stock") return;
+    const handler = action === "confirm" ? onConfirmStock : onDismissStock;
+    if (!handler) return;
+    setBusy(entry.id);
+    setError("");
+    try {
+      await handler(entry.id);
+      setRead(current => [...current, entry.id]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível atualizar o estoque.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return <Panel title="Central de notificações" subtitle="Ordenadas por urgência e horário">
+    <div className="proto-toolbar"><Badge>{orderedEntries.filter(entry => !read.includes(entry.id)).length} não lidas</Badge><button type="button" onClick={markAll}>Marcar todas como lidas</button></div>
+    {error && <p role="alert">{error}</p>}
+    {orderedEntries.length ? <div className="proto-stack">{orderedEntries.map((entry, i) => <article className={`proto-notification${entry.priority ? ` is-${entry.priority}` : ""}`} key={entry.id}><span className="proto-avatar">{i + 1}</span><div><strong>{entry.title}</strong>{entry.priority === "urgent" && <Badge>Urgente</Badge>}<p>{entry.body} · {formatDate(entry.createdAt)}</p></div>{entry.kind === "stock" && onConfirmStock && onDismissStock ? <div className="proto-toolbar"><button type="button" disabled={busy === entry.id} onClick={() => void runStockAction(entry, "confirm")}>Sim, baixar</button><button type="button" className="proto-subtle" disabled={busy === entry.id} onClick={() => void runStockAction(entry, "dismiss")}>Agora não</button></div> : <button type="button" className="proto-subtle" disabled={read.includes(entry.id)} onClick={() => setRead(current => [...current, entry.id])}>{read.includes(entry.id) ? "Lida" : "Marcar lida"}</button>}</article>)}</div> : <p className="proto-empty">Nenhuma notificação nova.</p>}
   </Panel>;
 }
 
 export function OfflinePreview({ health = false }: { health?: boolean }) {
   const [synced, setSynced] = useState(false);
   const [resolved, setResolved] = useState(false);
-  return <div className="proto-stack"><Metrics items={[["Fila local", synced ? "0" : "3", "Operações pendentes"], ["Conflitos", resolved ? "0" : "1", "Revisão manual"], ["Instalação", health ? "Linux" : "Desktop", "Sincronização offline"]]} />
-    <div className="proto-two"><Panel title="Cópia local" subtitle="Planejamento do armazenamento"><p>Selecione a pasta e configure a criptografia e a sincronização.</p><ul className="proto-list">{(health ? ["Contatos autorizados", "Horários e confirmações", "Preferências", "Referências de documentos"] : ["Clientes", "Lançamentos de crediário", "Saldo confirmado", "Operações pendentes"]).map(item => <li key={item}>{item}</li>)}</ul><button type="button" onClick={() => setSynced(true)}>Sincronizar agora</button><p role="status">{synced ? "Sincronização concluída." : "Operações aguardando conexão."}</p></Panel>
+  return <div className="proto-stack"><Metrics items={[["Fila local", synced ? "0" : "3", "Operações pendentes"], ["Conflitos", resolved ? "0" : "1", "Revisão manual"], ["Instalação", health ? "Linux" : "Desktop", "Dados locais"]]} />
+    <div className="proto-two"><Panel title="Dados locais" subtitle="Fila e sincronização"><p>As operações locais aguardam conexão e podem ser reconciliadas sem duplicar registros.</p><ul className="proto-list">{(health ? ["Contatos autorizados", "Horários e confirmações", "Preferências", "Referências de documentos"] : ["Clientes", "Lançamentos de crediário", "Saldo confirmado", "Operações pendentes"]).map(item => <li key={item}>{item}</li>)}</ul><button type="button" onClick={() => setSynced(true)}>Sincronizar agora</button><p role="status">{synced ? "Sincronização concluída." : "Operações aguardando conexão."}</p></Panel>
     <Panel title="Revisão de conflito" subtitle="Versão local e versão do servidor"><dl className="proto-facts"><div><dt>Local · versão 3</dt><dd>{health ? "Horário: 10h" : "Pagamento pendente: R$ 30"}</dd></div><div><dt>Servidor · versão 4</dt><dd>{health ? "Horário: 11h" : "Pagamento registrado: R$ 30"}</dd></div></dl><button type="button" onClick={() => setResolved(true)} disabled={resolved}>Manter versão do servidor</button><p role="status">{resolved ? "Conflito resolvido." : "Nenhuma versão será sobrescrita automaticamente."}</p></Panel></div></div>;
 }
