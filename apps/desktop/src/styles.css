@@ -21,7 +21,8 @@
 .food-assistant-drafts .proto-ticket > div { display: grid; gap: 4px; }
 .food-assistant-drafts .proto-ticket > div strong { font-size: .95rem; }
 .food-assistant-choices > strong { font-size: .82rem; }
-.food-assistant-choices > button { width: 100%; min-height: 52px; text-align: left; background: var(--proto-canvas); color: var(--proto-ink); border: 1px solid var(--proto-line); }
+.food-assistant-choices > button { display: grid; gap: 4px; width: 100%; min-height: 52px; text-align: left; background: var(--proto-canvas); color: var(--proto-ink); border: 1px solid var(--proto-line); }
+.food-assistant-choices > button small { color: var(--proto-muted); }
 .food-assistant-guided { display: grid; gap: 14px; }
 .food-assistant-intro, .food-assistant-step-heading { display: grid; gap: 4px; }
 .food-assistant-intro span, .food-assistant-step-heading span, .food-assistant-guided-footer span { color: var(--proto-muted); font-size: .82rem; line-height: 1.45; }
@@ -165,11 +166,22 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .food-product-basic-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .food-product-basic-fields datalist { display: none; }
 .food-product-basic-fields .food-product-suggestions, .food-product-basic-fields .food-family-notice { grid-column: 1 / -1; }
+.food-flavor-stock-field { align-items: start; }
+.food-flavor-stock-row, .food-assistant-register-flavor-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr); gap: 10px; align-items: end; padding-top: 10px; border-top: 1px solid var(--proto-line); }
+.food-flavor-stock-row > strong, .food-assistant-register-flavor-row > strong { align-self: center; }
+.food-flavor-options { display: grid; gap: 8px; }
+.food-flavor-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--proto-line); border-radius: 10px; background: var(--proto-canvas); }
+.food-flavor-option > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.food-flavor-option > div:first-child strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.food-flavor-option-action { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.food-flavor-option-action span { color: var(--proto-muted); font-size: .76rem; white-space: nowrap; }
+.food-flavor-option-action button { min-height: 36px; padding: 6px 10px; }
 .proto-variants-field { grid-column: 1 / -1; display: grid; gap: 12px; padding: 16px; border: 1px solid var(--proto-line); border-radius: 16px; background: var(--proto-canvas); }
 .proto-variants-field > .proto-toolbar { margin: 0; align-items: center; }
 .proto-variant-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(130px,.45fr) auto; gap: 10px; align-items: end; padding-top: 12px; border-top: 1px solid var(--proto-line); }
 .proto-variant-row > button { min-width: 44px; padding-inline: 10px; }
 @media(max-width:700px) { .proto-variant-row { grid-template-columns: repeat(2,minmax(0,1fr)); } .proto-variant-row > button { grid-column: 2; justify-self: end; } }
+@media(max-width:560px) { .food-flavor-stock-row, .food-assistant-register-flavor-row { grid-template-columns: minmax(0,1fr); } .food-flavor-option { align-items: flex-start; flex-direction: column; } .food-flavor-option-action { width: 100%; justify-content: space-between; } }
 .proto-tabs { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 6px; margin-bottom: 18px; }
 .prototype .proto-tabs button { flex-shrink: 0; background: var(--proto-canvas); color: var(--proto-muted); border: 1px solid var(--proto-line); }
 .prototype .proto-tabs button[aria-pressed="true"] { background: var(--proto-accent-soft); color: var(--proto-accent); border-color: var(--proto-accent); }
@@ -846,3 +858,31 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 @media (max-width: 850px) { .credit-summary { grid-template-columns: repeat(2,minmax(0,1fr)); } .credit-refresh { grid-column: 1 / -1; justify-self: end; } .credit-workspace { grid-template-columns: minmax(0,1fr); } }
 @media (max-width: 560px) { .credit-page { gap: 13px; } .credit-summary { gap: 8px; } .credit-summary-card { align-items: flex-start; flex-direction: column; gap: 9px; padding: 14px; } .credit-summary-card strong { font-size: 1.12rem; } .credit-summary-card small { line-height: 1.4; } .credit-card-header { padding: 16px; } .credit-account-list { max-height: 350px; padding-inline: 7px; } .prototype .credit-account-row { gap: 8px; padding-inline: 7px; } .credit-avatar { width: 35px; height: 35px; } .credit-account-name small, .credit-account-balance small { font-size: .62rem; } .credit-account-balance strong { font-size: .75rem; } .credit-selected-customer { margin-inline: 13px; } .credit-field { margin-inline: 13px; } .credit-amount-hints, .credit-after-payment { margin-inline: 13px; } .prototype .credit-submit { width: calc(100% - 26px); margin-inline: 13px; } .credit-secure-note { margin-inline: 15px; } }
 @media (prefers-reduced-motion: reduce) { .credit-spin, .credit-loader, .credit-button-spinner { animation: none; } }
+
+.credit-customer-picker { display: grid; gap: 7px; position: relative; }
+.credit-customer-picker > label { display: grid; gap: 7px; }
+.credit-customer-search { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 11px; border: 1px solid var(--proto-line); border-radius: 10px; background: var(--proto-canvas); color: var(--proto-muted); }
+.credit-customer-search input { min-width: 0; flex: 1; border: 0; padding: 0; background: transparent; color: var(--proto-ink); outline: 0; }
+.credit-customer-results { position: absolute; z-index: 5; top: 72px; right: 0; left: 0; display: grid; max-height: 230px; overflow-y: auto; padding: 5px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); box-shadow: 0 14px 30px #0004; }
+.credit-customer-results button { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; width: 100%; padding: 9px; border: 0; border-radius: 8px; background: transparent; color: var(--proto-ink); text-align: left; cursor: pointer; }
+.credit-customer-results button:hover, .credit-customer-results button:focus-visible { background: var(--proto-accent-soft); outline: 0; }
+.credit-customer-results button > span:nth-child(2), .credit-customer-selected span:nth-child(2) { display: grid; gap: 2px; }
+.credit-customer-results small, .credit-customer-selected small { color: var(--proto-muted); font-size: .68rem; }
+.credit-customer-results b { font-size: .72rem; }
+.credit-customer-result-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: var(--proto-accent-soft); color: var(--proto-accent); }
+.credit-customer-empty { padding: 12px; color: var(--proto-muted); }
+.credit-customer-selected { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid #59c38a66; border-radius: 11px; background: #18845012; }
+.credit-customer-selected > div:first-child { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.credit-customer-selected.is-late { border-color: #e58b8b70; background: #a63e3e18; }
+.credit-customer-status { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 5px; text-align: right; }
+.credit-customer-status small { grid-column: 1 / -1; }
+.credit-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #59c38a; }
+.credit-customer-selected.is-late .credit-status-dot { background: #e58b8b; }
+.credit-customer-selected.is-late .credit-customer-status strong { color: #e58b8b; }
+.credit-customer-clear { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 7px; background: transparent; color: var(--proto-muted); cursor: pointer; }
+.credit-customer-clear:hover { background: var(--proto-accent-soft); color: var(--proto-ink); }
+.credit-customer-hint { display: flex; align-items: center; gap: 5px; margin: 0; color: #59c38a; font-size: .68rem; }
+.credit-customer-hint.is-late { color: #e58b8b; }
+.credit-risk-label { display: block; margin-top: 3px; color: #59c38a; font-size: .66rem; font-weight: 700; }
+.credit-selected-customer.is-late .credit-risk-label { color: #e58b8b; }
+@media (max-width: 560px) { .credit-customer-selected { grid-template-columns: 1fr auto; } .credit-customer-status { grid-column: 1 / -1; justify-self: start; text-align: left; } .credit-customer-clear { grid-column: 2; grid-row: 1; } }

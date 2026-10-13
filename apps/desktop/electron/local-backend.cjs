@@ -2,9 +2,11 @@ const { app } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
+const net = require("node:net");
 const path = require("node:path");
 
-const LOCAL_PORT = Number(process.env.MOSAICO_LOCAL_PORT || 31415);
+const DEFAULT_LOCAL_PORT = Number(process.env.MOSAICO_LOCAL_PORT || 31415);
+let localPort = DEFAULT_LOCAL_PORT;
 let backendProcess = null;
 let localBackendStarted = false;
 let localBackendError = null;
@@ -126,6 +128,49 @@ function waitForHealth(port, child, timeoutMs = 30_000) {
   });
 }
 
+function probeHealth(port, timeoutMs = 800) {
+  return new Promise((resolve) => {
+    const request = http.get({ hostname: "127.0.0.1", port, path: "/api/health", timeout: timeoutMs }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.once("end", () => {
+        let payload = null;
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          // A porta pode estar ocupada por outro serviço.
+        }
+        resolve({ statusCode: response.statusCode ?? 0, payload });
+      });
+    });
+    request.once("error", () => resolve(null));
+    request.once("timeout", () => request.destroy());
+  });
+}
+
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    const finish = (available) => {
+      server.removeAllListeners();
+      resolve(available);
+    };
+    server.once("error", () => finish(false));
+    server.listen({ host: "127.0.0.1", port }, () => {
+      server.close(() => finish(true));
+    });
+  });
+}
+
+async function chooseLocalPort() {
+  for (let offset = 0; offset < 20; offset += 1) {
+    const candidate = DEFAULT_LOCAL_PORT + offset;
+    if (await isPortAvailable(candidate)) return candidate;
+  }
+  return null;
+}
+
 function compactError(error) {
   const message = error instanceof Error ? error.message : String(error || "Erro desconhecido");
   return message.replace(/\s+/g, " ").trim().slice(-600);
@@ -138,7 +183,7 @@ function spawnBackend(root, entry, databaseUrl, runtime) {
       ...process.env,
       ...(runtime === process.execPath ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       NODE_ENV: "development",
-      PORT: String(LOCAL_PORT),
+      PORT: String(localPort),
       HOST: "127.0.0.1",
       DATABASE_URL: databaseUrl,
       CORS_ORIGIN: "",
@@ -151,6 +196,27 @@ function spawnBackend(root, entry, databaseUrl, runtime) {
 
 async function startLocalBackend() {
   localBackendError = null;
+  localPort = DEFAULT_LOCAL_PORT;
+
+  // Permite que uma janela aberta durante uma atualização/reabertura reutilize
+  // o backend Mosaico que já está na porta, em vez de tratá-lo como falha.
+  const existingBackend = await probeHealth(localPort, 1500);
+  if (existingBackend?.payload?.data?.service === "mosaico-back") {
+    localBackendStarted = true;
+    console.log(`[Mosaico Food] Backend local existente reutilizado em http://127.0.0.1:${localPort}.`);
+    return true;
+  }
+
+  const availablePort = await chooseLocalPort();
+  if (!availablePort) {
+    localBackendError = `Nenhuma porta local disponível entre ${DEFAULT_LOCAL_PORT} e ${DEFAULT_LOCAL_PORT + 19}.`;
+    return false;
+  }
+  localPort = availablePort;
+  if (localPort !== DEFAULT_LOCAL_PORT) {
+    console.warn(`[Mosaico Food] A porta ${DEFAULT_LOCAL_PORT} está ocupada; usando ${localPort}.`);
+  }
+
   const root = backendRoot();
   if (!root) {
     localBackendError = "Pasta do backend local não foi encontrada.";
@@ -175,24 +241,32 @@ async function startLocalBackend() {
 
   const runtimes = nodeRuntimes();
   for (const runtime of runtimes) {
+    let startupOutput = "";
     try {
       backendProcess = spawnBackend(root, entry, databaseUrl, runtime);
       backendProcess.once("error", (error) => console.error(`[Mosaico local] Falha ao iniciar o backend com ${runtime}: ${error.message}`));
-      backendProcess.stdout.on("data", (chunk) => console.log(`[Mosaico local] ${chunk.toString().trim()}`));
-      backendProcess.stderr.on("data", (chunk) => console.error(`[Mosaico local] ${chunk.toString().trim()}`));
+      backendProcess.stdout.on("data", (chunk) => {
+        startupOutput += chunk.toString();
+        console.log(`[Mosaico local] ${chunk.toString().trim()}`);
+      });
+      backendProcess.stderr.on("data", (chunk) => {
+        startupOutput += chunk.toString();
+        console.error(`[Mosaico local] ${chunk.toString().trim()}`);
+      });
       backendProcess.once("exit", (code, signal) => {
         localBackendStarted = false;
         if (code !== 0 && !localBackendError) localBackendError = `Backend local encerrou (${code ?? signal ?? "desconhecido"}).`;
         console.error(`[Mosaico local] Backend encerrado (${code ?? signal ?? "desconhecido"}).`);
       });
 
-      localBackendStarted = await waitForHealth(LOCAL_PORT, backendProcess);
+      localBackendStarted = await waitForHealth(localPort, backendProcess);
       if (localBackendStarted) {
         localBackendError = null;
         return true;
       }
       const failedRuntime = runtime === process.execPath ? "Electron" : runtime;
-      localBackendError = `Backend local não respondeu pela porta ${LOCAL_PORT} usando ${failedRuntime}.`;
+      const detail = compactError(startupOutput);
+      localBackendError = `Backend local não respondeu pela porta ${localPort} usando ${failedRuntime}.${detail ? ` ${detail}` : ""}`;
       if (backendProcess && !backendProcess.killed) backendProcess.kill();
       backendProcess = null;
     } catch (error) {
@@ -212,7 +286,7 @@ function stopLocalBackend() {
 }
 
 function getBackendUrl() {
-  return localBackendStarted ? `http://127.0.0.1:${LOCAL_PORT}` : null;
+  return localBackendStarted ? `http://127.0.0.1:${localPort}` : null;
 }
 
 function getBackendDiagnostic() {

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Boxes, Check, ChefHat, PackagePlus, Play, ShoppingCart, Trash2, Wand2, X } from "lucide-react";
-import { assistantConfirmBatch, assistantPreview, createFoodOrder, createFoodProduct, getFoodProducts, registerCounterSale, registerFoodStock, type AssistantDraft, type AssistantRegistrationDraft, type AssistantRegistrationQuestion, type FoodProduct, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
+import { assistantConfirmBatch, assistantPreview, createFoodOrder, createFoodProduct, createFoodProducts, getCreditLedger, getFoodProducts, registerCounterSale, registerFoodStock, type AssistantDraft, type AssistantRegistrationDraft, type AssistantRegistrationQuestion, type CreditCustomerRecord, type FoodProduct, type ProductInput, type SalePaymentMethod, PRICE_ADJUSTMENT_REASONS } from "@/lib/food-api";
+import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
 
 const registrationWords = /\b(cadastre|cadastrar|cadastra|registre|registrar|registra|adicione|adicionar|adiciona)\b/i;
 const unitLabel = (unit: AssistantRegistrationDraft["stockUnit"]) => unit === "g" ? "g" : unit === "ml" ? "ml" : "un";
+const splitRegistrationFlavors = (value: string) => [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))];
+const registrationFlavorKey = (flavor: string) => flavor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim() || "__sem_sabor__";
 type GuidedAction = "order" | "sale" | "stock" | "prepare" | "loss" | "register";
 type GuidedStep = "menu" | "product" | "details" | "register";
 type GuidedPayment = "pending" | SalePaymentMethod;
@@ -28,6 +31,9 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
   const [payment, setPayment] = useState<GuidedPayment>("pending");
   const [adjustment, setAdjustment] = useState("");
   const [adjustmentNote, setAdjustmentNote] = useState("");
+  const [creditCustomers, setCreditCustomers] = useState<CreditCustomerRecord[]>([]);
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [creditCustomerId, setCreditCustomerId] = useState("");
   const [isGift, setIsGift] = useState(false);
   const [fryNow, setFryNow] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,6 +45,7 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
   const [registrationStep, setRegistrationStep] = useState<RegistrationStep>("basic");
   const [registrationName, setRegistrationName] = useState("");
   const [registrationFlavor, setRegistrationFlavor] = useState("");
+  const [registrationFlavorStock, setRegistrationFlavorStock] = useState<Record<string, string>>({});
   const [registrationPrice, setRegistrationPrice] = useState("");
   const [registrationStock, setRegistrationStock] = useState("0");
   const [registrationRecipe, setRegistrationRecipe] = useState<FoodProduct["recipe"]>([]);
@@ -47,15 +54,14 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
   const [newIngredientName, setNewIngredientName] = useState("");
   const [newIngredientStock, setNewIngredientStock] = useState("0");
   const [creatingIngredient, setCreatingIngredient] = useState(false);
+  const [familyOptions, setFamilyOptions] = useState<FoodProduct[] | null>(null);
 
   const loadProducts = async (nextAction: GuidedAction) => {
     setLoading(true);
     setError("");
     try {
       const loaded = await getFoodProducts({ activeOnly: true });
-      const available = nextAction === "order"
-        ? loaded.filter(item => item.productionMode !== "ingredient" && (item.stockQuantity > 0 || item.unpreparedQuantity > 0 || (item.allowOnDemand && (item.preparationCapacity > 0 || item.saleCapacity > 0))))
-        : nextAction === "sale" || nextAction === "prepare"
+      const available = nextAction === "order" || nextAction === "sale" || nextAction === "prepare"
           ? loaded.filter(item => item.productionMode !== "ingredient")
           : loaded;
       setProducts(available);
@@ -66,12 +72,32 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     }
   };
 
+  const loadCreditCustomers = async () => {
+    if (creditCustomers.length || creditLoading) return;
+    setCreditLoading(true);
+    try {
+      const data = await getCreditLedger();
+      setCreditCustomers(data.customers.filter(customer => customer.creditAccount));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar os clientes do crediário.");
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+
+  const changePayment = (nextPayment: GuidedPayment) => {
+    setPayment(nextPayment);
+    if (nextPayment === "crediario") void loadCreditCustomers();
+    else setCreditCustomerId("");
+  };
+
   const chooseAction = (nextAction: GuidedAction) => {
     setResult("");
     setError("");
     setAction(nextAction);
     setSearch("");
     setProduct(null);
+    setFamilyOptions(null);
     setQuantity("");
     setReadyLossQuantity("");
     setUnpreparedLossQuantity("");
@@ -79,12 +105,14 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     setPayment("pending");
     setAdjustment("");
     setAdjustmentNote("");
+    setCreditCustomerId("");
     setIsGift(false);
     setFryNow(false);
     setRegistrationMode("resale");
     setRegistrationStep("basic");
     setRegistrationName("");
     setRegistrationFlavor("");
+    setRegistrationFlavorStock({});
     setRegistrationPrice("");
     setRegistrationStock("0");
     setRegistrationRecipe([]);
@@ -103,6 +131,7 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
 
   const chooseProduct = (nextProduct: FoodProduct) => {
     setProduct(nextProduct);
+    setFamilyOptions(null);
     setQuantity("");
     setReadyLossQuantity("");
     setUnpreparedLossQuantity("");
@@ -110,6 +139,7 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     setResult("");
     setAdjustment("");
     setAdjustmentNote("");
+    setCreditCustomerId("");
     setIsGift(false);
     setFryNow(action === "order" && nextProduct.stockQuantity <= 0 && (nextProduct.unpreparedQuantity > 0 || nextProduct.preparationCapacity > 0));
     if (action === "sale") setPrice(nextProduct.salePriceCents > 0 ? (nextProduct.salePriceCents / 100).toFixed(2).replace(".", ",") : "");
@@ -120,10 +150,21 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     setStep("details");
   };
 
+  const chooseFamily = (family: FoodProduct[]) => {
+    if (family.length === 1) {
+      chooseProduct(family[0]);
+      return;
+    }
+    setFamilyOptions(family);
+    setError("");
+    setResult("");
+  };
+
   const resetToMenu = () => {
     setStep("menu");
     setAction(null);
     setProduct(null);
+    setFamilyOptions(null);
     setQuantity("");
     setReadyLossQuantity("");
     setUnpreparedLossQuantity("");
@@ -147,7 +188,14 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
       else resetToMenu();
       return;
     }
-    if (step === "product") { resetToMenu(); return; }
+    if (step === "product") {
+      if (familyOptions) {
+        setFamilyOptions(null);
+        return;
+      }
+      resetToMenu();
+      return;
+    }
     setStep("product");
   };
 
@@ -173,9 +221,9 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     setError("");
     try {
       if (action === "order") {
-        const adjustmentCents = parseCents(adjustment);
+        const adjustmentCents = isGift ? 0 : parseCents(adjustment);
         if ((adjustmentCents !== 0 || isGift) && !adjustmentNote.trim()) {
-          setError("Informe o motivo do ajuste ou do brinde.");
+          setError("Escolha a justificativa do ajuste ou do brinde.");
           return;
         }
         const unitPriceCents = isGift ? 0 : product.salePriceCents + adjustmentCents;
@@ -192,12 +240,17 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
           setError("Informe um preço válido por unidade.");
           return;
         }
-        if (isGift && !adjustmentNote.trim()) {
-          setError("Informe o motivo do brinde.");
+        const unitPriceCents = isGift ? 0 : Math.round(parsedPrice * 100);
+        const adjustmentCents = isGift ? 0 : unitPriceCents - product.salePriceCents;
+        if ((adjustmentCents !== 0 || isGift) && !adjustmentNote.trim()) {
+          setError("Escolha a justificativa para o preço informado.");
           return;
         }
-        const unitPriceCents = isGift ? 0 : Math.round(parsedPrice * 100);
-        await registerCounterSale({ operationId: crypto.randomUUID(), paymentMethod: payment === "pending" ? null : payment, items: [{ productId: product.id, quantity: parsedQuantity, unitPriceCents, adjustmentNote: isGift ? adjustmentNote.trim() : null, isGift }] });
+        if (payment === "crediario" && !creditCustomerId) {
+          setError("Selecione o cliente do crediário.");
+          return;
+        }
+        await registerCounterSale({ operationId: crypto.randomUUID(), paymentMethod: payment === "pending" ? null : payment, creditCustomerId: payment === "crediario" ? creditCustomerId : null, items: [{ productId: product.id, quantity: parsedQuantity, unitPriceCents, adjustmentCents, adjustmentNote: adjustmentNote.trim() || null, isGift }] });
         setResult(`${parsedQuantity} × ${product.name} vendido${parsedQuantity === 1 ? "" : "s"} por ${guidedMoney(unitPriceCents * parsedQuantity)}.`);
       } else {
         if (splitLoss) {
@@ -245,7 +298,10 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     }
     const parsedPrice = registrationPrice.trim() ? guidedNumber(registrationPrice) : 0;
     const parsedStock = guidedNumber(registrationStock);
-    if (!Number.isFinite(parsedPrice) || parsedPrice < 0 || !Number.isInteger(parsedStock) || parsedStock < 0) {
+    const flavorNames = splitRegistrationFlavors(registrationFlavor);
+    const flavorsToCreate = registrationMode === "ingredient" ? [""] : flavorNames.length ? flavorNames : [""];
+    const flavorStocks = flavorsToCreate.map(flavor => ({ flavor, quantity: guidedNumber(registrationFlavorStock[registrationFlavorKey(flavor)] ?? "0") }));
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0 || !Number.isInteger(parsedStock) || parsedStock < 0 || flavorStocks.some(item => !Number.isInteger(item.quantity) || item.quantity < 0)) {
       setError("Confira preço e quantidades. Use números inteiros para o estoque.");
       return;
     }
@@ -256,30 +312,30 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
       setError("Corrija os insumos e informe quantos produtos rendem por unidade de cada um.");
       return;
     }
-    const input: ProductInput = {
+    const inputs: ProductInput[] = flavorStocks.map(({ flavor, quantity }) => ({
       productionMode: registrationMode,
       stockUnit: "un",
       unitWeightGrams: null,
       unitVolumeMl: null,
       recipe: registrationMode === "recipe" ? registrationRecipe : [],
-      unpreparedQuantity: registrationMode === "resale" ? parsedStock : 0,
-      name: [registrationName.trim(), registrationFlavor.trim()].filter(Boolean).join(" · "),
+      unpreparedQuantity: registrationMode === "resale" ? quantity : 0,
+      name: [registrationName.trim(), flavor].filter(Boolean).join(" · "),
       productName: registrationName.trim(),
-      flavor: registrationFlavor.trim() || null,
+      flavor: flavor || null,
       category: "Geral",
       aliases: [],
       variants: [],
       salePriceCents: Math.round(parsedPrice * 100),
-      stockQuantity: registrationMode === "resale" ? 0 : parsedStock,
+      stockQuantity: registrationMode === "ingredient" ? parsedStock : 0,
       allowOnDemand: registrationMode !== "ingredient" && registrationAllowOnDemand,
       fryToOrder: false,
       active: true,
-    };
+    }));
     setSaving(true);
     setError("");
     try {
-      await createFoodProduct(input);
-      setResult(`${input.name} foi cadastrado. Você pode completar a receita depois, se necessário.`);
+      await createFoodProducts(inputs);
+      setResult(`${registrationName.trim()} foi cadastrado com ${inputs.length} sabor${inputs.length === 1 ? "" : "es"} e estoque separado por sabor.`);
       window.dispatchEvent(new Event("food-stock-changed"));
       resetToMenu();
     } catch (cause) {
@@ -353,8 +409,15 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     }
   };
 
-  const filteredProducts = products.filter(item => `${item.name} ${item.familyName} ${item.category} ${item.aliases.join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
+  const filteredProducts = products.filter(item => `${item.name} ${item.familyName} ${item.productName} ${item.flavor ?? ""} ${item.category} ${item.aliases.join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
+  const productFamilies = Object.values(filteredProducts.reduce<Record<string, FoodProduct[]>>((groups, item) => {
+    const key = item.productName || item.familyName || item.name;
+    groups[key] = [...(groups[key] ?? []), item];
+    return groups;
+  }, {}));
   const registrationIngredients = products.filter(item => item.productionMode === "ingredient" && item.active);
+  const registrationFlavors = splitRegistrationFlavors(registrationFlavor);
+  const registrationFlavorRows = registrationFlavors.length ? registrationFlavors : [""];
   const actionTitle = action === "order" ? "Novo pedido" : action === "sale" ? "Nova venda" : action === "stock" ? "Adicionar ao estoque" : action === "prepare" ? "Preparar" : action === "loss" ? "Dar baixa como perda" : "Preparo";
   const flowStep = step === "product" ? 1 : step === "details" ? 2 : registrationStep === "basic" ? 1 : 2;
   const flowLabels = action === "register" ? ["Dados", "Origem e configuração"] : ["Produto", "Quantidade e confirmação"];
@@ -377,18 +440,19 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
       <div className="food-assistant-guided-footer"><span>Quer registrar outra ação por texto?</span><button type="button" className="proto-subtle" onClick={onUseFreeform}>Escrever uma ação</button></div>
     </>}
     {step === "product" && <>
-      <div className="food-assistant-step-heading"><strong>{actionTitle}</strong><span>1. Escolha o produto</span></div>
+      <div className="food-assistant-step-heading"><strong>{familyOptions ? `${familyOptions[0]?.productName ?? "Produto"}: escolha o sabor` : actionTitle}</strong><span>1. {familyOptions ? "Escolha o sabor" : "Escolha o produto"}</span></div>
       <label className="food-assistant-search">Buscar produto<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Digite o nome…" autoFocus /></label>
+      {familyOptions && <button type="button" className="food-assistant-back proto-subtle" onClick={() => setFamilyOptions(null)}>← Voltar aos produtos</button>}
       {loading && <p className="proto-empty">Carregando produtos…</p>}
-      {!loading && <div className="food-assistant-guided-products">{filteredProducts.map(item => <div className="food-assistant-guided-product-row" key={item.id}><button type="button" className="food-assistant-guided-product-main" onClick={() => chooseProduct(item)}><span><strong>{item.name}</strong><small>{item.stockQuantity > 0 ? `${item.stockQuantity} prontos` : "Sem estoque pronto"}{item.unpreparedQuantity > 0 ? ` · ${item.unpreparedQuantity} para preparar` : ""}</small>{item.ingredientDependencies.some(dependency => !dependency.available) && <small className="food-stock-warning">Faltam insumos: {item.ingredientDependencies.filter(dependency => !dependency.available).map(dependency => dependency.name).join(", ")}</small>}</span>{action === "sale" && <b>{item.salePriceCents > 0 ? guidedMoney(item.salePriceCents) : "Sem preço"}</b>}</button></div>)}</div>}
-      {!loading && !filteredProducts.length && <p className="proto-empty">Nenhum produto encontrado.</p>}
+      {!loading && <div className="food-assistant-guided-products">{(familyOptions ? familyOptions.map(item => [item]) : productFamilies).map(group => { const item = group[0]; const readyTotal = group.reduce((sum, product) => sum + product.stockQuantity, 0); const unpreparedTotal = group.reduce((sum, product) => sum + product.unpreparedQuantity, 0); return <div className="food-assistant-guided-product-row" key={familyOptions ? item.id : item.productName || item.id}><button type="button" className="food-assistant-guided-product-main" onClick={() => familyOptions ? chooseProduct(item) : chooseFamily(group)}><span><strong>{familyOptions ? item.flavor || "Sem sabor" : item.productName || item.name}</strong><small>{readyTotal} prontos · {unpreparedTotal} não preparados{!familyOptions && group.length > 1 ? ` · ${group.length} sabores` : ""}</small>{!familyOptions && group.length > 1 && <small>{group.map(product => `${product.flavor || "sem sabor"}: ${product.stockQuantity} prontos · ${product.unpreparedQuantity} não preparados`).join(" · ")}</small>}{item.ingredientDependencies.some(dependency => !dependency.available) && <small className="food-stock-warning">Faltam insumos: {item.ingredientDependencies.filter(dependency => !dependency.available).map(dependency => dependency.name).join(", ")}</small>}</span>{action === "sale" && <b>{item.salePriceCents > 0 ? guidedMoney(item.salePriceCents) : "Sem preço"}</b>}</button></div>; })}</div>}
+      {!loading && !(familyOptions ? familyOptions.length : productFamilies.length) && <p className="proto-empty">Nenhum produto encontrado.</p>}
     </>}
     {step === "details" && product && action && <>
       <div className="food-assistant-step-heading"><strong>{product.name}</strong><span>{action === "sale" ? "2. Informe os detalhes da venda" : action === "prepare" ? "2. Quantas unidades ficaram prontas?" : action === "stock" && product.productionMode !== "ingredient" ? "2. Quantas unidades chegaram para preparar?" : "2. Informe a quantidade"}</span></div>
       <div className="food-assistant-guided-fields">
         {action === "loss" && product.productionMode !== "ingredient" ? <><label>Prontos para venda<input autoFocus type="number" min="0" step="1" inputMode="numeric" value={readyLossQuantity} onChange={event => setReadyLossQuantity(event.target.value)} placeholder={`Ex.: ${product.stockQuantity}`} /><small>Disponíveis: {product.stockQuantity}</small></label><label>Para preparar<input type="number" min="0" step="1" inputMode="numeric" value={unpreparedLossQuantity} onChange={event => setUnpreparedLossQuantity(event.target.value)} placeholder={`Ex.: ${product.unpreparedQuantity}`} /><small>Disponíveis: {product.unpreparedQuantity}</small></label></> : <label>Quantidade<input autoFocus type="number" min="1" step="1" inputMode="numeric" value={quantity} onChange={event => setQuantity(event.target.value)} placeholder="Ex.: 10" /></label>}
-        {action === "sale" && <><label>Preço por unidade (R$)<input type="text" inputMode="decimal" value={price} onChange={event => setPrice(event.target.value)} placeholder="Opcional" /></label><label>Pagamento<select value={payment} onChange={event => setPayment(event.target.value as GuidedPayment)}><option value="pending">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label><label className="proto-switch"><span>Lançar como brinde (valor zero)</span><input type="checkbox" checked={isGift} onChange={event => setIsGift(event.target.checked)} /></label>{isGift && <label>Justificativa do brinde<input required value={adjustmentNote} onChange={event => setAdjustmentNote(event.target.value)} placeholder="Ex.: cortesia para cliente" /></label>}</>}
-        {action === "order" && <><label>Ajuste de valor (R$)<input inputMode="decimal" value={adjustment} onChange={event => setAdjustment(event.target.value)} placeholder="Ex.: 2,00 ou -1,00" /></label>{(parseCents(adjustment) !== 0 || isGift) && <label>Justificativa<input required value={adjustmentNote} onChange={event => setAdjustmentNote(event.target.value)} placeholder="Ex.: acrescentou queijo" /></label>}<label className={`proto-switch food-assistant-prep-switch${fryNow ? " is-active" : ""}`}><span>Preparar este item{fryNow && product.stockQuantity <= 0 ? " · ativado automaticamente" : ""}<small>{fryNow ? "Será fritado/assado antes de finalizar." : "Usará uma unidade já pronta."}</small></span><input type="checkbox" checked={fryNow} onChange={event => setFryNow(event.target.checked)} /></label><label className="proto-switch"><span>Lançar como brinde (valor zero)</span><input type="checkbox" checked={isGift} onChange={event => setIsGift(event.target.checked)} /></label></>}
+        {action === "sale" && <><label>Preço por unidade (R$)<input type="text" inputMode="decimal" value={price} onChange={event => setPrice(event.target.value)} placeholder="Opcional" /><small>Se ficar diferente do cadastro, escolha uma justificativa.</small></label><label>Pagamento<select value={payment} onChange={event => changePayment(event.target.value as GuidedPayment)}><option value="pending">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label>{payment === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerId} onChange={setCreditCustomerId} loading={creditLoading} />}<label className="proto-switch"><span>Lançar como brinde (valor zero)</span><input type="checkbox" checked={isGift} onChange={event => setIsGift(event.target.checked)} /></label>{(isGift || (price.trim() && Math.round(guidedNumber(price) * 100) !== product.salePriceCents)) && <label>Justificativa do preço<select required value={adjustmentNote} onChange={event => setAdjustmentNote(event.target.value)}><option value="">Escolha uma opção…</option>{PRICE_ADJUSTMENT_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}</select></label>}</>}
+        {action === "order" && <><label>Ajuste de valor (R$)<input inputMode="decimal" value={adjustment} onChange={event => setAdjustment(event.target.value)} placeholder="Ex.: 2,00 ou -1,00" /><small>Use valor positivo para adicional ou negativo para desconto.</small></label>{(parseCents(adjustment) !== 0 || isGift) && <label>Justificativa do ajuste<select required value={adjustmentNote} onChange={event => setAdjustmentNote(event.target.value)}><option value="">Escolha uma opção…</option>{PRICE_ADJUSTMENT_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}</select></label>}<label className={`proto-switch food-assistant-prep-switch${fryNow ? " is-active" : ""}`}><span>Preparar este item{fryNow && product.stockQuantity <= 0 ? " · ativado automaticamente" : ""}<small>{fryNow ? "Será fritado/assado antes de finalizar." : "Usará uma unidade já pronta."}</small></span><input type="checkbox" checked={fryNow} onChange={event => setFryNow(event.target.checked)} /></label><label className="proto-switch"><span>Lançar como brinde (valor zero)</span><input type="checkbox" checked={isGift} onChange={event => setIsGift(event.target.checked)} /></label></>}
       </div>
       {action === "stock" && product.productionMode !== "ingredient" && <small className="food-assistant-operation-help">A entrada ficará separada como “para preparar”. Depois use “Preparar” para informar quantas ficaram prontas.</small>}
       {action === "prepare" && <small className="food-assistant-operation-help">Essa quantidade será retirada do estoque separado e adicionada ao estoque pronto.</small>}
@@ -398,7 +462,7 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
     {step === "register" && <form className="food-assistant-register-form" onSubmit={event => { event.preventDefault(); void saveRegistration(); }}>
       <div className="food-assistant-step-heading"><strong>Cadastrar produto</strong><span>{registrationStep === "basic" ? "Primeiro informe os dados principais." : "Agora me diga como este item chega ou é produzido."}</span></div>
       {registrationStep === "basic" && <>
-        <div className="food-assistant-register-grid food-assistant-basic-grid"><label>Nome do produto<input required autoFocus value={registrationName} onChange={event => setRegistrationName(event.target.value)} placeholder="Ex.: Esfirra" /></label><label>Sabor <small>(opcional)</small><input value={registrationFlavor} onChange={event => setRegistrationFlavor(event.target.value)} placeholder="Ex.: Carne; deixe vazio para pão" /></label><label>Preço de venda (R$)<input inputMode="decimal" value={registrationPrice} onChange={event => setRegistrationPrice(event.target.value)} placeholder="Opcional" /></label></div>
+        <div className="food-assistant-register-grid food-assistant-basic-grid"><label>Nome do produto<input required autoFocus value={registrationName} onChange={event => setRegistrationName(event.target.value)} placeholder="Ex.: Esfirra" /></label><label>Sabores <small>(opcional, separados por vírgula)</small><input value={registrationFlavor} onChange={event => setRegistrationFlavor(event.target.value)} placeholder="Ex.: Carne, Presunto, Queijo" /><small>Cada sabor será criado como um produto separado, com estoque próprio.</small></label><label>Preço de venda (R$)<input inputMode="decimal" value={registrationPrice} onChange={event => setRegistrationPrice(event.target.value)} placeholder="Opcional" /></label></div>
         <button type="button" className="food-assistant-confirm" onClick={continueRegistration}>Continuar</button>
       </>}
       {registrationStep === "source" && <>
@@ -408,11 +472,11 @@ function GuidedAssistant({ onUseFreeform }: { onUseFreeform: () => void }) {
           <button type="button" className={registrationMode === "recipe" ? "is-selected" : ""} onClick={() => { setRegistrationMode("recipe"); setRegistrationAllowOnDemand(true); }}><strong>Faço aqui com insumos</strong><small>Escolho os insumos e informo quantos produtos cada unidade deles rende.</small></button>
         </div></fieldset>
         {registrationMode === "ingredient" && <section className="food-assistant-register-section"><strong>Estoque inicial (unidades) <small>(opcional)</small></strong><small>Cadastre o que você conta no dia a dia: 1 pacote, 1 peça, 1 garrafa, 1 bandeja etc. Não precisa pesar.</small><div className="food-assistant-register-grid"><label>Quantidade inicial<input type="number" min="0" step="1" value={registrationStock} onChange={event => setRegistrationStock(event.target.value)} placeholder="Ex.: 5" /></label></div></section>}
-        {registrationMode === "resale" && <section className="food-assistant-register-section"><strong>Quantidade inicial para preparar <small>(opcional)</small></strong><div className="food-assistant-register-grid"><label>Unidades para preparar<input type="number" min="0" step="1" value={registrationStock} onChange={event => setRegistrationStock(event.target.value)} /></label></div><small>Essas unidades ficam separadas até você registrar que foram preparadas.</small></section>}
+        {registrationMode === "resale" && <section className="food-assistant-register-section"><strong>Produtos não preparados por sabor</strong><small>Informe quantos existem de cada sabor. Eles ficarão separados até você registrar que foram preparados.</small>{registrationFlavorRows.map(flavor => <div className="food-assistant-register-flavor-row" key={registrationFlavorKey(flavor)}><strong>{flavor || "Produto sem sabor"}</strong><label>Quantidade inicial<input type="number" min="0" step="1" value={registrationFlavorStock[registrationFlavorKey(flavor)] ?? "0"} onChange={event => setRegistrationFlavorStock(current => ({ ...current, [registrationFlavorKey(flavor)]: event.target.value }))} /></label></div>)}</section>}
         {registrationMode === "recipe" && <section className="food-assistant-register-section"><strong>Estoque inicial</strong><small>A produção será registrada depois, quando você informar que preparou as unidades.</small></section>}
         {registrationMode === "recipe" && <details className="food-assistant-register-details" open><summary>Insumos e rendimento</summary><small>Escolha cada insumo e informe aproximadamente quantos produtos você consegue fazer com 1 unidade dele. Ex.: 1 pacote de mortadela rende 20 pães.</small>{registrationRecipe.map((row, index) => <div className="food-assistant-register-recipe-row" key={index}><label>Insumo<select required value={row.ingredientId} onChange={event => setRegistrationRecipe(current => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, ingredientId: event.target.value } : entry))}><option value="">Escolha…</option>{registrationIngredients.map(ingredient => <option key={ingredient.id} value={ingredient.id}>{ingredient.name} ({ingredient.stockQuantity} unidades)</option>)}</select></label><label>Produtos por 1 unidade<input required type="number" min="1" step="1" value={row.quantity} onChange={event => setRegistrationRecipe(current => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, quantity: Number(event.target.value) || 0 } : entry))} placeholder="Ex.: 20" /><small>Rendimento aproximado</small></label><button type="button" className="proto-subtle" onClick={() => setRegistrationRecipe(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button></div>)}<button type="button" className="food-assistant-add-row" onClick={() => registrationIngredients.length ? setRegistrationRecipe(current => [...current, { ingredientId: "", quantity: 1 }]) : setShowIngredientForm(true)}>Adicionar insumo</button>{!registrationIngredients.length && <small>Nenhum insumo cadastrado. Clique em “Adicionar insumo” para criar um agora, sem sair deste cadastro.</small>}{showIngredientForm && <div className="food-assistant-inline-ingredient"><strong>Novo insumo</strong><label>Nome<input autoFocus value={newIngredientName} onChange={event => setNewIngredientName(event.target.value)} placeholder="Ex.: Leite" /></label><label>Quantidade inicial (unidades)<input type="number" min="0" step="1" value={newIngredientStock} onChange={event => setNewIngredientStock(event.target.value)} placeholder="Ex.: 1" /></label><div className="proto-toolbar"><button type="button" disabled={creatingIngredient} onClick={() => void saveInlineIngredient()}>{creatingIngredient ? "Salvando…" : "Cadastrar e anexar"}</button><button type="button" className="proto-subtle" disabled={creatingIngredient} onClick={() => setShowIngredientForm(false)}>Cancelar</button></div></div>}</details>}
         {registrationMode !== "ingredient" && <div className="food-assistant-register-checks"><label><input type="checkbox" checked={registrationAllowOnDemand} onChange={event => setRegistrationAllowOnDemand(event.target.checked)} /> Aceitar preparo sob demanda</label></div>}
-        <div className="food-assistant-review"><strong>Resumo</strong><span><b>Produto:</b> {[registrationName, registrationFlavor].filter(Boolean).join(" · ")}</span><span><b>Origem:</b> {registrationMode === "ingredient" ? "Insumo contado por unidade" : registrationMode === "recipe" ? "Feito aqui com insumos" : "Comprado para preparar"}</span><span><b>Preço:</b> {registrationPrice || "não informado"}</span></div>
+        <div className="food-assistant-review"><strong>Resumo</strong><span><b>Produto:</b> {registrationName || "—"}</span><span><b>Sabores:</b> {registrationMode === "ingredient" ? "não se aplica" : registrationFlavor || "sem sabor"}</span><span><b>Origem:</b> {registrationMode === "ingredient" ? "Insumo contado por unidade" : registrationMode === "recipe" ? "Feito aqui com insumos" : "Comprado para preparar"}</span><span><b>Preço:</b> {registrationPrice || "não informado"}</span></div>
         <button type="submit" className="food-assistant-confirm" disabled={saving}>{saving ? "Salvando…" : "Confirmar e salvar cadastro"}</button>
       </>}
     </form>}
@@ -429,9 +493,13 @@ export function FoodAssistant() {
   const [drafts, setDrafts] = useState<AssistantDraft[]>([]);
   const [registration, setRegistration] = useState<AssistantRegistrationDraft | null>(null);
   const [pendingRegistrationQuestion, setPendingRegistrationQuestion] = useState<AssistantRegistrationQuestion | null>(null);
-  const [choices, setChoices] = useState<{ id: string; name: string }[]>([]);
+  const [choices, setChoices] = useState<{ id: string; name: string; stockQuantity?: number; unpreparedQuantity?: number }[]>([]);
   const [totals, setTotals] = useState<Record<string, string>>({});
   const [payments, setPayments] = useState<Record<string, string>>({});
+  const [adjustmentNotes, setAdjustmentNotes] = useState<Record<string, string>>({});
+  const [creditCustomers, setCreditCustomers] = useState<CreditCustomerRecord[]>([]);
+  const [creditCustomerIds, setCreditCustomerIds] = useState<Record<string, string>>({});
+  const [creditLoading, setCreditLoading] = useState(false);
   const textArea = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
     const show = () => { setOpen(true); setGuided(true); };
@@ -461,6 +529,8 @@ export function FoodAssistant() {
         setDrafts(nextDrafts);
         setTotals(Object.fromEntries(nextDrafts.map(draft => [draft.id, (draft.totalCents / 100).toFixed(2).replace(".", ",")] )));
         setPayments(Object.fromEntries(nextDrafts.map(draft => [draft.id, draft.paymentMethod ?? "pending"] )));
+        setAdjustmentNotes({});
+        setCreditCustomerIds({});
         const message = result.message ?? `${nextDrafts.length} operaç${nextDrafts.length === 1 ? "ão" : "ões"} encontrada${nextDrafts.length === 1 ? "" : "s"}. Confira antes de registrar.`;
         setNotice(message);
       } else if (result.registration) {
@@ -479,14 +549,33 @@ export function FoodAssistant() {
     }
     finally { setBusy(false); }
   }
+  const loadCreditCustomers = async () => {
+    if (creditCustomers.length || creditLoading) return;
+    setCreditLoading(true);
+    try {
+      const data = await getCreditLedger();
+      setCreditCustomers(data.customers.filter(customer => customer.creditAccount));
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Não foi possível carregar os clientes do crediário.");
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+  const changeDraftPayment = (draftId: string, value: string) => {
+    setPayments(current => ({ ...current, [draftId]: value }));
+    if (value === "crediario") void loadCreditCustomers();
+    else setCreditCustomerIds(current => ({ ...current, [draftId]: "" }));
+  };
   async function confirm() {
     if ((!drafts.length && !registration) || busy) return;
     const confirmations = drafts.map(draft => {
       const value = draft.action === "sale" ? totals[draft.id] ?? "" : String(draft.totalCents / 100);
       const totalCents = Math.round(Number(value.replace(",", ".")) * 100);
-      return { draftId: draft.id, totalCents, paymentMethod: draft.action === "sale" && payments[draft.id] !== "pending" ? payments[draft.id] as SalePaymentMethod : null };
+      return { draftId: draft.id, totalCents, paymentMethod: draft.action === "sale" && payments[draft.id] !== "pending" ? payments[draft.id] as SalePaymentMethod : null, creditCustomerId: draft.action === "sale" && payments[draft.id] === "crediario" ? creditCustomerIds[draft.id] || undefined : undefined, adjustmentNote: adjustmentNotes[draft.id] || null };
     });
     if (confirmations.some(item => !Number.isSafeInteger(item.totalCents) || item.totalCents < 0)) { setNotice("Confira os valores das vendas."); return; }
+    if (confirmations.some(item => item.paymentMethod === "crediario" && !item.creditCustomerId)) { setNotice("Selecione o cliente de cada venda no crediário."); return; }
+    if (drafts.some(draft => draft.action === "sale" && (totals[draft.id] ?? "") && draft.baseUnitPriceCents !== undefined && Math.round(Number((totals[draft.id] ?? "").replace(",", ".")) * 100) !== draft.quantity * draft.baseUnitPriceCents && !adjustmentNotes[draft.id])) { setNotice("Escolha a justificativa para cada preço diferente do cadastro."); return; }
     setBusy(true);
     try {
       const result = await assistantConfirmBatch(confirmations, registration ? [{ draftId: registration.id }] : []);
@@ -517,9 +606,9 @@ export function FoodAssistant() {
         <label>Mensagem para o assistente<textarea ref={textArea} autoFocus rows={3} maxLength={3000} disabled={busy} value={text} placeholder="Ex.: vendi 50 pães e fritei 10 pastéis" onChange={event => { setText(event.target.value); setDrafts([]); setRegistration(null); setChoices([]); }} /><small>Escreva uma ou várias ações. Depois de analisar, eu mostro o que será feito antes de registrar.</small></label>
         <div className="proto-toolbar"><button type="submit" disabled={busy || !text.trim()}><Play size={18} /> Analisar texto</button></div>
       </form>
-      {choices.length > 0 && <div className="food-assistant-choices"><strong>Escolha o produto</strong>{choices.map(choice => <button type="button" key={choice.id} disabled={busy} onClick={() => void interpret(text, choice.id)}>{choice.name}</button>)}</div>}
+      {choices.length > 0 && <div className="food-assistant-choices"><strong>Escolha o produto ou sabor</strong>{choices.map(choice => <button type="button" key={choice.id} disabled={busy} onClick={() => void interpret(text, choice.id)}><strong>{choice.name}</strong><small>{choice.stockQuantity ?? 0} prontos · {choice.unpreparedQuantity ?? 0} não preparados</small></button>)}</div>}
       {registration && <section className="food-assistant-drafts" aria-label="Novo insumo"><header><strong>Confira o novo insumo</strong><small>Ele será criado como insumo contado por unidade e já entrará no estoque.</small></header><article className="proto-ticket"><div><small>Cadastro de insumo</small><strong>{registration.quantity} {unitLabel(registration.stockUnit)} · {registration.name}</strong></div><small>Depois você poderá anexar este insumo a um produto e informar o rendimento aproximado.</small></article><div className="proto-toolbar"><button type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "Cadastrando…" : "Cadastrar insumo"}</button><button type="button" className="proto-subtle" disabled={busy} onClick={editTranscription}>Editar texto</button></div></section>}
-      {drafts.length > 0 && <section className="food-assistant-drafts" aria-label="Operações encontradas"><header><strong>Confira antes de registrar</strong><small>{drafts.length} item{drafts.length === 1 ? "" : "s"} na mesma mensagem</small></header>{drafts.map(draft => <article className="proto-ticket" key={draft.id}><div><small>{actionLabel(draft.action)}</small><strong>{draft.quantity} × {draft.productName}</strong></div>{draft.action === "sale" && <><label>Total da venda (R$)<input disabled={busy} inputMode="decimal" value={totals[draft.id] ?? ""} onChange={event => setTotals(current => ({ ...current, [draft.id]: event.target.value }))} /></label><label>Pagamento<select disabled={busy} value={payments[draft.id] ?? "pending"} onChange={event => setPayments(current => ({ ...current, [draft.id]: event.target.value }))}><option value="pending">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label></>}</article>)}<div className="proto-toolbar"><button type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "Registrando…" : `Registrar ${drafts.length} operação${drafts.length === 1 ? "" : "ões"}`}</button><button type="button" className="proto-subtle" disabled={busy} onClick={editTranscription}>Editar texto</button></div></section>}
+      {drafts.length > 0 && <section className="food-assistant-drafts" aria-label="Operações encontradas"><header><strong>Confira antes de registrar</strong><small>{drafts.length} item{drafts.length === 1 ? "" : "s"} na mesma mensagem</small></header>{drafts.map(draft => { const changedPrice = draft.action === "sale" && draft.baseUnitPriceCents !== undefined && Math.round(Number((totals[draft.id] ?? "").replace(",", ".")) * 100) !== draft.quantity * draft.baseUnitPriceCents; return <article className="proto-ticket" key={draft.id}><div><small>{actionLabel(draft.action)}</small><strong>{draft.quantity} × {draft.productName}</strong></div>{draft.action === "sale" && <><label>Total da venda (R$)<input disabled={busy} inputMode="decimal" value={totals[draft.id] ?? ""} onChange={event => setTotals(current => ({ ...current, [draft.id]: event.target.value }))} /></label>{changedPrice && <label>Justificativa do preço<select required disabled={busy} value={adjustmentNotes[draft.id] ?? ""} onChange={event => setAdjustmentNotes(current => ({ ...current, [draft.id]: event.target.value }))}><option value="">Escolha uma opção…</option>{PRICE_ADJUSTMENT_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}</select></label>}<label>Pagamento<select disabled={busy} value={payments[draft.id] ?? "pending"} onChange={event => changeDraftPayment(draft.id, event.target.value)}><option value="pending">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label>{payments[draft.id] === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerIds[draft.id] ?? ""} onChange={customerId => setCreditCustomerIds(current => ({ ...current, [draft.id]: customerId }))} loading={creditLoading} />}</>}</article>; })}<div className="proto-toolbar"><button type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "Registrando…" : `Registrar ${drafts.length} operação${drafts.length === 1 ? "" : "ões"}`}</button><button type="button" className="proto-subtle" disabled={busy} onClick={editTranscription}>Editar texto</button></div></section>}
       </>}
     </section>}
     <button type="button" className="food-assistant-toggle" aria-expanded={open} aria-label="Abrir assistente" onClick={toggleAssistant}><Wand2 aria-hidden="true" size={27} /><span>Abrir assistente</span></button>

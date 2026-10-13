@@ -6,7 +6,8 @@ import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
 import { CreditPage } from "@/features/credit/credit-page";
 import { FoodBackupPanel } from "@/features/system/food-backup-panel";
-import { closeFoodCash, createFoodProduct, finalizeFoodOrder, getFoodCashToday, getFoodOrders, getFoodProducts, openFoodCash, registerCounterSale, updateFoodOrderStatus, updateFoodProduct, type FoodCashSnapshot, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
+import { closeFoodCash, createFoodProducts, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrders, getFoodProducts, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderStatus, updateFoodProduct, type CreditCustomerRecord, type FoodCashSnapshot, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
+import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
 
 export const foodModules = {
   pos: ["PDV", "Monte a venda, confira os itens e escolha o pagamento."],
@@ -25,6 +26,8 @@ export type FoodModule = keyof typeof foodModules;
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const productIcon = (category: string) => ({ Lanches: "🍔", Porções: "🍟", Bebidas: "🥤", Combos: "🍽️", Sobremesas: "🍰" }[category] ?? "🍴");
 const normalizeCatalogLabel = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
+const splitCatalogValues = (value: string) => [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))];
+const stockFlavorKey = (flavor: string) => normalizeCatalogLabel(flavor) || "__sem_sabor__";
 const clients: RecordItem[] = [
   { id: "c1", name: "Ana Oliveira", detail: "Retirada · contato autorizado", status: "Em dia", value: "R$ 0,00 em aberto" },
   { id: "c2", name: "Bruno Lima", detail: "Delivery · endereço cadastrado", status: "Crediário", value: "R$ 84,00 em aberto" },
@@ -63,8 +66,21 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   const [showForm, setShowForm] = useState(false);
   const [selling, setSelling] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod | null>(null);
+  const [creditCustomers, setCreditCustomers] = useState<CreditCustomerRecord[]>([]);
+  const [creditCustomerId, setCreditCustomerId] = useState("");
+  const [creditLoading, setCreditLoading] = useState(false);
   const [saleOperationId, setSaleOperationId] = useState(() => crypto.randomUUID());
   useEffect(() => { setSaleOperationId(crypto.randomUUID()); }, [cart, paymentMethod]);
+
+  useEffect(() => {
+    if (paymentMethod !== "crediario") {
+      setCreditCustomerId("");
+      return;
+    }
+    if (creditCustomers.length || creditLoading) return;
+    setCreditLoading(true);
+    void getCreditLedger().then(data => setCreditCustomers(data.customers.filter(customer => customer.creditAccount))).catch(loadError => setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os clientes do crediário.")).finally(() => setCreditLoading(false));
+  }, [paymentMethod, creditCustomers.length, creditLoading]);
 
   const loadProducts = async () => {
     try {
@@ -86,17 +102,22 @@ function Catalog({ pos = false }: { pos?: boolean }) {
 
   const categories = ["Todos", ...new Set(products.map((product) => product.productName).filter(Boolean))];
   const selected = products.filter((product) => (cart[product.id]?.quantity ?? 0) > 0);
-  const filtered = products.filter((product) => (!pos || (product.active && product.productionMode !== "ingredient" && (product.stockQuantity > 0 || (product.productionMode === "recipe" && product.allowOnDemand && product.saleCapacity > 0)))) && (category === "Todos" || category === product.productName) && `${product.name} ${product.productName} ${product.flavor ?? ""} ${product.familyName} ${product.aliases.join(" ")} ${product.variants.map((variant) => `${variant.name} ${variant.aliases.join(" ")}`).join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
-  const familyGroups = filtered.reduce<Record<string, string[]>>((groups, product) => {
-    if (product.productName) groups[product.productName] = [...(groups[product.productName] ?? []), product.flavor ? `${product.productName} · ${product.flavor}` : product.productName];
+  const filtered = products.filter((product) => (!pos || (product.active && product.productionMode !== "ingredient" && (product.stockQuantity > 0 || product.unpreparedQuantity > 0 || (product.productionMode === "recipe" && product.allowOnDemand && product.saleCapacity > 0)))) && (category === "Todos" || category === product.productName) && `${product.name} ${product.productName} ${product.flavor ?? ""} ${product.familyName} ${product.aliases.join(" ")} ${product.variants.map((variant) => `${variant.name} ${variant.aliases.join(" ")}`).join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
+  const familyGroups = filtered.reduce<Record<string, FoodProduct[]>>((groups, product) => {
+    if (product.productName) groups[product.productName] = [...(groups[product.productName] ?? []), product];
     return groups;
   }, {});
+  const familyEntries = Object.values(familyGroups);
   const total = selected.reduce((sum, product) => sum + lineUnitPrice(product, cart[product.id]) * cart[product.id].quantity, 0);
   async function finalizeSale() {
     if (selling || !selected.length) return;
+    if (paymentMethod === "crediario" && !creditCustomerId) {
+      setError("Selecione o cliente do crediário antes de confirmar.");
+      return;
+    }
     setSelling(true);
     try {
-      const result = await registerCounterSale({ operationId: saleOperationId, paymentMethod, items: selected.map(product => {
+      const result = await registerCounterSale({ operationId: saleOperationId, paymentMethod, creditCustomerId: paymentMethod === "crediario" ? creditCustomerId : null, items: selected.map(product => {
         const line = cart[product.id];
         const selectedQuantity = product.customization ? line.selectedQuantity : undefined;
         const removedQuantity = product.customization && selectedQuantity !== undefined ? Math.max(0, product.customization.baseQuantity - selectedQuantity) : 0;
@@ -116,14 +137,16 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     finally { setSelling(false); }
   }
 
-  const saveProduct = async (input: ProductInput) => {
+  const saveProduct = async (inputs: ProductInput[]) => {
     setSaving(true);
     try {
-      const product = editingProduct ? await updateFoodProduct(editingProduct.id, input) : await createFoodProduct(input);
-      setProducts((current) => editingProduct ? current.map((item) => item.id === product.id ? product : item) : [product, ...current]);
+      const createdProducts = editingProduct ? [await updateFoodProduct(editingProduct.id, inputs[0])] : await createFoodProducts(inputs);
+      setProducts((current) => editingProduct
+        ? current.map((item) => item.id === createdProducts[0].id ? createdProducts[0] : item)
+        : [...createdProducts, ...current]);
       setShowForm(false);
       setEditingProduct(null);
-      setNotice(editingProduct ? "Produto atualizado no catálogo." : "Produto cadastrado no catálogo.");
+      setNotice(editingProduct ? "Produto atualizado no catálogo." : `${createdProducts.length} produto${createdProducts.length === 1 ? "" : "s"} cadastrado${createdProducts.length === 1 ? "" : "s"} no catálogo, com estoque separado por sabor.`);
       setError("");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar o produto.");
@@ -135,12 +158,11 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   return <div className="proto-stack">
     <Tabs items={categories} value={category} onChange={setCategory} />
     <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label>{!pos && <button type="button" onClick={() => { setEditingProduct(null); setShowForm((current) => !current); }}>Cadastrar produto</button>}</div>
-    {!pos && search.trim() && Object.entries(familyGroups).some(([, names]) => names.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{Object.entries(familyGroups).filter(([, names]) => names.length > 1).map(([family, names]) => <span key={family}><b>{family}</b>: {names.join(", ")}</span>)}</div>}
+    {!pos && search.trim() && familyEntries.some((group) => group.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{familyEntries.filter(group => group.length > 1).map(group => <span key={group[0].productName}><b>{group[0].productName}</b>: {group.map(product => product.flavor || "sem sabor").join(", ")}</span>)}</div>}
     {!pos && showForm && <ProductForm key={editingProduct?.id ?? "new"} products={products} initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
-    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{filtered.map((product) => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div><small>Produto · {product.productName}{!product.active ? " · inativo" : ""}</small><h3>{product.productName}</h3>{product.flavor && <span className="food-family-label">Sabor: {product.flavor}</span>}{product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}<Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.productionMode === "recipe" && product.saleCapacity > 0 && product.allowOnDemand ? `${product.saleCapacity} calculadas pelos insumos` : product.preparationCapacity > 0 && product.allowOnDemand ? "Pode preparar" : "Indisponível"}</Badge>{product.customization && <small>{product.customization.label}: base de {product.customization.baseQuantity} {product.customization.unit}</small>}{product.stockQuantity === 0 && product.productionMode === "recipe" && product.saleCapacity > 0 && product.allowOnDemand && <small>Venda direta pelos insumos · a baixa será confirmada em Notificações</small>}{product.stockQuantity === 0 && product.preparationCapacity > 0 && product.allowOnDemand && <small>Sem unidades prontas · disponível para preparar</small>}{product.ingredientDependencies.some(dependency => !dependency.available) && <small className="food-stock-warning">Faltam insumos: {product.ingredientDependencies.filter(dependency => !dependency.available).map(dependency => dependency.name).join(", ")}</small>}{product.variants.length > 0 && <small>Opções antigas: {product.variants.map((variant) => variant.name).join(", ")}</small>}{product.allowOnDemand && <small>Aceita preparo sob demanda</small>}<small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small><button type="button" disabled={selling || (pos && product.salePriceCents <= 0)} onClick={() => { if (pos) setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) })); else { setEditingProduct(product); setShowForm(true); } }}>{pos ? product.salePriceCents <= 0 ? "Definir preço para vender" : product.stockQuantity === 0 && product.productionMode === "recipe" ? "Adicionar à venda" : product.stockQuantity === 0 && product.allowOnDemand ? "Adicionar para preparar" : "Adicionar à venda" : "Editar cadastro"}</button>{!pos && <ProductStock key={`${product.id}-${product.productionMode}`} product={product} onSaved={loadProducts} />}</article>)}</div>
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{pos ? familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />) : filtered.map(product => <ProductTile key={product.id} product={product} onEdit={() => { setEditingProduct(product); setShowForm(true); }} onStockSaved={loadProducts} />)}</div>
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo."}</p>}
       {pos && <Panel title="Venda de balcão" subtitle="Ajuste adicionais, remoções ou brinde por item antes de confirmar.">
-        <label>Cliente<select><option>Consumidor final</option></select></label>
         <div className="proto-stack" style={{ marginTop: 16 }}>
           {selected.map((product) => {
             const line = cart[product.id];
@@ -163,7 +185,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
               </label>
               <div className="proto-form">
                 <label>Ajuste de valor (R$)<input inputMode="decimal" value={(line.adjustmentCents / 100).toFixed(2).replace(".", ",")} disabled={selling} onChange={event => setCart(current => ({ ...current, [product.id]: { ...current[product.id], adjustmentCents: parseCents(event.target.value) } }))} placeholder="0,00 ou -1,00" /></label>
-                {(line.adjustmentCents !== 0 || line.isGift || removedQuantity > 0 || selectedQuantity > (product.customization?.baseQuantity ?? 0) || line.addedItems.length > 0) && <label>Motivo da alteração<input required value={line.adjustmentNote} disabled={selling} onChange={event => setCart(current => ({ ...current, [product.id]: { ...current[product.id], adjustmentNote: event.target.value } }))} placeholder="Ex.: adicionou queijo / removeu molho" /></label>}
+                {(line.adjustmentCents !== 0 || line.isGift || removedQuantity > 0 || selectedQuantity > (product.customization?.baseQuantity ?? 0) || line.addedItems.length > 0) && <label>Motivo da alteração<select required value={line.adjustmentNote} disabled={selling} onChange={event => setCart(current => ({ ...current, [product.id]: { ...current[product.id], adjustmentNote: event.target.value } }))}><option value="">Escolha uma opção…</option>{PRICE_ADJUSTMENT_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}</select></label>}
               </div>
               <label className="proto-switch"><span>Lançar como brinde (valor zero)</span><input type="checkbox" checked={line.isGift} disabled={selling} onChange={event => setCart(current => ({ ...current, [product.id]: { ...current[product.id], isGift: event.target.checked } }))} /></label>
             </div>;
@@ -172,6 +194,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
         {!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}
         <dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl>
         <label>Pagamento recebido<select disabled={selling} value={paymentMethod ?? ""} onChange={event => setPaymentMethod(event.target.value ? event.target.value as SalePaymentMethod : null)}><option value="">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label>
+        {paymentMethod === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerId} onChange={setCreditCustomerId} disabled={selling} loading={creditLoading} />}
         <div className="proto-toolbar"><button type="button" disabled={selling || !selected.length} onClick={() => void finalizeSale()}>{selling ? "Registrando…" : "Confirmar venda"}</button></div>
       </Panel>}
     </div>}
@@ -185,7 +208,7 @@ type ProductFormProps = {
   initial: FoodProduct | null;
   saving: boolean;
   onCancel: () => void;
-  onSubmit: (input: ProductInput) => void;
+  onSubmit: (inputs: ProductInput[]) => void;
 };
 
 type CartLine = {
@@ -222,14 +245,55 @@ function lineUnitPrice(product: FoodProduct, line: CartLine) {
   return Math.max(0, product.salePriceCents + additionalQuantity * (customization?.additionalUnitPriceCents ?? 0) + line.adjustmentCents);
 }
 
+function ProductTile({ product, onEdit, onStockSaved }: { product: FoodProduct; onEdit: () => void; onStockSaved: () => Promise<void> }) {
+  return <article className="proto-product">
+    <div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div>
+    <small>Produto · {product.productName}{!product.active ? " · inativo" : ""}</small>
+    <h3>{product.productName}</h3>
+    {product.flavor && <span className="food-family-label">Sabor: {product.flavor}</span>}
+    {product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}
+    <Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.productionMode === "recipe" && product.saleCapacity > 0 && product.allowOnDemand ? `${product.saleCapacity} calculadas pelos insumos` : product.preparationCapacity > 0 && product.allowOnDemand ? "Pode preparar" : "Indisponível"}</Badge>
+    {product.customization && <small>{product.customization.label}: base de {product.customization.baseQuantity} {product.customization.unit}</small>}
+    {product.stockQuantity === 0 && product.productionMode === "recipe" && product.saleCapacity > 0 && product.allowOnDemand && <small>Venda direta pelos insumos · a baixa será confirmada em Notificações</small>}
+    {product.stockQuantity === 0 && product.preparationCapacity > 0 && product.allowOnDemand && <small>Sem unidades prontas · disponível para preparar</small>}
+    {product.ingredientDependencies.some(dependency => !dependency.available) && <small className="food-stock-warning">Faltam insumos: {product.ingredientDependencies.filter(dependency => !dependency.available).map(dependency => dependency.name).join(", ")}</small>}
+    {product.variants.length > 0 && <small>Opções antigas: {product.variants.map(variant => variant.name).join(", ")}</small>}
+    {product.allowOnDemand && <small>Aceita preparo sob demanda</small>}
+    <small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small>
+    <button type="button" onClick={onEdit}>Editar cadastro</button>
+    <ProductStock product={product} onSaved={onStockSaved} />
+  </article>;
+}
+
+function ProductFamilyTile({ products, selling, onAdd }: { products: FoodProduct[]; selling: boolean; onAdd: (product: FoodProduct) => void }) {
+  const family = products[0];
+  const readyTotal = products.reduce((sum, product) => sum + product.stockQuantity, 0);
+  const unpreparedTotal = products.reduce((sum, product) => sum + product.unpreparedQuantity, 0);
+  return <article className="proto-product food-product-family-card">
+    <div className="proto-product-art" aria-hidden="true">{productIcon(family.category)}</div>
+    <small>Produto</small>
+    <h3>{family.productName}</h3>
+    <strong>{readyTotal} prontos · {unpreparedTotal} não preparados</strong>
+    <small>Escolha o sabor para adicionar ao pedido.</small>
+    <div className="food-flavor-options">
+      {products.map(product => <div className="food-flavor-option" key={product.id}>
+        <div><strong>{product.flavor || "Sem sabor"}</strong><small>{product.stockQuantity} prontos · {product.unpreparedQuantity} não preparados{product.preparationCapacity > product.unpreparedQuantity ? ` · pode preparar ${product.preparationCapacity}` : ""}</small></div>
+        <div className="food-flavor-option-action"><span>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Sem preço"}</span><button type="button" disabled={selling || product.salePriceCents <= 0 || (product.stockQuantity <= 0 && !(product.productionMode === "recipe" && product.allowOnDemand && product.saleCapacity > 0))} onClick={() => onAdd(product)}>{product.salePriceCents <= 0 ? "Definir preço" : product.stockQuantity <= 0 && product.productionMode !== "recipe" ? "Preparar antes" : "Adicionar"}</button></div>
+      </div>)}
+    </div>
+  </article>;
+}
+
 function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductFormProps) {
   const [productionMode, setProductionMode] = useState<FoodProduct["productionMode"]>(initial?.productionMode ?? "resale");
   const [recipe, setRecipe] = useState<FoodProduct["recipe"]>(initial?.recipe.map(row => ({ ...row })) ?? []);
   const ingredients = products.filter(product => product.productionMode === "ingredient" && product.active);
   const [productName, setProductName] = useState(initial?.productName || initial?.familyName || initial?.name || "");
-  const [flavor, setFlavor] = useState(initial?.flavor ?? "");
+  const [flavors, setFlavors] = useState(initial?.flavor ?? "");
   const [price, setPrice] = useState(initial ? String(initial.salePriceCents / 100).replace(".", ",") : "");
-  const stock = String(initial?.stockQuantity ?? 0);
+  const [initialStockByFlavor, setInitialStockByFlavor] = useState<Record<string, string>>(() => ({
+    [stockFlavorKey(initial?.flavor ?? "")]: String(initial?.productionMode === "resale" ? initial?.unpreparedQuantity ?? 0 : initial?.stockQuantity ?? 0),
+  }));
   const [aliases, setAliases] = useState(initial?.aliases.join(", ") ?? "");
   const [variants, setVariants] = useState<FoodProductVariant[]>(initial?.variants.map((variant) => ({ ...variant })) ?? []);
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>(() => Object.fromEntries((initial?.variants ?? []).map((variant) => [variant.id, (variant.priceDeltaCents / 100).toFixed(2).replace(".", ",")] )));
@@ -237,6 +301,8 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
   const [active, setActive] = useState(initial?.active ?? true);
   const [formError, setFormError] = useState("");
   const normalizedProductName = normalizeCatalogLabel(productName);
+  const flavorNames = splitCatalogValues(flavors);
+  const flavorRows = flavorNames.length ? flavorNames : [""];
   const productNameOptions = [...new Set(products.filter(product => product.productionMode !== "ingredient").map(product => product.productName).filter(Boolean))];
   const productSuggestions = productName.trim()
     ? productNameOptions.filter(option => normalizeCatalogLabel(option).includes(normalizedProductName) && normalizeCatalogLabel(option) !== normalizedProductName).slice(0, 6)
@@ -249,8 +315,7 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const salePriceCents = price.trim() ? Math.round(Number(price.replace(",", ".")) * 100) : 0;
-    const stockQuantity = Number(stock);
-    if (!productName.trim() || !Number.isFinite(salePriceCents) || salePriceCents < 0 || !Number.isInteger(stockQuantity) || stockQuantity < 0) {
+    if (!productName.trim() || !Number.isFinite(salePriceCents) || salePriceCents < 0) {
       setFormError("Informe o produto e um preço válido se quiser cadastrá-lo agora.");
       return;
     }
@@ -258,32 +323,43 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
       setFormError("Corrija os insumos e informe o rendimento de cada um.");
       return;
     }
-    onSubmit({
-      productionMode,
-      stockUnit: "un",
-      unitWeightGrams: null,
-      unitVolumeMl: null,
-      unpreparedQuantity: initial?.unpreparedQuantity ?? 0,
-      recipe: productionMode === "recipe" ? recipe : [],
-      name: [productName.trim(), flavor.trim()].filter(Boolean).join(" · "),
-      productName: productName.trim(),
-      flavor: flavor.trim() || null,
-      category: "Geral",
-      aliases: aliases.split(",").map((item) => item.trim()).filter(Boolean),
-      variants: variants
-        .map((variant) => ({
-          ...variant,
-          name: variant.name.trim(),
-          aliases: variant.aliases.map((alias) => alias.trim()).filter(Boolean),
-        }))
-        .filter((variant) => variant.name),
-      salePriceCents,
-      stockQuantity,
-      allowOnDemand: productionMode !== "ingredient" && allowOnDemand,
-      fryToOrder: false,
-      active,
-      customization: initial?.customization ?? null,
+    const aliasesList = aliases.split(",").map((item) => item.trim()).filter(Boolean);
+    const cleanedVariants = variants
+      .map((variant) => ({
+        ...variant,
+        name: variant.name.trim(),
+        aliases: variant.aliases.map((alias) => alias.trim()).filter(Boolean),
+      }))
+      .filter((variant) => variant.name);
+    const rows = initial ? [initial.flavor ?? ""] : productionMode === "ingredient" ? [""] : flavorRows;
+    const inputs = rows.map((rowFlavor) => {
+      const initialQuantity = Number(initialStockByFlavor[stockFlavorKey(rowFlavor)] ?? 0);
+      return {
+        productionMode,
+        stockUnit: "un" as const,
+        unitWeightGrams: null,
+        unitVolumeMl: null,
+        unpreparedQuantity: initial ? initial.unpreparedQuantity : productionMode === "resale" ? initialQuantity : 0,
+        recipe: productionMode === "recipe" ? recipe : [],
+        name: [productName.trim(), rowFlavor].filter(Boolean).join(" · "),
+        productName: productName.trim(),
+        flavor: rowFlavor || null,
+        category: "Geral",
+        aliases: aliasesList,
+        variants: cleanedVariants,
+        salePriceCents,
+        stockQuantity: initial ? initial.stockQuantity : productionMode === "ingredient" ? initialQuantity : 0,
+        allowOnDemand: productionMode !== "ingredient" && allowOnDemand,
+        fryToOrder: false,
+        active,
+        customization: initial?.customization ?? null,
+      } satisfies ProductInput;
     });
+    if (inputs.some(input => !Number.isInteger(input.unpreparedQuantity) || input.unpreparedQuantity < 0 || !Number.isInteger(input.stockQuantity) || input.stockQuantity < 0)) {
+      setFormError("Informe quantidades inteiras e não negativas para cada sabor.");
+      return;
+    }
+    onSubmit(inputs);
   };
 
   const updateVariant = (id: string, changes: Partial<FoodProductVariant>) => {
@@ -300,12 +376,15 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
     <div className="food-product-basic-fields">
       <label>Produto-base<input required list="food-product-names" value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Ex.: Esfirra ou Pão com mortadela" /><small>Digite algumas letras para reaproveitar um produto já cadastrado. Ex.: “enfi” encontra “Esfirra”.</small></label>
       <datalist id="food-product-names">{productNameOptions.map(option => <option key={option} value={option} />)}</datalist>
-      <label>Sabor (opcional)<input list="food-product-flavors" value={flavor} onChange={(event) => setFlavor(event.target.value)} placeholder="Ex.: Carne; deixe vazio para pão" /><small>O sabor fica separado do produto. Se não houver sabor, deixe em branco.</small></label>
+      <label>{initial ? "Sabor" : "Sabores (separados por vírgula)"}<input list="food-product-flavors" value={flavors} disabled={Boolean(initial)} onChange={(event) => setFlavors(event.target.value)} placeholder="Ex.: Carne, Presunto, Queijo" /><small>{initial ? "Cada sabor tem estoque próprio. Para adicionar outro sabor, cadastre-o no mesmo produto-base." : "Cadastre todos os sabores de uma vez. Cada sabor será um produto separado, com estoque próprio."}</small></label>
       <datalist id="food-product-flavors">{flavorSuggestions.map(option => <option key={option} value={option} />)}</datalist>
       <label>Preço de venda (R$) — opcional<input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Deixe em branco para informar depois" /><small>Você pode preencher depois. Se vender sem preço cadastrado, o assistente perguntará o total.</small></label>
       {productSuggestions.length > 0 && <div className="food-product-suggestions" role="listbox" aria-label="Produtos encontrados">{productSuggestions.map(option => <button type="button" key={option} onClick={() => setProductName(option)}>{option}</button>)}</div>}
       {relatedFlavors.length > 0 && <div className="food-family-notice"><strong>Sabores já cadastrados para “{productName}”</strong><small>{relatedFlavors.map(product => product.flavor).filter(Boolean).join(", ")}</small></div>}
     </div>
+    {productionMode === "ingredient" && <section className="proto-variants-field food-flavor-stock-field"><strong>Estoque inicial</strong><small>Informe quantas unidades deste insumo já existem.</small><label>Quantidade inicial<input type="number" min="0" step="1" value={initialStockByFlavor[stockFlavorKey("")] ?? "0"} disabled={Boolean(initial)} onChange={event => setInitialStockByFlavor(current => ({ ...current, [stockFlavorKey("")]: event.target.value }))} /></label></section>}
+    {!initial && productionMode === "resale" && <section className="proto-variants-field food-flavor-stock-field"><strong>Estoque inicial por sabor</strong><small>Informe quantos produtos não preparados existem de cada sabor. Ex.: 10 carne, 12 presunto e 8 queijo.</small>{flavorRows.map(rowFlavor => <div className="food-flavor-stock-row" key={stockFlavorKey(rowFlavor)}><strong>{rowFlavor || "Produto sem sabor"}</strong><label>Produtos não preparados<input type="number" min="0" step="1" value={initialStockByFlavor[stockFlavorKey(rowFlavor)] ?? "0"} onChange={event => setInitialStockByFlavor(current => ({ ...current, [stockFlavorKey(rowFlavor)]: event.target.value }))} /></label></div>)}</section>}
+    {initial && <small>O estoque pronto e o estoque não preparado são alterados pelo botão de estoque, por sabor.</small>}
     <small>Depois de salvar, use o botão de estoque no cartão para adicionar unidades para preparar ou registrar quantas já ficaram prontas.</small>
     {productionMode === "recipe" && <section className="proto-variants-field">
       <strong>Insumos e rendimento</strong><small>Informe aproximadamente quantos produtos você consegue fazer com 1 unidade de cada insumo. Ex.: 1 pacote de mortadela rende 20 pães.</small>
@@ -347,6 +426,9 @@ function Orders() {
   const [dragOverStage, setDragOverStage] = useState<number | null>(null);
   const [finalizingOrder, setFinalizingOrder] = useState<FoodOrder | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod | "">("");
+  const [creditCustomers, setCreditCustomers] = useState<CreditCustomerRecord[]>([]);
+  const [creditCustomerId, setCreditCustomerId] = useState("");
+  const [creditLoading, setCreditLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Carregando pedidos…");
   const [loading, setLoading] = useState(true);
@@ -370,6 +452,16 @@ function Orders() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (paymentMethod !== "crediario" || !finalizingOrder) {
+      if (paymentMethod !== "crediario") setCreditCustomerId("");
+      return;
+    }
+    if (creditCustomers.length || creditLoading) return;
+    setCreditLoading(true);
+    void getCreditLedger().then(data => setCreditCustomers(data.customers.filter(customer => customer.creditAccount))).catch(loadError => setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os clientes do crediário.")).finally(() => setCreditLoading(false));
+  }, [paymentMethod, finalizingOrder, creditCustomers.length, creditLoading]);
+
   const stageForStatus = (status: string) => ({ confirmed: 0, preparing: 1, ready: 2, out_for_delivery: 3, delivered: 4 }[status] ?? 0);
   const statusForStage = (stage: number) => (["confirmed", "preparing", "ready", "out_for_delivery", "delivered"] as const)[stage];
   const orderItemsLabel = (order: FoodOrder) => order.items.map((item) => `${item.quantity}x ${item.productName}${item.variantName ? ` (${item.variantName})` : ""}${item.fryNow ? " · preparar" : ""}${item.isGift ? " · brinde" : ""}`).join(" · ");
@@ -377,12 +469,16 @@ function Orders() {
 
   async function finalizeOrder() {
     if (!finalizingOrder || !paymentMethod || finalizing) return;
+    if (paymentMethod === "crediario" && !creditCustomerId) {
+      setError("Selecione o cliente do crediário antes de finalizar.");
+      return;
+    }
     setFinalizing(true);
     try {
-      const result = await finalizeFoodOrder(finalizingOrder.id, paymentMethod);
+      const result = await finalizeFoodOrder(finalizingOrder.id, paymentMethod, paymentMethod === "crediario" ? creditCustomerId : null);
       setOrders(current => current.map(item => item.id === finalizingOrder.id ? result.order : item));
       setStatusMessage(`Pedido #${finalizingOrder.id.slice(0, 8)} finalizado e venda registrada.`);
-      setFinalizingOrder(null); setPaymentMethod(""); setError("");
+      setFinalizingOrder(null); setPaymentMethod(""); setCreditCustomerId(""); setError("");
     } catch (finalizeError) {
       setError(finalizeError instanceof Error ? finalizeError.message : "Não foi possível finalizar o pedido.");
     } finally {
@@ -396,6 +492,7 @@ function Orders() {
     if (stage === 4) {
       setFinalizingOrder(order);
       setPaymentMethod("");
+      setCreditCustomerId("");
       return;
     }
 
@@ -435,7 +532,7 @@ function Orders() {
   return <div className="proto-stack"><p className="sr-only" role="status">{statusMessage}</p>{error && <p role="alert" className="mb-4 text-sm text-red-200">{error}</p>}
     <div className="proto-toolbar"><div><strong>Pedidos em andamento</strong><small className="block text-muted">Os pedidos são criados pelo Assistente. Arraste cada pedido pela operação; a venda só é registrada ao finalizar.</small></div></div>
     {!orders.length ? <Panel title="Pedidos"><p className="proto-empty">Nenhum pedido registrado ainda. Crie um pedido no balcão ou aguarde um pedido do WhatsApp.</p></Panel> : <div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => stageForStatus(order.status) === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => <article aria-label={`Pedido ${order.id}. Segure e arraste para mudar de etapa.`} className={`proto-ticket order-card${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div><Badge>{order.source === "whatsapp" ? "WhatsApp" : order.source}</Badge><h3>#{order.id.slice(0, 8)}</h3></div><p>{orderItemsLabel(order)}</p><strong>{formatOrderTotal(order)}</strong><small>{order.fulfillment === "delivery" ? `Entrega · ${order.deliveryAddress || "endereço pendente"}` : "Retirada na loja"}</small></article>)}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div>}
-    {finalizingOrder && <div className="order-finalize-backdrop" role="presentation"><section className="proto-panel order-finalize-modal" role="dialog" aria-modal="true" aria-labelledby="order-finalize-title"><h3 id="order-finalize-title">Finalizar pedido #{finalizingOrder.id.slice(0, 8)}</h3><p>{orderItemsLabel(finalizingOrder)}</p><strong>Total: {formatOrderTotal(finalizingOrder)}</strong><label>Forma de pagamento<select autoFocus required value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as SalePaymentMethod | "")}><option value="">Escolha…</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={!paymentMethod || finalizing} onClick={() => void finalizeOrder()}>{finalizing ? "Registrando venda…" : "Confirmar venda e fechar"}</button><button type="button" className="proto-subtle" disabled={finalizing} onClick={() => setFinalizingOrder(null)}>Cancelar</button></div></section></div>}
+    {finalizingOrder && <div className="order-finalize-backdrop" role="presentation"><section className="proto-panel order-finalize-modal" role="dialog" aria-modal="true" aria-labelledby="order-finalize-title"><h3 id="order-finalize-title">Finalizar pedido #{finalizingOrder.id.slice(0, 8)}</h3><p>{orderItemsLabel(finalizingOrder)}</p><strong>Total: {formatOrderTotal(finalizingOrder)}</strong><label>Forma de pagamento<select autoFocus required value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as SalePaymentMethod | "")}><option value="">Escolha…</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label>{paymentMethod === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerId} onChange={setCreditCustomerId} disabled={finalizing} loading={creditLoading} />}<div className="proto-toolbar"><button type="button" disabled={!paymentMethod || finalizing} onClick={() => void finalizeOrder()}>{finalizing ? "Registrando venda…" : "Confirmar venda e fechar"}</button><button type="button" className="proto-subtle" disabled={finalizing} onClick={() => setFinalizingOrder(null)}>Cancelar</button></div></section></div>}
   </div>;
 }
 function Inventory() {

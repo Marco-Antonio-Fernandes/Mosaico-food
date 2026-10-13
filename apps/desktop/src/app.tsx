@@ -89,7 +89,6 @@ export function App() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "Iniciando Food local" });
   const [whatsappStatus, setWhatsappStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "WhatsApp remoto iniciando" });
-  const [relayIssue, setRelayIssue] = useState("");
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const notificationCursorRef = useRef(new Date(Date.now() - 15_000).toISOString());
@@ -143,7 +142,6 @@ export function App() {
       const state: DesktopConnectionStatus["state"] = detail?.state === "online" ? "online" : detail?.state === "offline" ? "offline" : "unknown";
       const label = detail?.label || (state === "online" ? "WhatsApp remoto conectado" : "WhatsApp remoto aguardando status");
       setWhatsappStatus({ state, label });
-      setRelayIssue(state === "offline" ? detail?.message || label : "");
     };
     window.addEventListener("food-relay-status", onRelayStatus);
     return () => window.removeEventListener("food-relay-status", onRelayStatus);
@@ -200,7 +198,7 @@ export function App() {
 
   return <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={navigate} topAction={<div className="flex items-center gap-2"><ConnectionStatus status={whatsappStatus} /><button aria-pressed={overviewOpen} aria-label="Abrir visão geral" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${overviewOpen ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => overviewOpen ? setOverviewOpen(false) : openOverview()} type="button"><Gauge aria-hidden="true" size={19} /><span className="sr-only">Visão geral</span></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={19} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-slate-950">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></div>} connectionStatus={<ConnectionStatus status={connectionStatus} />}>
     <FoodRelayAgent />
-    {(connectionStatus.state === "offline" || whatsappStatus.state === "offline" || relayIssue) && <div className="mosaic-system-alert" role="alert">{connectionStatus.state === "offline" ? connectionStatus.label : relayIssue || whatsappStatus.label}. Avise o suporte técnico.</div>}
+    {connectionStatus.state === "offline" && <div className="mosaic-system-alert" role="alert">{connectionStatus.label}. Avise o suporte técnico.</div>}
     <FoodPrototype key={activeView} module={activeView} />
     {overviewOpen && <div className="mosaic-top-popover mosaic-overview-popover"><FoodOverviewPage onOpenNotifications={openNotifications} /></div>}
     {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}

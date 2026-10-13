@@ -11,6 +11,23 @@ const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = requi
 
 const isDevelopment = !app.isPackaged;
 const useBuiltRenderer = process.env.MOSAICO_USE_BUILT_RENDERER === "1";
+let mainWindow = null;
+
+// O backend local usa uma porta fixa. Sem o lock, abrir o aplicativo duas
+// vezes deixava a segunda janela sem backend e exibia um erro enganoso de
+// conexão, embora a primeira instância ainda estivesse funcionando.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 if (process.env.MOSAICO_ELECTRON_NO_SANDBOX === "1") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -35,6 +52,11 @@ function createWindow() {
       sandbox: process.env.MOSAICO_ELECTRON_NO_SANDBOX !== "1",
       preload: path.join(__dirname, "preload.cjs"),
     },
+  });
+  mainWindow = window;
+
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
   });
 
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, url) => {
@@ -80,7 +102,7 @@ function configureMediaPermissions() {
   });
 }
 
-app.whenReady().then(() => {
+if (hasSingleInstanceLock) app.whenReady().then(() => {
   configureMediaPermissions();
   ipcMain.handle("mosaico:backend-url", () => {
     const backendUrl = getBackendUrl();

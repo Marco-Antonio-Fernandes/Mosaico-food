@@ -180,16 +180,17 @@ function getApiBaseUrl() {
 }
 
 export type SalePaymentMethod = "pix" | "cash" | "card_credit" | "card_debit" | "meal_voucher" | "crediario";
-export type AssistantDraft = { id: string; action: "order" | "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: SalePaymentMethod | null };
+export const PRICE_ADJUSTMENT_REASONS = ["Menos fresco", "Amigo", "Produto com defeito", "Adicional", "Outro"] as const;
+export type AssistantDraft = { id: string; action: "order" | "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; baseUnitPriceCents?: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
 export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
 export function assistantPreview(text: string, productId?: string) {
-  return foodApi<{ draft?: AssistantDraft; drafts?: AssistantDraft[]; registration?: AssistantRegistrationDraft; registrationQuestion?: AssistantRegistrationQuestion; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
+  return foodApi<{ draft?: AssistantDraft; drafts?: AssistantDraft[]; registration?: AssistantRegistrationDraft; registrationQuestion?: AssistantRegistrationQuestion; message?: string; choices?: { id: string; name: string; stockQuantity?: number; unpreparedQuantity?: number }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
 }
-export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: SalePaymentMethod | null) {
-  return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ draftId, totalCents, paymentMethod }) });
+export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: SalePaymentMethod | null, creditCustomerId?: string, adjustmentNote?: string | null) {
+  return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ draftId, totalCents, paymentMethod, ...(creditCustomerId ? { creditCustomerId } : {}), ...(adjustmentNote ? { adjustmentNote } : {}) }) });
 }
-export function assistantConfirmBatch(drafts: { draftId: string; totalCents: number; paymentMethod: SalePaymentMethod | null }[], registrations: { draftId: string }[] = []) {
+export function assistantConfirmBatch(drafts: { draftId: string; totalCents: number; paymentMethod: SalePaymentMethod | null; creditCustomerId?: string; adjustmentNote?: string | null }[], registrations: { draftId: string }[] = []) {
   return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ ...(drafts.length ? { drafts } : {}), ...(registrations.length ? { registrations } : {}) }) });
 }
 export type FoodTranscriptionResult = {
@@ -227,7 +228,7 @@ export type CounterSaleItemInput = {
   isGift?: boolean;
 };
 
-export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod | null; items: CounterSaleItemInput[] }) {
+export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod | null; creditCustomerId?: string | null; items: CounterSaleItemInput[] }) {
   return foodApi<{ message: string }>("/api/v1/food/sales", { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -377,7 +378,10 @@ async function remoteFoodApi<T>(path: string, init: RequestInit = {}): Promise<T
     throw new Error(`Servidor remoto do WhatsApp indisponível em ${remoteApiBaseUrl}${detail}`);
   }
   const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(errorMessage(payload, "Não foi possível acessar a ponte do WhatsApp."));
+  if (!response.ok) {
+    const message = errorMessage(payload, "Não foi possível acessar a ponte do WhatsApp.");
+    throw new Error(`${message} (HTTP ${response.status} em ${remoteApiBaseUrl}${path})`);
+  }
   return asRecord(payload).data as T;
 }
 
@@ -437,7 +441,9 @@ export async function getFoodRelayAudio(messageId: string) {
     const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
     throw new Error(`Servidor remoto do WhatsApp indisponível em ${remoteApiBaseUrl}${detail}`);
   }
-  if (!response.ok) throw new Error("Não foi possível baixar o áudio do WhatsApp.");
+  if (!response.ok) {
+    throw new Error(`Não foi possível baixar o áudio do WhatsApp (HTTP ${response.status} em ${remoteApiBaseUrl}/api/v1/whatsapp/relay/messages/${encodeURIComponent(messageId)}/audio).`);
+  }
   return response.blob();
 }
 
@@ -489,6 +495,18 @@ export async function createFoodProduct(input: ProductInput) {
   const product = normalizeFoodProduct(data.product);
   if (!product) throw new Error("O backend devolveu um produto inválido.");
   return product;
+}
+
+export async function createFoodProducts(inputs: ProductInput[]) {
+  const data = await foodApi<{ products: FoodProduct[] }>("/api/v1/food/products/batch", {
+    method: "POST",
+    body: JSON.stringify({ products: inputs }),
+  });
+  const products = (Array.isArray(data.products) ? data.products : [])
+    .map(normalizeFoodProduct)
+    .filter((product): product is FoodProduct => Boolean(product));
+  if (products.length !== inputs.length) throw new Error("O backend devolveu produtos inválidos.");
+  return products;
 }
 
 export async function updateFoodProduct(id: string, input: Partial<ProductInput>) {
@@ -627,15 +645,23 @@ export async function updateFoodOrderStatus(id: string, status: string) {
   return data;
 }
 
-export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod) {
+export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod, creditCustomerId?: string | null) {
   const data = await foodApi<{ order: FoodOrder; notification?: { sent: boolean; skipped: boolean } }>(`/api/v1/food/orders/${encodeURIComponent(id)}/finalize`, {
     method: "POST",
-    body: JSON.stringify({ paymentMethod }),
+    body: JSON.stringify({ paymentMethod, ...(creditCustomerId ? { creditCustomerId } : {}) }),
   });
   return data;
 }
 
-export type CreditCustomerRecord = { id: string; name: string; phone: string | null; creditAccount: { id: string; balanceCents: number; creditLimitCents: number | null } | null };
+export type CreditCustomerRecord = {
+  id: string;
+  name: string;
+  phone: string | null;
+  creditAccount: { id: string; balanceCents: number; creditLimitCents: number | null } | null;
+  creditStatus?: "on_time" | "late";
+  lateDays?: number;
+  lastPaymentAt?: string | null;
+};
 export type CreditEntryRecord = { id: string; creditAccountId: string; type: string; amountCents: number; note: string | null; occurredAt: string; operationId: string; creditAccount?: { customer?: { id: string; name: string } } };
 export async function getCreditLedger() {
   const data = await foodApi<{ customers?: CreditCustomerRecord[]; entries?: CreditEntryRecord[] }>("/api/v1/credit-entries");

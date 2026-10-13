@@ -53,23 +53,17 @@ export function FoodRelayAgent() {
             await acknowledgeFoodRelayMessage(relayMessage.id);
           } catch (error) {
             console.error("[Mosaico Food] Falha ao processar mensagem da ponte", error);
-            window.dispatchEvent(new CustomEvent("food-relay-status", {
-              detail: {
-                state: "offline",
-                label: "Falha no processamento do WhatsApp remoto",
-                message: error instanceof Error ? error.message : "Não foi possível processar a mensagem do WhatsApp.",
-              },
-            }));
-            // Deixe a mensagem pendente para tentar novamente no próximo ciclo.
+            // Uma mídia indisponível não significa que a sessão do WhatsApp caiu.
+            // Deixe a mensagem pendente para tentar novamente no próximo ciclo e
+            // continue processando as próximas mensagens da fila.
           }
         }
       } catch (error) {
         console.error("[Mosaico Food] Ponte do WhatsApp indisponível", error);
         window.dispatchEvent(new CustomEvent("food-relay-status", {
           detail: {
-            state: "offline",
-            label: "WhatsApp remoto indisponível",
-            message: error instanceof Error ? error.message : "Não foi possível acessar o servidor remoto do WhatsApp.",
+            state: "unknown",
+            label: "Reconectando WhatsApp remoto…",
           },
         }));
       } finally {

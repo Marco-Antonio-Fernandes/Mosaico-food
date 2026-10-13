@@ -50,6 +50,7 @@ export function CreditPage() {
   const selectedBalance = selectedCustomer?.creditAccount?.balanceCents ?? 0;
   const amountCents = parseAmount(amount);
   const overBalance = amountCents > selectedBalance;
+  const selectedIsLate = selectedCustomer?.creditStatus === "late";
 
   const chooseCustomer = (customer: CreditCustomerRecord) => {
     setSelected(customer.id);
@@ -109,7 +110,7 @@ export function CreditPage() {
       <section className="credit-card credit-receipt-panel" aria-labelledby="credit-receipt-title">
         <header className="credit-card-header"><div><h2 id="credit-receipt-title">Registrar recebimento</h2><p>Registre um pagamento parcial ou quite o saldo.</p></div><span className="credit-receipt-icon"><ArrowDownLeft size={19} aria-hidden="true" /></span></header>
         {selectedCustomer ? <>
-          <div className="credit-selected-customer"><span className="credit-avatar">{selectedCustomer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span><div><small>Cliente selecionado</small><strong>{selectedCustomer.name}</strong></div><div className="credit-selected-balance"><small>Saldo atual</small><strong>{money(selectedBalance)}</strong></div></div>
+          <div className={`credit-selected-customer${selectedIsLate ? " is-late" : ""}`}><span className="credit-avatar">{selectedCustomer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span><div><small>Cliente selecionado</small><strong>{selectedCustomer.name}</strong><span className="credit-risk-label">{selectedIsLate ? `Não paga em dia${selectedCustomer.lateDays ? ` · até ${selectedCustomer.lateDays} dias` : ""}` : "Em dia"}</span></div><div className="credit-selected-balance"><small>Saldo atual</small><strong>{money(selectedBalance)}</strong></div></div>
           <label className="credit-field">Valor recebido <span className="credit-currency"><span>R$</span><input inputMode="decimal" autoComplete="off" value={amount} onChange={event => { setAmount(event.target.value); setError(""); setNotice(""); }} placeholder="0,00" aria-describedby="credit-amount-hint" /></span></label>
           <div className="credit-amount-hints" id="credit-amount-hint"><span>Saldo: {money(selectedBalance)}</span><button type="button" onClick={() => setAmount((selectedBalance / 100).toFixed(2).replace(".", ","))}>Quitar saldo</button></div>
           {amountCents > 0 && <p className={`credit-after-payment${overBalance ? " is-invalid" : ""}`}>Saldo após recebimento <strong>{money(Math.max(0, selectedBalance - amountCents))}</strong></p>}
