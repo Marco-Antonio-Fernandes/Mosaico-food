@@ -122,16 +122,17 @@ function getApiBaseUrl() {
   return apiBaseUrlPromise;
 }
 
-export type AssistantDraft = { id: string; action: "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: "pix" | "cash" | "card" | null };
+export type SalePaymentMethod = "pix" | "cash" | "card" | "crediario";
+export type AssistantDraft = { id: string; action: "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
 export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
 export function assistantPreview(text: string, productId?: string) {
   return foodApi<{ draft?: AssistantDraft; drafts?: AssistantDraft[]; registration?: AssistantRegistrationDraft; registrationQuestion?: AssistantRegistrationQuestion; stockQuestion?: boolean; message?: string; choices?: { id: string; name: string }[] }>("/api/v1/food/assistant/preview", { method: "POST", body: JSON.stringify({ text, productId }) });
 }
-export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: "pix" | "cash" | "card" | null) {
+export function assistantConfirm(draftId: string, totalCents: number, paymentMethod: SalePaymentMethod | null) {
   return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ draftId, totalCents, paymentMethod }) });
 }
-export function assistantConfirmBatch(drafts: { draftId: string; totalCents: number; paymentMethod: "pix" | "cash" | "card" | null }[], registrations: { draftId: string }[] = []) {
+export function assistantConfirmBatch(drafts: { draftId: string; totalCents: number; paymentMethod: SalePaymentMethod | null }[], registrations: { draftId: string }[] = []) {
   return foodApi<{ message: string }>("/api/v1/food/assistant/confirm", { method: "POST", body: JSON.stringify({ ...(drafts.length ? { drafts } : {}), ...(registrations.length ? { registrations } : {}) }) });
 }
 export type FoodTranscriptionResult = {
@@ -159,7 +160,7 @@ export function interpretFoodText(text: string, products: FoodProduct[]): Promis
     .catch(() => ({ available: true, text: null, understood: false }));
 }
 
-export function registerCounterSale(input: { operationId: string; paymentMethod: "pix" | "cash" | "card" | null; items: { productId: string; quantity: number; unitPriceCents: number }[] }) {
+export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod | null; items: { productId: string; quantity: number; unitPriceCents: number }[] }) {
   return foodApi<{ message: string }>("/api/v1/food/sales", { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -338,4 +339,17 @@ export async function updateFoodOrderStatus(id: string, status: string) {
     body: JSON.stringify({ status }),
   });
   return data;
+}
+
+export type CreditCustomerRecord = { id: string; name: string; phone: string | null; creditAccount: { id: string; balanceCents: number; creditLimitCents: number | null } | null };
+export type CreditEntryRecord = { id: string; creditAccountId: string; type: string; amountCents: number; note: string | null; occurredAt: string; operationId: string; creditAccount?: { customer?: { id: string; name: string } } };
+export async function getCreditLedger() {
+  const data = await foodApi<{ customers?: CreditCustomerRecord[]; entries?: CreditEntryRecord[] }>("/api/v1/credit-entries");
+  return {
+    customers: Array.isArray(data.customers) ? data.customers : [],
+    entries: Array.isArray(data.entries) ? data.entries : [],
+  };
+}
+export async function receiveCreditPayment(customerId: string, amountCents: number) {
+  return foodApi("/api/v1/credit-entries", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ customerId, type: "payment", amountCents, note: "Recebimento de crediário" }) });
 }

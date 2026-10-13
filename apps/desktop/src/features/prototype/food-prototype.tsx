@@ -5,12 +5,14 @@ import { FoodAutomationPanel } from "@/features/automation/food-automation-panel
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
-import { createFoodProduct, registerCounterSale, getFoodOrders, getFoodProducts, updateFoodOrderStatus, updateFoodProduct, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput } from "@/lib/food-api";
+import { CreditPage } from "@/features/credit/credit-page";
+import { createFoodProduct, registerCounterSale, getFoodOrders, getFoodProducts, updateFoodOrderStatus, updateFoodProduct, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
 
 export const foodModules = {
   pos: ["PDV", "Monte a venda, confira os itens e escolha o pagamento."],
   orders: ["Pedidos", "Do recebimento à entrega, acompanhe cada etapa da operação."],
   service: ["Atendimento", "Conversas, carrinho e acompanhamento do WhatsApp."],
+  credit: ["Crediário", "Consulte saldos e registre recebimentos."],
   products: ["Produtos", "Um catálogo para o balcão, o atendimento e os pedidos."],
   inventory: ["Estoque e ingredientes", "Entradas, perdas, receitas e disponibilidade."],
   customers: ["Clientes", "Cadastre os contatos e os dados de entrega dos seus clientes."],
@@ -35,6 +37,7 @@ export function FoodPrototype({ module, notifications, onReadNotifications }: { 
     {module === "products" && <Catalog />}
     {module === "orders" && <Orders />}
     {module === "service" && <FoodServicePanel />}
+    {module === "credit" && <CreditPage />}
     {module === "inventory" && <Catalog />}
     {module === "customers" && <CustomersPage />}
     {module === "finance" && <Finance />}
@@ -57,7 +60,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   const [editingProduct, setEditingProduct] = useState<FoodProduct | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [selling, setSelling] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"pix" | "cash" | "card" | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod | null>(null);
   const [saleOperationId, setSaleOperationId] = useState(() => crypto.randomUUID());
   useEffect(() => { setSaleOperationId(crypto.randomUUID()); }, [cart, paymentMethod]);
 
@@ -115,7 +118,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     {!pos && showForm && <ProductForm key={editingProduct?.id ?? "new"} products={products} initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
     {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{filtered.map((product) => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div><small>{product.category}{!product.active ? " · inativo" : ""}</small><h3>{product.name}</h3>{product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}<Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.preparationCapacity > 0 && (product.fryToOrder || product.allowOnDemand) ? "Pode preparar" : "Indisponível"}</Badge>{product.stockQuantity === 0 && product.preparationCapacity > 0 && product.fryToOrder && <small>Sem unidades prontas · disponível para fritar na hora</small>}{product.variants.length > 0 && <small>Opções: {product.variants.map((variant) => variant.name).join(", ")}</small>}{product.fryToOrder && <small>Permite fritar/preparar na hora</small>}<small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small><button type="button" disabled={selling || (pos && product.salePriceCents <= 0)} onClick={() => { if (pos) setCart({ ...cart, [product.id]: (cart[product.id] ?? 0) + 1 }); else { setEditingProduct(product); setShowForm(true); } }}>{pos ? product.salePriceCents <= 0 ? "Definir preço para vender" : product.stockQuantity === 0 && product.fryToOrder ? "Adicionar para fritar" : "Adicionar à venda" : "Editar cadastro"}</button>{!pos && <ProductStock key={`${product.id}-${product.productionMode}`} product={product} onSaved={loadProducts} />}</article>)}</div>
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo."}</p>}
-      {pos && <Panel title="Venda de balcão" subtitle="Confirme os itens e registre a venda"><label>Cliente<select><option>Consumidor final</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map((product) => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" disabled={selling} aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" disabled={selling} aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.salePriceCents * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento recebido<select disabled={selling} value={paymentMethod ?? ""} onChange={event => setPaymentMethod(event.target.value ? event.target.value as "pix" | "cash" | "card" : null)}><option value="">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card">Cartão</option></select></label><div className="proto-toolbar"><button type="button" disabled={selling || !selected.length} onClick={() => void finalizeSale()}>{selling ? "Registrando…" : "Confirmar venda"}</button></div></Panel>}
+      {pos && <Panel title="Venda de balcão" subtitle="Confirme os itens e registre a venda"><label>Cliente<select><option>Consumidor final</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map((product) => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" disabled={selling} aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" disabled={selling} aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.salePriceCents * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento recebido<select disabled={selling} value={paymentMethod ?? ""} onChange={event => setPaymentMethod(event.target.value ? event.target.value as SalePaymentMethod : null)}><option value="">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card">Cartão</option><option value="crediario">Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={selling || !selected.length} onClick={() => void finalizeSale()}>{selling ? "Registrando…" : "Confirmar venda"}</button></div></Panel>}
     </div>}
     {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
     {notice && <p role="status">{notice}</p>}
