@@ -1,12 +1,12 @@
-import { useEffect, useState, type DragEvent, type FormEvent } from "react";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { CalendarClock, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Badge, Editor, Metrics, OfflinePreview, Panel, Preferences, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
 import { CreditPage } from "@/features/credit/credit-page";
 import { FoodBackupPanel } from "@/features/system/food-backup-panel";
-import { closeFoodCash, createFoodProducts, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrders, getFoodProducts, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderStatus, updateFoodProduct, type CreditCustomerRecord, type FoodCashSnapshot, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
+import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, createFoodProducts, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, updateFoodProduct, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
 
 export const foodModules = {
@@ -15,7 +15,7 @@ export const foodModules = {
   service: ["Atendimento", "Conversas, carrinho e acompanhamento do WhatsApp."],
   credit: ["Crediário", "Consulte saldos e registre recebimentos."],
   products: ["Produtos", "Um catálogo para o balcão, o atendimento e os pedidos."],
-  inventory: ["Estoque e ingredientes", "Entradas, perdas, receitas e disponibilidade."],
+  inventory: ["Estoque", "Acompanhe unidades congeladas, prontas e preparadas."],
   customers: ["Clientes", "Cadastre os contatos e os dados de entrega dos seus clientes."],
   finance: ["Caixa e financeiro", "Abertura, recebimentos, despesas e fechamento."],
   fiscal: ["Fiscal", "Documentos, revisão de rejeições e histórico por venda."],
@@ -24,6 +24,15 @@ export const foodModules = {
 } as const;
 export type FoodModule = keyof typeof foodModules;
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const scheduleWeekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const scheduleDaysFromJson = (value: string) => {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(day => Number.isInteger(day) && day >= 0 && day <= 6) as number[] : [];
+  } catch {
+    return [];
+  }
+};
 const productIcon = (category: string) => ({ Lanches: "🍔", Porções: "🍟", Bebidas: "🥤", Combos: "🍽️", Sobremesas: "🍰" }[category] ?? "🍴");
 const normalizeCatalogLabel = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
 const splitCatalogValues = (value: string) => [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))];
@@ -102,7 +111,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
 
   const categories = ["Todos", ...new Set(products.map((product) => product.productName).filter(Boolean))];
   const selected = products.filter((product) => (cart[product.id]?.quantity ?? 0) > 0);
-  const filtered = products.filter((product) => (!pos || (product.active && product.productionMode !== "ingredient" && (product.stockQuantity > 0 || product.unpreparedQuantity > 0 || (product.productionMode === "recipe" && product.allowOnDemand && product.saleCapacity > 0)))) && (category === "Todos" || category === product.productName) && `${product.name} ${product.productName} ${product.flavor ?? ""} ${product.familyName} ${product.aliases.join(" ")} ${product.variants.map((variant) => `${variant.name} ${variant.aliases.join(" ")}`).join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
+  const filtered = products.filter((product) => (!pos || (product.active && product.productionMode !== "ingredient" && (product.stockQuantity > 0 || product.unpreparedQuantity > 0 || product.productionMode === "made_here"))) && (category === "Todos" || category === product.productName) && `${product.name} ${product.productName} ${product.flavor ?? ""} ${product.familyName} ${product.aliases.join(" ")} ${product.variants.map((variant) => `${variant.name} ${variant.aliases.join(" ")}`).join(" ")}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")));
   const familyGroups = filtered.reduce<Record<string, FoodProduct[]>>((groups, product) => {
     if (product.productName) groups[product.productName] = [...(groups[product.productName] ?? []), product];
     return groups;
@@ -117,6 +126,8 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     }
     setSelling(true);
     try {
+      const cash = await getFoodCashToday();
+      if (!cash.session || cash.session.status !== "open") throw new Error("Abra o caixa antes de registrar uma venda.");
       const result = await registerCounterSale({ operationId: saleOperationId, paymentMethod, creditCustomerId: paymentMethod === "crediario" ? creditCustomerId : null, items: selected.map(product => {
         const line = cart[product.id];
         const selectedQuantity = product.customization ? line.selectedQuantity : undefined;
@@ -155,12 +166,27 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     }
   };
 
+  const removeProduct = async (product: FoodProduct) => {
+    if (!window.confirm(`Apagar “${product.name}” do catálogo? O histórico de vendas e pedidos será preservado.`)) return;
+    setSaving(true);
+    try {
+      await deleteFoodProduct(product.id);
+      setProducts(current => current.filter(item => item.id !== product.id));
+      setNotice("Produto apagado do catálogo. O histórico foi preservado.");
+      setError("");
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Não foi possível apagar o produto.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return <div className="proto-stack">
     <Tabs items={categories} value={category} onChange={setCategory} />
     <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label>{!pos && <button type="button" onClick={() => { setEditingProduct(null); setShowForm((current) => !current); }}>Cadastrar produto</button>}</div>
     {!pos && search.trim() && familyEntries.some((group) => group.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{familyEntries.filter(group => group.length > 1).map(group => <span key={group[0].productName}><b>{group[0].productName}</b>: {group.map(product => product.flavor || "sem sabor").join(", ")}</span>)}</div>}
     {!pos && showForm && <ProductForm key={editingProduct?.id ?? "new"} products={products} initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
-    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{pos ? familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />) : filtered.map(product => <ProductTile key={product.id} product={product} onEdit={() => { setEditingProduct(product); setShowForm(true); }} onStockSaved={loadProducts} />)}</div>
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{pos ? familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />) : filtered.map(product => <ProductTile key={product.id} product={product} busy={saving} onEdit={() => { setEditingProduct(product); setShowForm(true); }} onDelete={() => void removeProduct(product)} onStockSaved={loadProducts} />)}</div>
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo."}</p>}
       {pos && <Panel title="Venda de balcão" subtitle="Ajuste adicionais, remoções ou brinde por item antes de confirmar.">
         <div className="proto-stack" style={{ marginTop: 16 }}>
@@ -245,22 +271,20 @@ function lineUnitPrice(product: FoodProduct, line: CartLine) {
   return Math.max(0, product.salePriceCents + additionalQuantity * (customization?.additionalUnitPriceCents ?? 0) + line.adjustmentCents);
 }
 
-function ProductTile({ product, onEdit, onStockSaved }: { product: FoodProduct; onEdit: () => void; onStockSaved: () => Promise<void> }) {
+function ProductTile({ product, busy, onEdit, onDelete, onStockSaved }: { product: FoodProduct; busy: boolean; onEdit: () => void; onDelete: () => void; onStockSaved: () => Promise<void> }) {
   return <article className="proto-product">
     <div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div>
     <small>Produto · {product.productName}{!product.active ? " · inativo" : ""}</small>
     <h3>{product.productName}</h3>
     {product.flavor && <span className="food-family-label">Sabor: {product.flavor}</span>}
     {product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}
-    <Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.productionMode === "recipe" && product.saleCapacity > 0 && product.allowOnDemand ? `${product.saleCapacity} calculadas pelos insumos` : product.preparationCapacity > 0 && product.allowOnDemand ? "Pode preparar" : "Indisponível"}</Badge>
+    {product.costPriceCents > 0 && <small>Custo: {money(product.costPriceCents)} · margem: {money(Math.max(0, product.salePriceCents - product.costPriceCents))}</small>}
+    <Badge>{!product.active ? "Inativo" : product.productionMode === "made_here" ? `${product.stockQuantity} prontos · preparo livre` : product.stockQuantity > 0 ? `${product.stockQuantity} prontos` : product.unpreparedQuantity > 0 ? `${product.unpreparedQuantity} congelados` : "Indisponível"}</Badge>
     {product.customization && <small>{product.customization.label}: base de {product.customization.baseQuantity} {product.customization.unit}</small>}
-    {product.stockQuantity === 0 && product.productionMode === "recipe" && product.saleCapacity > 0 && product.allowOnDemand && <small>Venda direta pelos insumos · a baixa será confirmada em Notificações</small>}
-    {product.stockQuantity === 0 && product.preparationCapacity > 0 && product.allowOnDemand && <small>Sem unidades prontas · disponível para preparar</small>}
-    {product.ingredientDependencies.some(dependency => !dependency.available) && <small className="food-stock-warning">Faltam insumos: {product.ingredientDependencies.filter(dependency => !dependency.available).map(dependency => dependency.name).join(", ")}</small>}
+    {product.productionMode === "frozen" || product.productionMode === "resale" ? <small>{product.stockQuantity} prontos · {product.unpreparedQuantity} congelados</small> : product.productionMode === "ready" ? <small>Comprado pronto · sem etapa de preparo</small> : <small>Feito aqui · pode preparar na hora ou deixar pronto</small>}
     {product.variants.length > 0 && <small>Opções antigas: {product.variants.map(variant => variant.name).join(", ")}</small>}
-    {product.allowOnDemand && <small>Aceita preparo sob demanda</small>}
     <small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small>
-    <button type="button" onClick={onEdit}>Editar cadastro</button>
+    <div className="food-product-actions"><button type="button" disabled={busy} onClick={onEdit}><Pencil size={15} />Editar</button><button type="button" className="food-delete-icon" disabled={busy} title="Apagar produto" aria-label={`Apagar ${product.name}`} onClick={onDelete}><Trash2 size={16} /></button></div>
     <ProductStock product={product} onSaved={onStockSaved} />
   </article>;
 }
@@ -273,42 +297,41 @@ function ProductFamilyTile({ products, selling, onAdd }: { products: FoodProduct
     <div className="proto-product-art" aria-hidden="true">{productIcon(family.category)}</div>
     <small>Produto</small>
     <h3>{family.productName}</h3>
-    <strong>{readyTotal} prontos · {unpreparedTotal} não preparados</strong>
+    <strong>{readyTotal} prontos · {unpreparedTotal} congelados</strong>
     <small>Escolha o sabor para adicionar ao pedido.</small>
     <div className="food-flavor-options">
       {products.map(product => <div className="food-flavor-option" key={product.id}>
-        <div><strong>{product.flavor || "Sem sabor"}</strong><small>{product.stockQuantity} prontos · {product.unpreparedQuantity} não preparados{product.preparationCapacity > product.unpreparedQuantity ? ` · pode preparar ${product.preparationCapacity}` : ""}</small></div>
-        <div className="food-flavor-option-action"><span>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Sem preço"}</span><button type="button" disabled={selling || product.salePriceCents <= 0 || (product.stockQuantity <= 0 && !(product.productionMode === "recipe" && product.allowOnDemand && product.saleCapacity > 0))} onClick={() => onAdd(product)}>{product.salePriceCents <= 0 ? "Definir preço" : product.stockQuantity <= 0 && product.productionMode !== "recipe" ? "Preparar antes" : "Adicionar"}</button></div>
+        <div><strong>{product.flavor || "Sem sabor"}</strong><small>{product.productionMode === "made_here" ? `${product.stockQuantity} prontos · preparo livre` : `${product.stockQuantity} prontos · ${product.unpreparedQuantity} congelados`}</small></div>
+        <div className="food-flavor-option-action"><span>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Sem preço"}</span><button type="button" disabled={selling || product.salePriceCents <= 0 || (product.stockQuantity <= 0 && product.productionMode !== "made_here" && product.unpreparedQuantity <= 0)} onClick={() => onAdd(product)}>{product.salePriceCents <= 0 ? "Definir preço" : product.stockQuantity <= 0 && product.productionMode !== "made_here" ? "Preparar antes" : "Adicionar"}</button></div>
       </div>)}
     </div>
   </article>;
 }
 
 function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductFormProps) {
-  const [productionMode, setProductionMode] = useState<FoodProduct["productionMode"]>(initial?.productionMode ?? "resale");
-  const [recipe, setRecipe] = useState<FoodProduct["recipe"]>(initial?.recipe.map(row => ({ ...row })) ?? []);
-  const ingredients = products.filter(product => product.productionMode === "ingredient" && product.active);
+  const initialMode = initial?.productionMode === "resale" ? "frozen" : initial?.productionMode === "recipe" ? "made_here" : initial?.productionMode === "ingredient" ? "ready" : initial?.productionMode ?? "frozen";
+  const [productionMode, setProductionMode] = useState<"frozen" | "ready" | "made_here">(initialMode as "frozen" | "ready" | "made_here");
   const [productName, setProductName] = useState(initial?.productName || initial?.familyName || initial?.name || "");
-  const [flavors, setFlavors] = useState(initial?.flavor ?? "");
+  const [flavorFields, setFlavorFields] = useState<string[]>([initial?.flavor ?? ""]);
   const [price, setPrice] = useState(initial ? String(initial.salePriceCents / 100).replace(".", ",") : "");
+  const [costPrice, setCostPrice] = useState(initial ? String(initial.costPriceCents / 100).replace(".", ",") : "");
   const [initialStockByFlavor, setInitialStockByFlavor] = useState<Record<string, string>>(() => ({
-    [stockFlavorKey(initial?.flavor ?? "")]: String(initial?.productionMode === "resale" ? initial?.unpreparedQuantity ?? 0 : initial?.stockQuantity ?? 0),
+    [stockFlavorKey(initial?.flavor ?? "")]: String(initial?.unpreparedQuantity ?? 0),
+  }));
+  const [initialReadyByFlavor, setInitialReadyByFlavor] = useState<Record<string, string>>(() => ({
+    [stockFlavorKey(initial?.flavor ?? "")]: String(initial?.stockQuantity ?? 0),
   }));
   const [aliases, setAliases] = useState(initial?.aliases.join(", ") ?? "");
   const [variants, setVariants] = useState<FoodProductVariant[]>(initial?.variants.map((variant) => ({ ...variant })) ?? []);
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>(() => Object.fromEntries((initial?.variants ?? []).map((variant) => [variant.id, (variant.priceDeltaCents / 100).toFixed(2).replace(".", ",")] )));
-  const [allowOnDemand, setAllowOnDemand] = useState(initial?.allowOnDemand ?? initial?.productionMode === "recipe");
   const [active, setActive] = useState(initial?.active ?? true);
   const [formError, setFormError] = useState("");
   const normalizedProductName = normalizeCatalogLabel(productName);
-  const flavorNames = splitCatalogValues(flavors);
+  const flavorNames = [...new Set(flavorFields.flatMap(splitCatalogValues))];
   const flavorRows = flavorNames.length ? flavorNames : [""];
   const productNameOptions = [...new Set(products.filter(product => product.productionMode !== "ingredient").map(product => product.productName).filter(Boolean))];
   const productSuggestions = productName.trim()
     ? productNameOptions.filter(option => normalizeCatalogLabel(option).includes(normalizedProductName) && normalizeCatalogLabel(option) !== normalizedProductName).slice(0, 6)
-    : [];
-  const flavorSuggestions = normalizedProductName
-    ? [...new Set(products.filter(product => product.productionMode !== "ingredient" && normalizeCatalogLabel(product.productName) === normalizedProductName && product.flavor).map(product => product.flavor as string))]
     : [];
   const relatedFlavors = products.filter(product => product.id !== initial?.id && product.productionMode !== "ingredient" && normalizeCatalogLabel(product.productName) === normalizedProductName && product.flavor);
 
@@ -319,8 +342,9 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
       setFormError("Informe o produto e um preço válido se quiser cadastrá-lo agora.");
       return;
     }
-    if (productionMode === "recipe" && (recipe.some(row => !row.ingredientId || !Number.isInteger(row.quantity) || row.quantity <= 0) || new Set(recipe.map(row => row.ingredientId)).size !== recipe.length)) {
-      setFormError("Corrija os insumos e informe o rendimento de cada um.");
+    const costPriceCents = costPrice.trim() ? Math.round(Number(costPrice.replace(",", ".")) * 100) : 0;
+    if (!Number.isFinite(costPriceCents) || costPriceCents < 0) {
+      setFormError("Informe um custo válido ou deixe o campo em branco.");
       return;
     }
     const aliasesList = aliases.split(",").map((item) => item.trim()).filter(Boolean);
@@ -331,25 +355,28 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
         aliases: variant.aliases.map((alias) => alias.trim()).filter(Boolean),
       }))
       .filter((variant) => variant.name);
-    const rows = initial ? [initial.flavor ?? ""] : productionMode === "ingredient" ? [""] : flavorRows;
+    const modeForSave = initial ? initial.productionMode : productionMode;
+    const rows = initial ? [initial.flavor ?? ""] : flavorRows;
     const inputs = rows.map((rowFlavor) => {
       const initialQuantity = Number(initialStockByFlavor[stockFlavorKey(rowFlavor)] ?? 0);
+      const initialReady = Number(initialReadyByFlavor[stockFlavorKey(rowFlavor)] ?? 0);
       return {
-        productionMode,
+        productionMode: modeForSave,
         stockUnit: "un" as const,
         unitWeightGrams: null,
         unitVolumeMl: null,
-        unpreparedQuantity: initial ? initial.unpreparedQuantity : productionMode === "resale" ? initialQuantity : 0,
-        recipe: productionMode === "recipe" ? recipe : [],
+        unpreparedQuantity: initial ? initial.unpreparedQuantity : modeForSave === "frozen" ? initialQuantity : 0,
+        recipe: [],
         name: [productName.trim(), rowFlavor].filter(Boolean).join(" · "),
         productName: productName.trim(),
         flavor: rowFlavor || null,
         category: "Geral",
         aliases: aliasesList,
         variants: cleanedVariants,
+        costPriceCents,
         salePriceCents,
-        stockQuantity: initial ? initial.stockQuantity : productionMode === "ingredient" ? initialQuantity : 0,
-        allowOnDemand: productionMode !== "ingredient" && allowOnDemand,
+        stockQuantity: initial ? initial.stockQuantity : initialReady,
+        allowOnDemand: modeForSave === "made_here",
         fryToOrder: false,
         active,
         customization: initial?.customization ?? null,
@@ -365,38 +392,25 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
   const updateVariant = (id: string, changes: Partial<FoodProductVariant>) => {
     setVariants((current) => current.map((variant) => variant.id === id ? { ...variant, ...changes } : variant));
   };
-  const selectProductionMode = (mode: FoodProduct["productionMode"]) => {
+  const selectProductionMode = (mode: "frozen" | "ready" | "made_here") => {
     setProductionMode(mode);
   };
 
   return <form className="proto-form" onSubmit={submit}>
     <h3>{initial ? "Editar produto" : "Cadastrar produto"}</h3>
-    <fieldset className="product-mode-field" disabled={Boolean(initial)}><legend>O que é este item?</legend><div className="product-mode-grid"><button type="button" className={productionMode === "ingredient" ? "is-selected" : ""} onClick={() => selectProductionMode("ingredient")}><strong>Insumo</strong><small>Uso para fazer outros produtos. Ex.: farinha, presunto ou óleo.</small></button><button type="button" className={productionMode === "resale" ? "is-selected" : ""} onClick={() => selectProductionMode("resale")}><strong>Produto comprado</strong><small>Recebo cru ou congelado e adiciono ao estoque para preparar.</small></button><button type="button" className={productionMode === "recipe" ? "is-selected" : ""} onClick={() => selectProductionMode("recipe")}><strong>Produto feito aqui</strong><small>Uso insumos, preparo e depois adiciono as unidades prontas.</small></button></div></fieldset>
-    {productionMode === "ingredient" && <section className="proto-variants-field ingredient-measurement-field"><strong>Controle por unidade</strong><small>Cadastre como você conta no dia a dia: 1 pacote, 1 peça, 1 garrafa, 1 bandeja etc. Não precisa pesar nem informar ml ou mg.</small></section>}
+    <fieldset className="product-mode-field" disabled={Boolean(initial)}><legend>Como este produto chega?</legend><small className="product-mode-help">Escolha um dos três tipos de produto. Não há cadastro de insumos nem dependências.</small><div className="product-mode-grid"><button type="button" className={productionMode === "frozen" ? "is-selected" : ""} onClick={() => selectProductionMode("frozen")}><strong>Congelado</strong><small>Tem unidades congeladas para preparar e unidades já prontas.</small></button><button type="button" className={productionMode === "ready" ? "is-selected" : ""} onClick={() => selectProductionMode("ready")}><strong>Já pronto</strong><small>Você compra pronto. Ele entra direto como unidade pronta, sem preparo.</small></button><button type="button" className={productionMode === "made_here" ? "is-selected" : ""} onClick={() => selectProductionMode("made_here")}><strong>Faço aqui</strong><small>O preparo é ilimitado: pode fazer na hora ou deixar unidades prontas.</small></button></div></fieldset>
     <div className="food-product-basic-fields">
-      <label>Produto-base<input required list="food-product-names" value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Ex.: Esfirra ou Pão com mortadela" /><small>Digite algumas letras para reaproveitar um produto já cadastrado. Ex.: “enfi” encontra “Esfirra”.</small></label>
-      <datalist id="food-product-names">{productNameOptions.map(option => <option key={option} value={option} />)}</datalist>
-      <label>{initial ? "Sabor" : "Sabores (separados por vírgula)"}<input list="food-product-flavors" value={flavors} disabled={Boolean(initial)} onChange={(event) => setFlavors(event.target.value)} placeholder="Ex.: Carne, Presunto, Queijo" /><small>{initial ? "Cada sabor tem estoque próprio. Para adicionar outro sabor, cadastre-o no mesmo produto-base." : "Cadastre todos os sabores de uma vez. Cada sabor será um produto separado, com estoque próprio."}</small></label>
-      <datalist id="food-product-flavors">{flavorSuggestions.map(option => <option key={option} value={option} />)}</datalist>
-      <label>Preço de venda (R$) — opcional<input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Deixe em branco para informar depois" /><small>Você pode preencher depois. Se vender sem preço cadastrado, o assistente perguntará o total.</small></label>
+      <label>Produto-base<input type="text" autoComplete="off" required value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Ex.: Esfirra ou Pão com mortadela" /><small>Digite livremente o nome. Se já existir, sugestões aparecerão abaixo para reaproveitar o cadastro.</small></label>
+      <div className="food-product-flavor-fields"><span className="food-assistant-field-label">{initial ? "Sabor" : "Sabores"} {!initial && <small>(um por campo)</small>}</span>{flavorFields.map((flavor, index) => <div className="food-product-flavor-row" key={index}><input type="text" autoComplete="off" value={flavor} onChange={(event) => setFlavorFields(current => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={index === 0 ? "Ex.: Carne" : "Outro sabor"} />{!initial && flavorFields.length > 1 && <button type="button" className="proto-subtle food-assistant-remove-flavor" aria-label={`Remover sabor ${index + 1}`} onClick={() => setFlavorFields(current => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>}</div>)}{!initial && <button type="button" className="proto-subtle food-assistant-add-flavor" onClick={() => setFlavorFields(current => [...current, ""])}><Plus size={15} />Adicionar sabor</button>}<small>{initial ? "Você pode alterar este sabor. Para adicionar outro sabor, cadastre-o no mesmo produto-base." : "Cada campo cria um produto separado, com estoque próprio por sabor."}</small></div>
+      <label>Custo para você (R$)<input inputMode="decimal" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder="Ex.: 2,50" /><small>Quanto este produto sai para você.</small></label>
+      <label>Preço de venda (R$)<input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Ex.: 5,00" /><small>Quanto será cobrado do cliente.</small></label>
       {productSuggestions.length > 0 && <div className="food-product-suggestions" role="listbox" aria-label="Produtos encontrados">{productSuggestions.map(option => <button type="button" key={option} onClick={() => setProductName(option)}>{option}</button>)}</div>}
       {relatedFlavors.length > 0 && <div className="food-family-notice"><strong>Sabores já cadastrados para “{productName}”</strong><small>{relatedFlavors.map(product => product.flavor).filter(Boolean).join(", ")}</small></div>}
     </div>
-    {productionMode === "ingredient" && <section className="proto-variants-field food-flavor-stock-field"><strong>Estoque inicial</strong><small>Informe quantas unidades deste insumo já existem.</small><label>Quantidade inicial<input type="number" min="0" step="1" value={initialStockByFlavor[stockFlavorKey("")] ?? "0"} disabled={Boolean(initial)} onChange={event => setInitialStockByFlavor(current => ({ ...current, [stockFlavorKey("")]: event.target.value }))} /></label></section>}
-    {!initial && productionMode === "resale" && <section className="proto-variants-field food-flavor-stock-field"><strong>Estoque inicial por sabor</strong><small>Informe quantos produtos não preparados existem de cada sabor. Ex.: 10 carne, 12 presunto e 8 queijo.</small>{flavorRows.map(rowFlavor => <div className="food-flavor-stock-row" key={stockFlavorKey(rowFlavor)}><strong>{rowFlavor || "Produto sem sabor"}</strong><label>Produtos não preparados<input type="number" min="0" step="1" value={initialStockByFlavor[stockFlavorKey(rowFlavor)] ?? "0"} onChange={event => setInitialStockByFlavor(current => ({ ...current, [stockFlavorKey(rowFlavor)]: event.target.value }))} /></label></div>)}</section>}
-    {initial && <small>O estoque pronto e o estoque não preparado são alterados pelo botão de estoque, por sabor.</small>}
-    <small>Depois de salvar, use o botão de estoque no cartão para adicionar unidades para preparar ou registrar quantas já ficaram prontas.</small>
-    {productionMode === "recipe" && <section className="proto-variants-field">
-      <strong>Insumos e rendimento</strong><small>Informe aproximadamente quantos produtos você consegue fazer com 1 unidade de cada insumo. Ex.: 1 pacote de mortadela rende 20 pães.</small>
-      {recipe.map((row, index) => <div className="proto-variant-row food-dependency-row" key={index}>
-        <label>Insumo<select required value={row.ingredientId} onChange={event => setRecipe(current => current.map((entry, i) => i === index ? { ...entry, ingredientId: event.target.value } : entry))}><option value="">Escolha…</option>{ingredients.map(ingredient => <option key={ingredient.id} value={ingredient.id}>{ingredient.name} ({ingredient.stockQuantity} unidades)</option>)}</select></label>
-        <label>Produtos por 1 unidade<input required type="number" min="1" step="1" value={row.quantity} onChange={event => setRecipe(current => current.map((entry, i) => i === index ? { ...entry, quantity: Number(event.target.value) || 0 } : entry))} placeholder="Ex.: 20" /><small>Rendimento aproximado</small></label>
-        <button type="button" className="proto-subtle" onClick={() => setRecipe(current => current.filter((_, i) => i !== index))}>Remover</button>
-      </div>)}
-      <button type="button" disabled={!ingredients.length} onClick={() => setRecipe(current => [...current, { ingredientId: "", quantity: 1 }])}>Adicionar insumo</button>
-      {!ingredients.length && <small>Nenhum insumo cadastrado ainda. Cadastre primeiro o presunto, mortadela, queijo, pão etc. como unidades.</small>}
-    </section>}
-    {productionMode !== "ingredient" && <details className="proto-variants-field"><summary>Aliases e atendimento</summary>
+    {!initial && <section className="proto-variants-field food-flavor-stock-field"><strong>Estoque inicial por sabor</strong><small>Informe somente o que já existe agora. Os três tipos usam o mesmo produto separado por sabor.</small>{flavorRows.map(rowFlavor => <div className="food-flavor-stock-row" key={stockFlavorKey(rowFlavor)}><strong>{rowFlavor || "Produto sem sabor"}</strong>{productionMode === "frozen" && <label>Congelados<input type="number" min="0" step="1" value={initialStockByFlavor[stockFlavorKey(rowFlavor)] ?? "0"} onChange={event => setInitialStockByFlavor(current => ({ ...current, [stockFlavorKey(rowFlavor)]: event.target.value }))} /></label>}<label>Já preparados<input type="number" min="0" step="1" value={initialReadyByFlavor[stockFlavorKey(rowFlavor)] ?? "0"} onChange={event => setInitialReadyByFlavor(current => ({ ...current, [stockFlavorKey(rowFlavor)]: event.target.value }))} /></label></div>)}</section>}
+    {initial && <small>O estoque pronto e o estoque congelado são alterados pelo botão de estoque, por sabor.</small>}
+    {productionMode === "made_here" && <small>Este tipo não depende de estoque congelado: pode ser preparado na hora ou antecipadamente sem limite.</small>}
+    <details className="proto-variants-field"><summary>Aliases e atendimento</summary>
     <label>Outros nomes do produto<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="Ex.: coxinha, salgado" /><small className="text-muted">Separe por vírgula. O atendimento usa esses nomes para entender mensagens informais.</small></label>
     <div className="proto-variants-field">
       <div className="proto-toolbar">
@@ -412,8 +426,7 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
       {!variants.length && <small className="text-muted">Sem variações: o atendimento usará apenas o nome e os aliases do produto.</small>}
     </div>
     <small>Produtos com sabores diferentes têm cadastro, preço e estoque próprios. O sabor é opcional.</small>
-    <label className="proto-switch"><span>Aceitar preparo sob demanda</span><input type="checkbox" checked={allowOnDemand} onChange={(event) => setAllowOnDemand(event.target.checked)} /><small className="text-muted">Permite preparar o item quando não houver unidade pronta, desde que haja estoque para isso.</small></label>
-    </details>}
+    </details>
     <label className="proto-switch"><span>Produto ativo</span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>
     {formError && <p role="alert" className="proto-form-error">{formError}</p>}
     <div className="proto-toolbar"><button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar produto"}</button><button type="button" className="proto-subtle" onClick={onCancel}>Cancelar</button></div>
@@ -424,19 +437,42 @@ function Orders() {
   const [orders, setOrders] = useState<FoodOrder[]>([]);
   const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<number | null>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [finalizingOrder, setFinalizingOrder] = useState<FoodOrder | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod | "">("");
   const [creditCustomers, setCreditCustomers] = useState<CreditCustomerRecord[]>([]);
   const [creditCustomerId, setCreditCustomerId] = useState("");
   const [creditLoading, setCreditLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [finalAdjustment, setFinalAdjustment] = useState("");
+  const [finalAdjustmentNote, setFinalAdjustmentNote] = useState("");
   const [statusMessage, setStatusMessage] = useState("Carregando pedidos…");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const ordersRequestRef = useRef(0);
+  const hiddenOrderIdsRef = useRef(new Set<string>());
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+  const [scheduleNotice, setScheduleNotice] = useState("");
+  const [schedules, setSchedules] = useState<FoodOrderSchedule[]>([]);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [scheduleProducts, setScheduleProducts] = useState<FoodProduct[]>([]);
+  const [allScheduleProducts, setAllScheduleProducts] = useState<FoodProduct[]>([]);
+  const [scheduleSearch, setScheduleSearch] = useState("");
+  const [scheduleName, setScheduleName] = useState("");
+  const [scheduleFrequency, setScheduleFrequency] = useState<"daily" | "weekly">("daily");
+  const [scheduleDays, setScheduleDays] = useState<number[]>([]);
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [scheduleQuantities, setScheduleQuantities] = useState<Record<string, number>>({});
 
   const loadOrders = async () => {
+    const requestId = ++ordersRequestRef.current;
     try {
-      setOrders(await getFoodOrders());
+      const activeOrders = await getFoodOrders("active");
+      if (requestId !== ordersRequestRef.current) return;
+      setOrders(activeOrders.filter(order => !hiddenOrderIdsRef.current.has(order.id)));
       setError("");
       setStatusMessage("Segure um pedido e arraste-o para outra etapa.");
     } catch (loadError) {
@@ -475,14 +511,141 @@ function Orders() {
     }
     setFinalizing(true);
     try {
-      const result = await finalizeFoodOrder(finalizingOrder.id, paymentMethod, paymentMethod === "crediario" ? creditCustomerId : null);
-      setOrders(current => current.map(item => item.id === finalizingOrder.id ? result.order : item));
-      setStatusMessage(`Pedido #${finalizingOrder.id.slice(0, 8)} finalizado e venda registrada.`);
-      setFinalizingOrder(null); setPaymentMethod(""); setCreditCustomerId(""); setError("");
+      const adjustmentCents = parseCents(finalAdjustment);
+      if (adjustmentCents !== 0 && !finalAdjustmentNote.trim()) {
+        setError("Escolha a justificativa do ajuste antes de fechar a venda.");
+        return;
+      }
+      const result = await finalizeFoodOrder(finalizingOrder.id, paymentMethod, paymentMethod === "crediario" ? creditCustomerId : null, adjustmentCents, finalAdjustmentNote);
+      hiddenOrderIdsRef.current.add(finalizingOrder.id);
+      ordersRequestRef.current += 1;
+      setOrders(current => current.filter(item => item.id !== finalizingOrder.id));
+      setStatusMessage(`${finalizingOrder.customerName || finalizingOrder.customer?.name || "Comanda sem nome"} finalizada e venda registrada.`);
+      setFinalizingOrder(null); setPaymentMethod(""); setCreditCustomerId(""); setFinalAdjustment(""); setFinalAdjustmentNote(""); setError("");
     } catch (finalizeError) {
       setError(finalizeError instanceof Error ? finalizeError.message : "Não foi possível finalizar o pedido.");
     } finally {
       setFinalizing(false);
+    }
+  }
+
+  async function cancelOrder(order: FoodOrder) {
+    if (!window.confirm(`Fechar e cancelar ${order.customerName || order.customer?.name || "a comanda sem nome"}? Ela não será lançada no caixa.`)) return;
+    try {
+      await cancelFoodOrder(order.id);
+      hiddenOrderIdsRef.current.add(order.id);
+      ordersRequestRef.current += 1;
+      setOrders(current => current.filter(item => item.id !== order.id));
+      setStatusMessage(`${order.customerName || order.customer?.name || "Comanda sem nome"} fechada e cancelada.`);
+      setError("");
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "Não foi possível fechar o pedido.");
+    }
+  }
+
+  async function openSchedulePanel() {
+    setScheduleOpen(true);
+    setScheduleLoading(true);
+    setScheduleError("");
+    setScheduleNotice("");
+    setEditingScheduleId(null);
+    setScheduleName("");
+    setScheduleSearch("");
+    setScheduleFrequency("daily");
+    setScheduleDays([]);
+    setScheduleTime("09:00");
+    setScheduleQuantities({});
+    try {
+      const [availableProducts, currentSchedules] = await Promise.all([getFoodProducts({ activeOnly: true }), getFoodOrderSchedules()]);
+      const schedulableProducts = availableProducts.filter(product => product.productionMode !== "ingredient");
+      setAllScheduleProducts(schedulableProducts);
+      setScheduleProducts(schedulableProducts);
+      setSchedules(currentSchedules);
+    } catch (loadError) {
+      setScheduleError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os agendamentos.");
+    } finally {
+      setScheduleLoading(false);
+    }
+  }
+
+  async function saveSchedule() {
+    const items = Object.entries(scheduleQuantities).filter(([, quantity]) => Number.isInteger(quantity) && quantity > 0).map(([productId, quantity]) => ({ productId, quantity }));
+    if (scheduleFrequency === "weekly" && !scheduleDays.length) { setScheduleError("Escolha ao menos um dia da semana."); return; }
+    if (!items.length) { setScheduleError("Selecione ao menos um produto ou sabor."); return; }
+    setScheduleSaving(true);
+    setScheduleError("");
+    try {
+      const input = { name: scheduleName.trim() || "Comanda sem nome", frequency: scheduleFrequency, weekdays: scheduleDays, timeLocal: scheduleTime, items };
+      const schedule = editingScheduleId
+        ? await updateFoodOrderSchedule(editingScheduleId, input)
+        : await createFoodOrderSchedule(input);
+      setSchedules(current => (editingScheduleId ? current.map(item => item.id === schedule.id ? schedule : item) : [...current, schedule]).sort((left, right) => Number(right.active) - Number(left.active) || new Date(left.nextRunAt).getTime() - new Date(right.nextRunAt).getTime()));
+      const wasEditing = Boolean(editingScheduleId);
+      setEditingScheduleId(null);
+      setScheduleName("");
+      setScheduleSearch("");
+      setScheduleProducts(allScheduleProducts);
+      setScheduleFrequency("daily");
+      setScheduleDays([]);
+      setScheduleTime("09:00");
+      setScheduleQuantities({});
+      setScheduleNotice(`${wasEditing ? "Agendamento atualizado" : "Agendamento criado"}. O próximo pedido será criado em ${new Date(schedule.nextRunAt).toLocaleString("pt-BR")}.`);
+    } catch (saveError) {
+      setScheduleError(saveError instanceof Error ? saveError.message : editingScheduleId ? "Não foi possível atualizar o agendamento." : "Não foi possível criar o agendamento.");
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  function updateScheduleSearch(value: string) {
+    setScheduleSearch(value);
+    const query = normalizeCatalogLabel(value);
+    if (!query) {
+      setScheduleProducts(allScheduleProducts);
+      return;
+    }
+    setScheduleProducts(allScheduleProducts.filter(product => normalizeCatalogLabel([product.name, product.productName, product.flavor ?? "", product.familyName, ...product.aliases].join(" ")).includes(query)));
+  }
+
+  async function toggleSchedule(schedule: FoodOrderSchedule) {
+    try {
+      const updated = await updateFoodOrderSchedule(schedule.id, { active: !schedule.active });
+      setSchedules(current => current.map(item => item.id === updated.id ? updated : item));
+    } catch (toggleError) {
+      setScheduleError(toggleError instanceof Error ? toggleError.message : "Não foi possível alterar o agendamento.");
+    }
+  }
+
+  function editSchedule(schedule: FoodOrderSchedule) {
+    setEditingScheduleId(schedule.id);
+    setScheduleName(schedule.name);
+    setScheduleSearch("");
+    setScheduleProducts(allScheduleProducts);
+    setScheduleFrequency(schedule.frequency === "weekly" ? "weekly" : "daily");
+    setScheduleDays(scheduleDaysFromJson(schedule.weekdaysJson));
+    setScheduleTime(schedule.timeLocal);
+    setScheduleQuantities(Object.fromEntries(schedule.items.flatMap(item => item.productId ? [[item.productId, item.quantity] as const] : [])));
+    setScheduleError("");
+    setScheduleNotice("");
+  }
+
+  async function removeSchedule(schedule: FoodOrderSchedule) {
+    if (!window.confirm(`Excluir o agendamento “${schedule.name}”? Os pedidos já criados serão preservados.`)) return;
+    setScheduleSaving(true);
+    setScheduleError("");
+    try {
+      await deleteFoodOrderSchedule(schedule.id);
+      setSchedules(current => current.filter(item => item.id !== schedule.id));
+      if (editingScheduleId === schedule.id) {
+        setEditingScheduleId(null);
+        setScheduleName("");
+        setScheduleQuantities({});
+      }
+      setScheduleNotice("Agendamento excluído. Os pedidos já criados foram preservados.");
+    } catch (removeError) {
+      setScheduleError(removeError instanceof Error ? removeError.message : "Não foi possível excluir o agendamento.");
+    } finally {
+      setScheduleSaving(false);
     }
   }
 
@@ -493,6 +656,8 @@ function Orders() {
       setFinalizingOrder(order);
       setPaymentMethod("");
       setCreditCustomerId("");
+      setFinalAdjustment("");
+      setFinalAdjustmentNote("");
       return;
     }
 
@@ -505,7 +670,7 @@ function Orders() {
         : result.notification && !result.notification.skipped
           ? " A etapa mudou, mas não foi possível enviar a notificação."
           : "";
-      setStatusMessage(`Pedido #${orderId.slice(0, 8)} movido para ${stages[stage]}.${notificationMessage}`);
+      setStatusMessage(`Pedido movido para ${stages[stage]}.${notificationMessage}`);
       setError("");
     } catch (moveError) {
       setOrders(current => current.map(item => item.id === orderId ? { ...item, status: previousStatus } : item));
@@ -530,9 +695,10 @@ function Orders() {
   if (loading) return <p className="proto-empty">Carregando pedidos…</p>;
   if (error && !orders.length) return <div className="proto-stack"><p role="alert" className="text-sm text-red-200">{error}</p><button type="button" onClick={() => { setLoading(true); void loadOrders(); }}>Tentar novamente</button></div>;
   return <div className="proto-stack"><p className="sr-only" role="status">{statusMessage}</p>{error && <p role="alert" className="mb-4 text-sm text-red-200">{error}</p>}
-    <div className="proto-toolbar"><div><strong>Pedidos em andamento</strong><small className="block text-muted">Os pedidos são criados pelo Assistente. Arraste cada pedido pela operação; a venda só é registrada ao finalizar.</small></div></div>
-    {!orders.length ? <Panel title="Pedidos"><p className="proto-empty">Nenhum pedido registrado ainda. Crie um pedido no balcão ou aguarde um pedido do WhatsApp.</p></Panel> : <div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => stageForStatus(order.status) === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => <article aria-label={`Pedido ${order.id}. Segure e arraste para mudar de etapa.`} className={`proto-ticket order-card${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div><Badge>{order.source === "whatsapp" ? "WhatsApp" : order.source}</Badge><h3>#{order.id.slice(0, 8)}</h3></div><p>{orderItemsLabel(order)}</p><strong>{formatOrderTotal(order)}</strong><small>{order.fulfillment === "delivery" ? `Entrega · ${order.deliveryAddress || "endereço pendente"}` : "Retirada na loja"}</small></article>)}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div>}
-    {finalizingOrder && <div className="order-finalize-backdrop" role="presentation"><section className="proto-panel order-finalize-modal" role="dialog" aria-modal="true" aria-labelledby="order-finalize-title"><h3 id="order-finalize-title">Finalizar pedido #{finalizingOrder.id.slice(0, 8)}</h3><p>{orderItemsLabel(finalizingOrder)}</p><strong>Total: {formatOrderTotal(finalizingOrder)}</strong><label>Forma de pagamento<select autoFocus required value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as SalePaymentMethod | "")}><option value="">Escolha…</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label>{paymentMethod === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerId} onChange={setCreditCustomerId} disabled={finalizing} loading={creditLoading} />}<div className="proto-toolbar"><button type="button" disabled={!paymentMethod || finalizing} onClick={() => void finalizeOrder()}>{finalizing ? "Registrando venda…" : "Confirmar venda e fechar"}</button><button type="button" className="proto-subtle" disabled={finalizing} onClick={() => setFinalizingOrder(null)}>Cancelar</button></div></section></div>}
+    <div className="proto-toolbar"><div><strong>Pedidos em andamento</strong><small className="block text-muted">Os pedidos são criados pelo Assistente. Arraste cada pedido pela operação; a venda só é registrada ao finalizar.</small></div><button type="button" onClick={() => void openSchedulePanel()}><CalendarClock size={16} />Agendar pedido</button></div>
+    {!orders.length ? <Panel title="Pedidos"><p className="proto-empty">Nenhum pedido registrado ainda. Crie um pedido no balcão ou aguarde um pedido do WhatsApp.</p></Panel> : <div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => stageForStatus(order.status) === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => { const expanded = expandedOrderId === order.id; return <article aria-label={`Pedido de ${order.customerName || order.customer?.name || "cliente"}. Clique para ver mais detalhes.`} className={`proto-ticket order-card${expanded ? " is-expanded" : ""}${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onClick={() => setExpandedOrderId(current => current === order.id ? null : order.id)} onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><button type="button" className="order-card-close" aria-label="Fechar pedido" title="Fechar pedido" onPointerDown={event => event.stopPropagation()} onClick={event => { event.preventDefault(); event.stopPropagation(); void cancelOrder(order); }}><X size={16} /></button><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div className="order-card-heading"><div><Badge>{order.source === "whatsapp" ? "WhatsApp" : order.source === "scheduled" ? "Agendado" : "Balcão"}</Badge><h3>{order.customerName || order.customer?.name || "Cliente sem nome"}</h3></div><small>{new Date(order.createdAt).toLocaleString("pt-BR")}</small></div><p>{orderItemsLabel(order)}</p><strong>{formatOrderTotal(order)}</strong><small>{order.fulfillment === "delivery" ? `Entrega · ${order.deliveryAddress || "endereço pendente"}` : "Retirada na loja"}</small>{expanded && <div className="order-card-expanded-details"><div><span>Cliente</span><strong>{order.customerName || order.customer?.name || "Não informado"}</strong></div><div><span>Origem</span><strong>{order.source === "whatsapp" ? "WhatsApp" : order.source === "scheduled" ? "Agendado" : "Balcão"}</strong></div><div><span>Itens</span>{order.items.map(item => <small key={item.id}>{item.quantity} × {item.productName}{item.variantName ? ` · ${item.variantName}` : ""}{item.fryNow ? " · preparar" : " · pronto"}</small>)}</div><div><span>Total atual</span><strong>{formatOrderTotal(order)}</strong></div></div>}</article>; })}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div>}
+    {scheduleOpen && <div className="order-schedule-backdrop" role="presentation"><section className="proto-panel order-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="order-schedule-title"><header className="order-schedule-header"><div><h3 id="order-schedule-title">{editingScheduleId ? "Editar agendamento" : "Agendar pedido recorrente"}</h3><p>O Mosaico criará um novo pedido automaticamente no horário escolhido.</p></div><button type="button" className="proto-subtle" aria-label="Fechar agendamento" onClick={() => setScheduleOpen(false)} disabled={scheduleSaving}><X size={18} /></button></header>{scheduleNotice && <p role="status" className="proto-success">{scheduleNotice}</p>}{scheduleError && <p role="alert" className="proto-form-error">{scheduleError}</p>}{scheduleLoading ? <p className="proto-empty">Carregando produtos e agendamentos…</p> : <><div className="order-schedule-form-grid"><label>Nome do cliente<input autoFocus value={scheduleName} onChange={event => setScheduleName(event.target.value)} placeholder="Ex.: Maria" /></label><label>Horário<input type="time" value={scheduleTime} onChange={event => setScheduleTime(event.target.value)} /></label><label>Repetição<select value={scheduleFrequency} onChange={event => setScheduleFrequency(event.target.value as "daily" | "weekly")}><option value="daily">Todos os dias</option><option value="weekly">Dias escolhidos da semana</option></select></label></div>{scheduleFrequency === "weekly" && <fieldset className="order-schedule-days"><legend>Executar em</legend><div>{scheduleWeekdays.map((day, index) => <button type="button" key={day} className={scheduleDays.includes(index) ? "is-selected" : ""} onClick={() => setScheduleDays(current => current.includes(index) ? current.filter(item => item !== index) : [...current, index])}>{day}</button>)}</div></fieldset>}<section className="order-schedule-products"><strong>Produtos e sabores</strong><small>Marque os itens e informe a quantidade que entrará em cada pedido.</small><label className="order-schedule-search">Buscar produto ou sabor<input type="search" value={scheduleSearch} onChange={event => updateScheduleSearch(event.target.value)} placeholder="Digite para filtrar…" /></label>{scheduleProducts.length ? <div>{scheduleProducts.map(product => { const selected = scheduleQuantities[product.id] !== undefined; return <label className={`order-schedule-product${selected ? " is-selected" : ""}`} key={product.id}><input type="checkbox" checked={selected} onChange={() => setScheduleQuantities(current => { const next = { ...current }; if (next[product.id] === undefined) next[product.id] = 1; else delete next[product.id]; return next; })} /><span><strong>{product.productName || product.name}{product.flavor ? ` · ${product.flavor}` : ""}</strong><small>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Sem preço"}</small></span><input type="number" min="1" step="1" disabled={!selected} value={selected ? scheduleQuantities[product.id] : ""} onChange={event => setScheduleQuantities(current => ({ ...current, [product.id]: Number(event.target.value) || 0 }))} aria-label={`Quantidade de ${product.name}`} /></label>; })}</div> : <p className="proto-empty">Nenhum produto ativo disponível.</p>}</section>{schedules.length > 0 && <section className="order-schedule-existing"><strong>Agendamentos existentes</strong>{schedules.map(schedule => <article key={schedule.id}><div><strong>{schedule.name}</strong><small>{schedule.frequency === "daily" ? "Todos os dias" : scheduleDaysFromJson(schedule.weekdaysJson).map(day => scheduleWeekdays[day]).join(", ")} às {schedule.timeLocal} · próximo: {new Date(schedule.nextRunAt).toLocaleString("pt-BR")}</small>{schedule.lastError && <small className="is-error">{schedule.lastError}</small>}</div><div className="order-schedule-actions"><button type="button" className="proto-subtle" onClick={() => editSchedule(schedule)} disabled={scheduleSaving}>Editar</button><button type="button" className="proto-subtle" onClick={() => void toggleSchedule(schedule)} disabled={scheduleSaving}>{schedule.active ? "Pausar" : "Ativar"}</button><button type="button" className="proto-subtle order-schedule-delete" onClick={() => void removeSchedule(schedule)} disabled={scheduleSaving}>Excluir</button></div></article>)}</section>}<div className="proto-toolbar"><button type="button" disabled={scheduleSaving} onClick={() => void saveSchedule()}>{scheduleSaving ? "Salvando…" : editingScheduleId ? "Salvar alterações" : "Salvar agendamento"}</button><button type="button" className="proto-subtle" disabled={scheduleSaving} onClick={() => setScheduleOpen(false)}>Fechar</button></div></>}</section></div>}
+    {finalizingOrder && <div className="order-finalize-backdrop" role="presentation"><section className="proto-panel order-finalize-modal" role="dialog" aria-modal="true" aria-labelledby="order-finalize-title"><h3 id="order-finalize-title">Finalizar pedido de {finalizingOrder.customerName || finalizingOrder.customer?.name || "cliente"}</h3><p>{orderItemsLabel(finalizingOrder)}</p><strong>Total: {formatOrderTotal(finalizingOrder)}</strong><label>Ajuste no total (R$)<input inputMode="decimal" value={finalAdjustment} onChange={event => setFinalAdjustment(event.target.value)} placeholder="0,00 ou -1,00" /><small>Faça o desconto ou adicional somente agora, antes de fechar a venda.</small></label>{parseCents(finalAdjustment) !== 0 && <label>Justificativa do ajuste<select required value={finalAdjustmentNote} onChange={event => setFinalAdjustmentNote(event.target.value)}><option value="">Escolha uma opção…</option>{PRICE_ADJUSTMENT_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}</select></label>}<label>Forma de pagamento<select autoFocus required value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as SalePaymentMethod | "")}><option value="">Escolha…</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label>{paymentMethod === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerId} onChange={setCreditCustomerId} disabled={finalizing} loading={creditLoading} />}<div className="proto-toolbar"><button type="button" disabled={!paymentMethod || finalizing} onClick={() => void finalizeOrder()}>{finalizing ? "Registrando venda…" : "Confirmar venda e fechar"}</button><button type="button" className="proto-subtle" disabled={finalizing} onClick={() => setFinalizingOrder(null)}>Cancelar</button></div></section></div>}
   </div>;
 }
 function Inventory() {
@@ -541,6 +707,7 @@ function Inventory() {
 }
 function Finance() {
   const [cash, setCash] = useState<FoodCashSnapshot | null>(null);
+  const [sales, setSales] = useState<FoodCounterSale[]>([]);
   const [opening, setOpening] = useState("");
   const [counted, setCounted] = useState("");
   const [notes, setNotes] = useState("");
@@ -549,7 +716,7 @@ function Finance() {
   const [notice, setNotice] = useState("");
   const amountCents = (value: string) => Math.round(Number(value.replace(/[^0-9,-]/g, "").replace(",", ".")) * 100);
   const loadCash = async () => {
-    try { setCash(await getFoodCashToday()); setError(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível carregar o caixa."); }
+    try { const [snapshot, history] = await Promise.all([getFoodCashToday(), getFoodSales()]); setCash(snapshot); setSales(history); setError(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível carregar o caixa."); }
   };
   useEffect(() => { void loadCash(); }, []);
   const open = async () => {
@@ -566,11 +733,13 @@ function Finance() {
   };
   const session = cash?.session;
   const totals = cash?.totals ?? { pix: 0, cash: 0, card_credit: 0, card_debit: 0, meal_voucher: 0, crediario: 0 };
+  const paymentLabel = (method: SalePaymentMethod | null) => method ? ({ pix: "Pix", cash: "Dinheiro", card_credit: "Cartão de crédito", card_debit: "Cartão de débito", meal_voucher: "Vale-alimentação", crediario: "Crediário" } as Record<SalePaymentMethod, string>)[method] : "Pendente";
   return <div className="proto-stack"><Metrics items={[["Dinheiro esperado", money(cash?.expectedCashCents ?? 0), session ? session.status === "open" ? "Caixa aberto" : "Caixa fechado" : "Ainda não aberto"], ["Pix", money(totals.pix), "Vendas do caixa"], ["Cartões", money(totals.card_credit + totals.card_debit), "Crédito + débito"]]} />
     {!session ? <Panel title="Abrir caixa" subtitle="No começo do dia, informe quanto já existe em dinheiro no caixa."><div className="cash-flow-form"><label>Dinheiro inicial (R$)<input autoFocus inputMode="decimal" value={opening} onChange={event => setOpening(event.target.value)} placeholder="Ex.: 200,00" /></label><button type="button" disabled={busy} onClick={() => void open()}>{busy ? "Abrindo…" : "Abrir caixa"}</button></div></Panel> : <Panel title={session.status === "open" ? "Caixa aberto" : "Conferência concluída"} subtitle={`Dia ${session.businessDate} · abertura ${money(session.openingCashCents)}`}>
       <div className="cash-payment-grid"><div><span>Dinheiro vendido</span><strong>{money(totals.cash)}</strong></div><div><span>Cartão de crédito</span><strong>{money(totals.card_credit)}</strong></div><div><span>Cartão de débito</span><strong>{money(totals.card_debit)}</strong></div><div><span>Vale-alimentação</span><strong>{money(totals.meal_voucher)}</strong></div><div><span>Crediário</span><strong>{money(totals.crediario)}</strong></div></div>
       {session.status === "open" ? <div className="cash-flow-form"><label>Dinheiro contado no fechamento (R$)<input inputMode="decimal" value={counted} onChange={event => setCounted(event.target.value)} placeholder={`Esperado: ${money(cash?.expectedCashCents ?? 0)}`} /></label><label>Observação (opcional)<input value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: diferença conferida" /></label><button type="button" disabled={busy} onClick={() => void close()}>{busy ? "Fechando…" : "Fechar caixa"}</button></div> : <p className="cash-close-result">Contado: <strong>{money(session.countedCashCents ?? 0)}</strong> · Diferença: <strong>{money(session.differenceCents ?? 0)}</strong></p>}
     </Panel>}
+    <Panel title="Histórico de vendas finalizadas" subtitle="Pedidos fechados aparecem aqui como vendas registradas no caixa.">{!sales.length ? <p className="proto-empty">Nenhuma venda finalizada ainda.</p> : <div className="proto-stack">{sales.map(sale => <article className="proto-ticket" key={sale.id}><div><strong>{sale.quantity} × {sale.productName}</strong><small>{paymentLabel(sale.paymentMethod)} · {new Date(sale.createdAt).toLocaleString("pt-BR")}</small></div><strong>{money(sale.totalCents)}</strong></article>)}</div>}</Panel>
     {notice && <p role="status" className="proto-success">{notice}</p>}{error && <p role="alert" className="proto-form-error">{error}</p>}
   </div>;
 }

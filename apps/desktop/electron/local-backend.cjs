@@ -285,6 +285,38 @@ function stopLocalBackend() {
   localBackendStarted = false;
 }
 
+async function createNewLocalDatabase() {
+  if (!backendProcess || backendProcess.killed) {
+    throw new Error("Feche a outra janela do Mosaico Food antes de criar um novo banco.");
+  }
+  const databasePath = localDatabasePath();
+  const processToStop = backendProcess;
+  stopLocalBackend();
+  if (processToStop && processToStop.exitCode === null) {
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 3000);
+      processToStop.once("exit", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const archivePath = `${databasePath}.antes-do-novo-banco-${timestamp}`;
+  const archivedFiles = [];
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const currentPath = `${databasePath}${suffix}`;
+    if (!fs.existsSync(currentPath)) continue;
+    const targetPath = `${archivePath}${suffix}`;
+    fs.renameSync(currentPath, targetPath);
+    archivedFiles.push(targetPath);
+  }
+  fs.closeSync(fs.openSync(databasePath, "a"));
+  const started = await startLocalBackend();
+  if (!started) throw new Error("O banco novo foi criado, mas o backend local não voltou a iniciar.");
+  return { archivePath: archivedFiles[0] ?? null };
+}
+
 function getBackendUrl() {
   return localBackendStarted ? `http://127.0.0.1:${localPort}` : null;
 }
@@ -297,4 +329,4 @@ function getBackendDiagnostic() {
   };
 }
 
-module.exports = { getBackendDiagnostic, getBackendUrl, startLocalBackend, stopLocalBackend };
+module.exports = { createNewLocalDatabase, getBackendDiagnostic, getBackendUrl, startLocalBackend, stopLocalBackend };

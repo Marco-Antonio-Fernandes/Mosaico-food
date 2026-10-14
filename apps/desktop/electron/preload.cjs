@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
   },
   getBackendUrl: () => ipcRenderer.invoke("mosaico:backend-url"),
   getBackendDiagnostic: () => ipcRenderer.invoke("mosaico:backend-diagnostic"),
+  createNewDatabase: () => ipcRenderer.invoke("mosaico:create-new-database"),
   transcribeAudio: (audio, mimeType, prompt) => ipcRenderer.invoke("mosaico:transcribe-audio", audio, mimeType, prompt),
   interpretText: (text, products) => ipcRenderer.invoke("mosaico:interpret-text", text, products),
   getPlatform: () => process.platform,

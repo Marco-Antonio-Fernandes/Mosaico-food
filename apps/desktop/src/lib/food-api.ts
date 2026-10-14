@@ -8,12 +8,13 @@ export type FoodProduct = {
   aliases: string[];
   variants: FoodProductVariant[];
   customization: FoodProductCustomization | null;
+  costPriceCents: number;
   salePriceCents: number;
   stockQuantity: number;
   unpreparedQuantity: number;
   preparationCapacity: number;
   saleCapacity: number;
-  productionMode: "resale" | "recipe" | "ingredient";
+  productionMode: "frozen" | "ready" | "made_here" | "resale" | "recipe" | "ingredient";
   stockUnit: "un" | "g" | "ml";
   unitWeightGrams: number | null;
   unitVolumeMl: number | null;
@@ -123,6 +124,7 @@ export type ProductInput = {
   category: string;
   aliases: string[];
   variants: FoodProductVariant[];
+  costPriceCents: number;
   salePriceCents: number;
   stockQuantity: number;
   allowOnDemand: boolean;
@@ -147,6 +149,7 @@ export type FoodOrderItem = {
 
 export type FoodOrder = {
   id: string;
+  customerName: string | null;
   status: string;
   fulfillment: "pickup" | "delivery" | string;
   deliveryAddress: string | null;
@@ -158,6 +161,32 @@ export type FoodOrder = {
   updatedAt: string;
   customer: FoodCustomer | null;
   items: FoodOrderItem[];
+};
+
+export type FoodOrderScheduleItem = {
+  id: string;
+  scheduleId: string;
+  productId: string | null;
+  productName: string;
+  flavor: string | null;
+  quantity: number;
+};
+
+export type FoodOrderSchedule = {
+  id: string;
+  name: string;
+  active: boolean;
+  frequency: "daily" | "weekly" | string;
+  weekdaysJson: string;
+  timeLocal: string;
+  fulfillment: "pickup" | "delivery" | string;
+  deliveryAddress: string | null;
+  nextRunAt: string;
+  lastRunAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: FoodOrderScheduleItem[];
 };
 
 // O Electron usa o backend local para produtos, estoque, vendas e banco.
@@ -180,7 +209,7 @@ function getApiBaseUrl() {
 }
 
 export type SalePaymentMethod = "pix" | "cash" | "card_credit" | "card_debit" | "meal_voucher" | "crediario";
-export const PRICE_ADJUSTMENT_REASONS = ["Menos fresco", "Amigo", "Produto com defeito", "Adicional", "Outro"] as const;
+export const PRICE_ADJUSTMENT_REASONS = ["Menos fresco"] as const;
 export type AssistantDraft = { id: string; action: "order" | "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; baseUnitPriceCents?: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
 export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
@@ -318,12 +347,13 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
         allowRemoval: customization.allowRemoval !== false,
       } satisfies FoodProductCustomization;
     })(),
+    costPriceCents: typeof product.costPriceCents === "number" ? product.costPriceCents : 0,
     salePriceCents: typeof product.salePriceCents === "number" ? product.salePriceCents : 0,
     stockQuantity: typeof product.stockQuantity === "number" ? product.stockQuantity : 0,
     unpreparedQuantity: typeof product.unpreparedQuantity === "number" ? product.unpreparedQuantity : 0,
     preparationCapacity: typeof product.preparationCapacity === "number" ? product.preparationCapacity : 0,
     saleCapacity: typeof product.saleCapacity === "number" ? product.saleCapacity : (typeof product.stockQuantity === "number" ? product.stockQuantity : 0),
-    productionMode: product.productionMode === "recipe" || product.productionMode === "ingredient" ? product.productionMode : "resale",
+    productionMode: typeof product.productionMode === "string" && ["frozen", "ready", "made_here", "resale", "recipe", "ingredient"].includes(product.productionMode) ? product.productionMode as FoodProduct["productionMode"] : "frozen",
     stockUnit: product.stockUnit === "g" || product.stockUnit === "ml" ? product.stockUnit : "un",
     unitWeightGrams: typeof product.unitWeightGrams === "number" ? product.unitWeightGrams : null,
     unitVolumeMl: typeof product.unitVolumeMl === "number" ? product.unitVolumeMl : null,
@@ -519,6 +549,15 @@ export async function updateFoodProduct(id: string, input: Partial<ProductInput>
   return product;
 }
 
+export async function deleteFoodProduct(id: string) {
+  const data = await foodApi<{ product: FoodProduct }>(`/api/v1/food/products/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const product = normalizeFoodProduct(data.product);
+  if (!product) throw new Error("O backend devolveu um produto inválido.");
+  return product;
+}
+
 export async function getFoodConversations() {
   const data = await foodApi<{ conversations: FoodConversation[] }>("/api/v1/food/conversations");
   return data.conversations;
@@ -600,6 +639,55 @@ export async function getFoodOrders(status?: string) {
   return data.orders;
 }
 
+export async function cancelFoodOrder(id: string) {
+  return updateFoodOrderStatus(id, "cancelled");
+}
+
+export async function getFoodOrderSchedules() {
+  const data = await foodApi<{ schedules: FoodOrderSchedule[] }>("/api/v1/food/order-schedules");
+  return data.schedules;
+}
+
+export async function createFoodOrderSchedule(input: {
+  name: string;
+  frequency: "daily" | "weekly";
+  weekdays: number[];
+  timeLocal: string;
+  fulfillment?: "pickup" | "delivery";
+  deliveryAddress?: string | null;
+  items: Array<{ productId: string; quantity: number }>;
+}) {
+  const data = await foodApi<{ schedule: FoodOrderSchedule }>("/api/v1/food/order-schedules", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.schedule;
+}
+
+export type FoodOrderScheduleInput = {
+  name: string;
+  frequency: "daily" | "weekly";
+  weekdays: number[];
+  timeLocal: string;
+  fulfillment?: "pickup" | "delivery";
+  deliveryAddress?: string | null;
+  items: Array<{ productId: string; quantity: number }>;
+};
+
+export async function updateFoodOrderSchedule(id: string, input: FoodOrderScheduleInput | { active: boolean }) {
+  const data = await foodApi<{ schedule: FoodOrderSchedule }>(`/api/v1/food/order-schedules/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return data.schedule;
+}
+
+export async function deleteFoodOrderSchedule(id: string) {
+  return foodApi<{ deleted: boolean; id: string }>(`/api/v1/food/order-schedules/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export type FoodBackup = {
   format: "mosaico-food-backup";
   version: 1;
@@ -625,12 +713,14 @@ export type FoodOrderItemInput = {
   unitPriceCents: number;
   variantName?: string | null;
   fryNow?: boolean;
+  readyQuantity?: number;
+  prepareQuantity?: number;
   adjustmentCents?: number;
   adjustmentNote?: string | null;
   isGift?: boolean;
 };
 
-export function createFoodOrder(input: { source?: string; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; items: FoodOrderItemInput[] }) {
+export function createFoodOrder(input: { source?: string; customerName?: string | null; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; items: FoodOrderItemInput[] }) {
   return foodApi<{ order: FoodOrder }>("/api/v1/food/orders", {
     method: "POST",
     body: JSON.stringify(input),
@@ -645,12 +735,32 @@ export async function updateFoodOrderStatus(id: string, status: string) {
   return data;
 }
 
-export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod, creditCustomerId?: string | null) {
+export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod, creditCustomerId?: string | null, adjustmentCents = 0, adjustmentNote?: string | null) {
   const data = await foodApi<{ order: FoodOrder; notification?: { sent: boolean; skipped: boolean } }>(`/api/v1/food/orders/${encodeURIComponent(id)}/finalize`, {
     method: "POST",
-    body: JSON.stringify({ paymentMethod, ...(creditCustomerId ? { creditCustomerId } : {}) }),
+    body: JSON.stringify({ paymentMethod, ...(creditCustomerId ? { creditCustomerId } : {}), adjustmentCents, ...(adjustmentNote?.trim() ? { adjustmentNote: adjustmentNote.trim() } : {}) }),
   });
   return data;
+}
+
+export type FoodCounterSale = {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  baseUnitPriceCents: number;
+  adjustmentCents: number;
+  adjustmentNote: string | null;
+  isGift: boolean;
+  totalCents: number;
+  paymentMethod: SalePaymentMethod | null;
+  paymentStatus: string;
+  createdAt: string;
+};
+
+export async function getFoodSales() {
+  const data = await foodApi<{ sales: FoodCounterSale[] }>("/api/v1/food/sales");
+  return data.sales;
 }
 
 export type CreditCustomerRecord = {

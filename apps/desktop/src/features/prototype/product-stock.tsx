@@ -3,7 +3,7 @@ import { registerFoodStock, type FoodProduct } from "@/lib/food-api";
 
 export function ProductStock({ product, onSaved }: { product: FoodProduct; onSaved: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
-  const [action, setAction] = useState<"receive_ready" | "receive_unprepared" | "prepare">(product.productionMode === "ingredient" ? "receive_ready" : product.productionMode === "recipe" ? "prepare" : "receive_unprepared");
+  const [action, setAction] = useState<"receive_ready" | "receive_unprepared" | "prepare">(product.productionMode === "ready" || product.productionMode === "ingredient" ? "receive_ready" : product.productionMode === "made_here" || product.productionMode === "recipe" ? "prepare" : "receive_unprepared");
   const [quantity, setQuantity] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -19,20 +19,19 @@ export function ProductStock({ product, onSaved }: { product: FoodProduct; onSav
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível registrar."); }
     finally { setBusy(false); }
   }
-  const missingDependencies = product.ingredientDependencies.filter(dependency => !dependency.available);
   return <div className="proto-stack">
-    <small>{product.productionMode === "ingredient" ? `${product.stockQuantity} unidades disponíveis para usar` : `${product.stockQuantity} prontos · ${product.unpreparedQuantity} separados para preparar · pode preparar mais ${product.preparationCapacity}`}</small>
-    {missingDependencies.length > 0 && <small className="food-stock-warning">Falta estoque de: {missingDependencies.map(dependency => dependency.name).join(", ")}.</small>}
-    <button type="button" className="proto-subtle" onClick={() => setOpen(!open)}>{product.productionMode === "recipe" ? "Registrar produção" : "Registrar estoque"}</button>
+    <small>{product.productionMode === "ingredient" ? `${product.stockQuantity} unidades disponíveis` : product.productionMode === "made_here" || product.productionMode === "recipe" ? `${product.stockQuantity} prontos · preparo livre` : `${product.stockQuantity} prontos · ${product.unpreparedQuantity} congelados`}</small>
+    <button type="button" className="proto-subtle" onClick={() => setOpen(!open)}>{product.productionMode === "made_here" || product.productionMode === "recipe" ? "Registrar produção" : "Registrar estoque"}</button>
     {open && <form className="proto-stack" onSubmit={event => void submit(event)}>
       <label>O que aconteceu?<select disabled={busy} value={action} onChange={event => { setAction(event.target.value as typeof action); setOperationId(crypto.randomUUID()); }}>
         {product.productionMode === "ingredient" && <option value="receive_ready">Adicionei insumos ao estoque</option>}
-        {product.productionMode === "resale" && <option value="receive_unprepared">Adicionei unidades para preparar</option>}
-        {product.productionMode !== "ingredient" && <option value="prepare">Fritei / assei unidades para vender</option>}
+        {(product.productionMode === "frozen" || product.productionMode === "resale") && <option value="receive_unprepared">Adicionei unidades congeladas</option>}
+        {product.productionMode === "ready" && <option value="receive_ready">Adicionei unidades já prontas</option>}
+        {product.productionMode === "made_here" || product.productionMode === "recipe" ? <option value="prepare">Preparei unidades para vender</option> : null}
       </select></label>
       <label>Quantidade (unidades)<input required disabled={busy} type="number" min="1" step="1" value={quantity} onChange={event => { setQuantity(event.target.value); setOperationId(crypto.randomUUID()); }} /></label>
-      {action === "receive_unprepared" && <small>As unidades ficam separadas para preparar. Elas ainda não entram como prontas para venda.</small>}
-      {action === "prepare" && <small>O sistema confere as dependências cadastradas e transforma as unidades separadas em estoque pronto.</small>}
+      {action === "receive_unprepared" && <small>As unidades ficam congeladas e serão preparadas antes da venda.</small>}
+      {action === "prepare" && <small>As unidades preparadas entram como prontas para venda.</small>}
       <button disabled={busy} type="submit">{busy ? "Registrando…" : "Registrar"}</button>
     </form>}
     {error && <p role="alert">{error}</p>}

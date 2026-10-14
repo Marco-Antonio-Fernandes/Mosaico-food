@@ -43,9 +43,35 @@
 .food-assistant-search, .food-assistant-guided-fields { display: grid; gap: 6px; }
 .food-assistant-guided-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .food-assistant-guided-fields label:last-child { grid-column: 1 / -1; }
+.food-assistant-guided-fields.is-order { grid-template-columns: minmax(0, 1fr); }
+.food-assistant-guided-fields.is-order > label { display: none; }
+.food-assistant-order-main-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+.food-assistant-selected-flavor, .food-assistant-order-final { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); }
+.food-assistant-selected-flavor span, .food-assistant-order-final > small { color: var(--proto-muted); font-size: .78rem; }
+.food-assistant-selected-flavor strong { font-size: 1rem; }
+.food-assistant-order-final { grid-column: 1 / -1; margin-top: 2px; }
+.food-assistant-order-final > strong { font-size: .9rem; }
+.food-assistant-order-final > label { margin-top: 2px; }
 .food-assistant-confirm-box { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); }
 .food-assistant-confirm-box span { color: var(--proto-muted); font-size: .84rem; }
 .food-assistant-confirm { width: 100%; min-height: 56px; }
+.food-assistant-stock-modal-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: #07131bb8; }
+.food-assistant-stock-modal { width: min(500px, 100%); max-height: min(680px, calc(100dvh - 40px)); overflow-y: auto; display: grid; gap: 14px; padding: 20px; border: 1px solid var(--proto-line); border-radius: 16px; background: var(--proto-panel, #14232d); color: var(--proto-ink); box-shadow: 0 24px 70px #0009; }
+.food-assistant-stock-modal-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.food-assistant-stock-modal-heading > div { display: grid; gap: 4px; }
+.food-assistant-stock-modal-heading small, .food-assistant-stock-modal > p, .food-assistant-stock-capacity { color: var(--proto-muted); line-height: 1.45; }
+.food-assistant-stock-modal-heading button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; padding: 7px; }
+.food-assistant-ready-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.food-assistant-ready-summary span { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--proto-line); border-radius: 10px; background: var(--proto-canvas); color: var(--proto-muted); font-size: .78rem; }
+.food-assistant-ready-summary strong { color: var(--proto-ink); font-size: 1.05rem; }
+.food-assistant-ready-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.food-assistant-ready-choice { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px; border: 1px solid var(--proto-line); border-radius: 10px; background: var(--proto-canvas); cursor: pointer; }
+.food-assistant-ready-choice input { accent-color: var(--proto-accent); }
+.food-assistant-ready-choice.is-selected { border-color: var(--proto-accent); background: var(--proto-accent-soft); }
+.food-assistant-stock-empty { margin: 0; padding: 11px 12px; border: 1px dashed var(--proto-line); border-radius: 10px; }
+.food-assistant-stock-warning { margin: 0; padding: 10px 12px; border-radius: 10px; color: #8f1d2c; background: #fff0f1; border: 1px solid #e5a0aa; }
+.food-assistant-stock-modal-actions { display: grid; grid-template-columns: minmax(100px, .45fr) minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.food-assistant-stock-modal-actions .food-assistant-confirm { min-height: 48px; }
 .food-assistant-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 5px 8px; }
 .food-assistant-guided-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 3px; border-top: 1px solid var(--proto-line); }
 .food-assistant-success, .food-assistant-error { display: flex; align-items: flex-start; gap: 7px; padding: 10px 12px; border-radius: 10px; }
@@ -64,7 +90,7 @@
 .ingredient-measurement-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .proto-form-error { color: #a61b2b !important; background: #fff0f1; border: 1px solid #e5a0aa; border-radius: 10px; padding: 10px 12px; }
 @media (max-width: 560px) { .food-assistant { left: 14px; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); width: auto; justify-items: stretch; } .food-assistant.prototype .food-assistant-toggle { width: 100%; min-width: 0; min-height: 64px; padding-inline: 19px; } .food-assistant-panel { max-height: calc(100dvh - 96px); padding: 16px; border-radius: 18px; } .food-assistant .proto-toolbar { flex-direction: column; } .food-assistant .proto-toolbar button { width: 100%; flex-basis: auto; } }
-@media (max-width: 560px) { .food-assistant-guided-menu, .food-assistant-state-grid, .food-assistant-guided-fields, .food-assistant-guided-product-row { grid-template-columns: minmax(0, 1fr); } .food-assistant-guided-fields label:last-child { grid-column: auto; } .food-assistant-guided-choice, .food-assistant-state-grid button { min-height: 74px; } .food-assistant-guided-add-stock { width: 100%; } }
+@media (max-width: 560px) { .food-assistant-guided-menu, .food-assistant-state-grid, .food-assistant-guided-fields, .food-assistant-guided-product-row, .food-assistant-order-main-fields { grid-template-columns: minmax(0, 1fr); } .food-assistant-guided-fields label:last-child { grid-column: auto; } .food-assistant-guided-choice, .food-assistant-state-grid button { min-height: 74px; } .food-assistant-guided-add-stock { width: 100%; } .food-assistant-stock-modal-backdrop { padding: 10px; } .food-assistant-stock-modal-actions { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 680px) { .product-mode-grid { grid-template-columns: minmax(0, 1fr); } .product-mode-grid button { min-height: 78px; } }
 @media (max-width: 680px) { .ingredient-measurement-grid { grid-template-columns: minmax(0, 1fr); } }
 .food-assistant.prototype .food-assistant-panel { background: #f7fafb; color: #172630; border-color: #c7d4da; box-shadow: 0 18px 44px #10232e35; }
@@ -88,8 +114,80 @@
 .food-assistant.prototype .food-assistant-confirm, .food-assistant.prototype .food-assistant-add-row { background: #12636c; color: #fff; border-color: #12636c; }
 .food-assistant.prototype .food-assistant-confirm:hover, .food-assistant.prototype .food-assistant-add-row:hover { background: #0f535b; filter: none; }
 .food-assistant.prototype .food-assistant-confirm-box, .food-assistant.prototype .food-assistant-register-section { background: #fff; border-color: #c5d2d8; }
+.food-assistant.prototype .food-assistant-selected-flavor, .food-assistant.prototype .food-assistant-order-final, .food-assistant.prototype .food-assistant-ready-summary span, .food-assistant.prototype .food-assistant-ready-choice { background: #fff; border-color: #c5d2d8; }
+.food-assistant.prototype .food-assistant-stock-modal { background: #f7fafb; color: #172630; border-color: #c7d4da; }
+.food-assistant.prototype .food-assistant-stock-modal-heading small, .food-assistant.prototype .food-assistant-stock-modal > p, .food-assistant.prototype .food-assistant-stock-capacity { color: #52636d; }
+.food-assistant.prototype .food-assistant-ready-summary strong { color: #172630; }
+.food-assistant.prototype .food-assistant-ready-choice.is-selected { background: #e8f4f3; border-color: #19727a; }
 .food-assistant.prototype .food-assistant-confirm-box strong, .food-assistant.prototype .food-assistant-register-section strong { color: #172630; }
 .food-assistant.prototype .food-assistant-confirm-box span, .food-assistant.prototype .food-assistant-register-section small, .food-assistant.prototype .food-assistant-intro span, .food-assistant.prototype .food-assistant-step-heading span, .food-assistant.prototype .food-assistant-guided-footer span { color: #52636d; }
+.food-assistant-order-selection-footer { display: grid; gap: 10px; padding-top: 4px; border-top: 1px solid var(--proto-line); }
+.food-assistant-order-selection-footer > span { color: var(--proto-muted); font-size: .82rem; line-height: 1.4; }
+.food-assistant-guided-products button.is-selected { border-color: #19727a; background: #e8f4f3; box-shadow: inset 0 0 0 2px #19727a; }
+.food-assistant-selection-mark { flex: 0 0 auto; color: #12636c; font-size: .74rem; font-weight: 750; }
+.food-assistant-order-items, .food-assistant-allocation-list { display: grid; gap: 10px; }
+.food-assistant-order-item, .food-assistant-allocation-item { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); }
+.food-assistant-order-item > div, .food-assistant-allocation-item header > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.food-assistant-order-item strong, .food-assistant-allocation-item strong { color: var(--proto-ink); }
+.food-assistant-order-item small, .food-assistant-allocation-item small { color: var(--proto-muted); line-height: 1.4; }
+.food-assistant-allocation-item header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+.food-assistant-allocation-item .food-assistant-ready-summary { min-width: 148px; }
+.food-assistant-order-adjustment-note { margin: 0; padding: 10px 12px; border: 1px dashed var(--proto-line); border-radius: 10px; color: var(--proto-muted); font-size: .8rem; line-height: 1.4; }
+.food-assistant-order-line-adjustments { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); }
+.food-assistant-order-line-adjustments > small { color: var(--proto-muted); line-height: 1.4; }
+.food-assistant-order-line-adjustment { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--proto-line); }
+.food-assistant-order-line-adjustment > strong { font-size: .88rem; }
+.food-assistant.prototype .food-assistant-order-line-adjustments { background: #fff; border-color: #c5d2d8; }
+.food-assistant.prototype .food-assistant-order-line-adjustments > small { color: #52636d; }
+.food-assistant.prototype .food-assistant-selected-flavor,
+.food-assistant.prototype .food-assistant-order-final,
+.food-assistant.prototype .food-assistant-order-item,
+.food-assistant.prototype .food-assistant-allocation-item { background: #fff; border-color: #c5d2d8; }
+.food-assistant.prototype .food-assistant-selected-flavor span,
+.food-assistant.prototype .food-assistant-selected-flavor small,
+.food-assistant.prototype .food-assistant-order-final > small,
+.food-assistant.prototype .food-assistant-order-item small,
+.food-assistant.prototype .food-assistant-allocation-item small,
+.food-assistant.prototype .food-assistant-order-selection-footer > span,
+.food-assistant.prototype .food-assistant-order-adjustment-note { color: #52636d; }
+.food-assistant.prototype .food-assistant-selected-flavor strong,
+.food-assistant.prototype .food-assistant-order-final strong,
+.food-assistant.prototype .food-assistant-order-item strong,
+.food-assistant.prototype .food-assistant-allocation-item strong { color: #172630; }
+.food-assistant.prototype .food-assistant-selection-mark { color: #12636c; }
+@media (max-width: 560px) { .food-assistant-allocation-item header { grid-template-columns: minmax(0, 1fr); } .food-assistant-allocation-item .food-assistant-ready-summary { min-width: 0; } }
+.food-assistant.prototype .food-assistant-panel,
+.food-assistant.prototype .food-assistant-stock-modal { background: #14232d; color: #edf5f6; border-color: #2d4a56; }
+.food-assistant.prototype .food-assistant-panel h2,
+.food-assistant.prototype .food-assistant-panel strong,
+.food-assistant.prototype .food-assistant-stock-modal strong { color: #edf5f6; }
+.food-assistant.prototype .food-assistant-panel small,
+.food-assistant.prototype .food-assistant-panel span,
+.food-assistant.prototype .food-assistant-stock-modal small,
+.food-assistant.prototype .food-assistant-stock-modal > p { color: #a8bcc3; }
+.food-assistant.prototype .food-assistant-order-item,
+.food-assistant.prototype .food-assistant-allocation-item,
+.food-assistant.prototype .food-assistant-confirm-box,
+.food-assistant.prototype .food-assistant-order-final,
+.food-assistant.prototype .food-assistant-order-line-adjustments,
+.food-assistant.prototype .food-assistant-ready-summary span,
+.food-assistant.prototype .food-assistant-ready-choice { background: #1b303b; border-color: #3c5a66; }
+.food-assistant.prototype .food-assistant-order-item strong,
+.food-assistant.prototype .food-assistant-allocation-item strong,
+.food-assistant.prototype .food-assistant-confirm-box strong,
+.food-assistant.prototype .food-assistant-order-final strong,
+.food-assistant.prototype .food-assistant-order-line-adjustments strong,
+.food-assistant.prototype .food-assistant-ready-summary strong { color: #edf5f6; }
+.food-assistant.prototype .food-assistant-order-item small,
+.food-assistant.prototype .food-assistant-allocation-item small,
+.food-assistant.prototype .food-assistant-confirm-box span,
+.food-assistant.prototype .food-assistant-order-final > small,
+.food-assistant.prototype .food-assistant-order-line-adjustments > small { color: #a8bcc3; }
+.food-assistant.prototype .food-assistant-panel input,
+.food-assistant.prototype .food-assistant-panel select,
+.food-assistant.prototype .food-assistant-panel textarea { background: #203844; color: #edf5f6; border-color: #3c5a66; }
+.food-assistant.prototype .food-assistant-panel input::placeholder,
+.food-assistant.prototype .food-assistant-panel textarea::placeholder { color: #8ea6af; }
 .food-assistant.prototype .food-assistant-success { color: #155b38; background: #e7f7ed; border-color: #99d5af; }
 .food-assistant.prototype .food-assistant-error { color: #8f1d2c; background: #fff0f1; border-color: #e5a0aa; }
 .food-assistant.prototype .food-assistant-flow { display: flex; align-items: center; gap: 5px; overflow-x: auto; padding: 3px 0 8px; border-bottom: 1px solid #d6e0e4; }
@@ -126,7 +224,7 @@
 .is-urgent .food-order-ping { animation-duration: .8s; }
 @keyframes food-ping { 50% { box-shadow: 0 0 0 6px #ff526944; } }
 @media (prefers-reduced-motion: reduce) { .food-order-ping { animation: none; } }
-:root { --proto-canvas: hsl(var(--color-canvas)); --proto-surface: hsl(var(--color-surface)); --proto-line: hsl(var(--color-line)); --proto-ink: hsl(var(--color-ink)); --proto-muted: hsl(var(--color-muted)); --proto-accent: #ffb269; --proto-accent-soft: #e7953920; --mosaic-scrollbar-track: hsl(var(--color-canvas)); --mosaic-scrollbar-thumb: hsl(var(--color-brand-500) / .62); --mosaic-scrollbar-thumb-hover: hsl(var(--color-brand-500)); }
+:root { --proto-canvas: hsl(var(--color-canvas)); --proto-surface: hsl(var(--color-surface)); --proto-panel: hsl(204 27% 14%); --proto-control: hsl(204 28% 18%); --proto-control-hover: hsl(196 28% 23%); --proto-line: hsl(var(--color-line)); --proto-ink: hsl(var(--color-ink)); --proto-muted: hsl(var(--color-muted)); --proto-accent: #ffb269; --proto-accent-soft: #e7953920; --proto-focus: #7dd3d0; --proto-danger-surface: #51232a; --proto-danger-ink: #ffd9dc; --mosaic-scrollbar-track: hsl(var(--color-canvas)); --mosaic-scrollbar-thumb: hsl(var(--color-brand-500) / .62); --mosaic-scrollbar-thumb-hover: hsl(var(--color-brand-500)); }
 
 html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) var(--mosaic-scrollbar-track); }
 *::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -166,6 +264,15 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .food-product-basic-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .food-product-basic-fields datalist { display: none; }
 .food-product-basic-fields .food-product-suggestions, .food-product-basic-fields .food-family-notice { grid-column: 1 / -1; }
+.food-assistant-flavor-fields, .food-product-flavor-fields { display: grid; align-content: start; gap: 7px; min-width: 0; }
+.food-assistant-field-label { display: block; color: var(--proto-muted); font-size: .8rem; }
+.food-assistant-field-label small { color: var(--proto-muted); }
+.food-assistant-flavor-row, .food-product-flavor-row { display: flex; align-items: center; gap: 7px; }
+.food-assistant-flavor-row input, .food-product-flavor-row input { flex: 1 1 auto; min-width: 0; }
+.food-assistant-remove-flavor, .food-delete-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 40px; min-height: 40px; padding: 8px; }
+.food-delete-icon { border: 1px solid #e58a96 !important; color: #a51d30 !important; background: #fff1f3 !important; }
+.food-delete-icon:hover { border-color: #bd3147 !important; background: #ffe3e7 !important; }
+.food-assistant-add-flavor { justify-self: start; display: inline-flex; align-items: center; gap: 6px; width: fit-content; min-height: 38px; padding: 7px 10px; }
 .food-flavor-stock-field { align-items: start; }
 .food-flavor-stock-row, .food-assistant-register-flavor-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr); gap: 10px; align-items: end; padding-top: 10px; border-top: 1px solid var(--proto-line); }
 .food-flavor-stock-row > strong, .food-assistant-register-flavor-row > strong { align-self: center; }
@@ -225,6 +332,9 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .food-backup-card p, .food-backup-actions small { color: var(--proto-muted); font-size: .78rem; line-height: 1.5; }
 .food-backup-card code { display: block; overflow: hidden; color: #c5e8e4; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
 .food-backup-card button, .food-backup-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: fit-content; }
+.food-danger-button, .food-delete-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: #e58a96 !important; color: #a51d30 !important; background: #fff1f3 !important; }
+.food-danger-button:hover, .food-delete-button:hover { border-color: #bd3147 !important; background: #ffe3e7 !important; }
+.food-new-database-card { border-color: #e58a9655; }
 .food-backup-date { color: #b6f0df; font-size: .9rem; }
 .food-backup-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px dashed #8de2c555; border-radius: 16px; background: #8de2c508; }
 .food-backup-actions > div { display: grid; gap: 4px; }
@@ -249,7 +359,7 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .proto-orders-board > .proto-panel > header { min-height: 50px; }
 .order-dropzone { display: grid; align-content: start; gap: 14px; min-height: 340px; padding: 4px; border: 1px dashed transparent; border-radius: 16px; transition: background .15s, border-color .15s, box-shadow .15s; }
 .order-dropzone.is-drag-over { border-color: var(--proto-accent); background: var(--proto-accent-soft); box-shadow: inset 0 0 0 1px var(--proto-accent-soft); }
-.order-card { min-height: 218px; cursor: grab; user-select: none; transition: transform .15s, border-color .15s, box-shadow .15s, opacity .15s; }
+.order-card { position: relative; min-height: 218px; cursor: grab; user-select: none; transition: transform .15s, border-color .15s, box-shadow .15s, opacity .15s, min-height .15s; }
 .order-card:hover { border-color: var(--proto-accent); box-shadow: 0 12px 26px #0000001c; transform: translateY(-2px); }
 .order-card:active, .order-card.is-dragging { cursor: grabbing; }
 .order-card.is-dragging { opacity: .55; transform: rotate(1deg) scale(.98); }
@@ -261,7 +371,49 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .order-finalize-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: #061018aa; backdrop-filter: blur(4px); }
 .order-finalize-modal { width: min(460px, 100%); display: grid; gap: 14px; box-shadow: 0 24px 80px #0008; }
 .order-finalize-modal h3, .order-finalize-modal p { margin: 0; }
+.order-card.is-expanded { min-height: 300px; border-color: var(--proto-focus); box-shadow: 0 16px 34px #00000026; }
+.order-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding-right: 28px; }
+.order-card-heading h3 { margin: 5px 0 0; color: var(--proto-ink); font-size: 1rem; }
+.order-card-heading > small { color: var(--proto-muted); font-size: .68rem; text-align: right; }
+.order-card-close { position: absolute; top: 10px; right: 10px; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 28px; padding: 4px; border: 1px solid #db7b7b66; border-radius: 50%; background: #7e2b3518; color: #f0aeb2; cursor: pointer; }
+.order-card-close:hover { border-color: #e58b8b; background: #a63e3e28; color: #ffd5d8; transform: none; filter: none; }
+.order-card-expanded-details { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--proto-line); border-radius: 11px; background: var(--proto-surface); }
+.order-card-expanded-details > div { display: grid; gap: 3px; }
+.order-card-expanded-details span { color: var(--proto-muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; }
+.order-card-expanded-details strong, .order-card-expanded-details small { color: var(--proto-ink); font-size: .78rem; }
+.order-schedule-backdrop { position: fixed; inset: 0; z-index: 85; display: grid; place-items: center; padding: 20px; background: #061018aa; backdrop-filter: blur(4px); }
+.order-schedule-modal { width: min(720px, 100%); max-height: min(820px, calc(100dvh - 40px)); overflow-y: auto; display: grid; gap: 16px; box-shadow: 0 24px 80px #0008; }
+.order-schedule-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.order-schedule-header h3, .order-schedule-header p { margin: 0; }
+.order-schedule-header p { margin-top: 5px; color: var(--proto-muted); font-size: .78rem; }
+.order-schedule-form-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .7fr) minmax(180px, .8fr); gap: 10px; }
+.order-schedule-days, .order-schedule-products, .order-schedule-existing { display: grid; gap: 9px; min-width: 0; margin: 0; padding: 13px; border: 1px solid var(--proto-line); border-radius: 13px; background: var(--proto-canvas); }
+.order-schedule-days legend { padding: 0; color: var(--proto-ink); font-size: .8rem; font-weight: 700; }
+.order-schedule-days > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.order-schedule-days button { min-width: 46px; min-height: 36px; padding: 6px 9px; border: 1px solid var(--proto-line); border-radius: 9px; background: var(--proto-surface); color: var(--proto-muted); font-size: .72rem; font-weight: 700; }
+.order-schedule-days button.is-selected { border-color: var(--proto-accent); background: var(--proto-accent-soft); color: var(--proto-ink); }
+.order-schedule-products > small, .order-schedule-existing > small { color: var(--proto-muted); font-size: .72rem; }
+.order-schedule-search { gap: 5px; }
+.order-schedule-search input { min-height: 38px; }
+.order-schedule-products > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 290px; overflow-y: auto; padding-right: 2px; }
+.order-schedule-product { display: grid; grid-template-columns: auto minmax(0, 1fr) 62px; align-items: center; gap: 8px; min-width: 0; padding: 9px; border: 1px solid var(--proto-line); border-radius: 10px; background: var(--proto-surface); cursor: pointer; }
+.order-schedule-product.is-selected { border-color: var(--proto-accent); background: var(--proto-accent-soft); }
+.order-schedule-product > span { display: grid; min-width: 0; gap: 3px; }
+.order-schedule-product strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; }
+.order-schedule-product small { color: var(--proto-muted); font-size: .66rem; }
+.order-schedule-product > input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--proto-accent); }
+.order-schedule-product > input[type="number"] { min-height: 34px; padding: 5px 7px; }
+.order-schedule-existing > article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 9px; border-top: 1px solid var(--proto-line); }
+.order-schedule-existing > article > div { display: grid; min-width: 0; gap: 4px; }
+.order-schedule-actions { display: flex !important; flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; flex: 0 0 auto; }
+.order-schedule-actions button { min-height: 34px; padding: 6px 9px; font-size: .7rem; }
+.order-schedule-actions .order-schedule-delete { color: #ffd9dc; border-color: #d36b76; background: #51232a; }
+.order-schedule-existing > article small { color: var(--proto-muted); font-size: .7rem; line-height: 1.4; }
+.order-schedule-existing > article small.is-error { color: #f0aeb2; }
+@media(max-width:700px) { .order-schedule-form-grid, .order-schedule-products > div { grid-template-columns: minmax(0, 1fr); } }
+@media(max-width:560px) { .order-schedule-backdrop { padding: 10px; } .order-schedule-modal { max-height: calc(100dvh - 20px); padding: 16px; } .order-schedule-existing > article { align-items: flex-start; flex-direction: column; } .order-schedule-actions { width: 100%; justify-content: stretch; } .order-schedule-actions button { flex: 1 1 0; } }
 .proto-product { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--proto-line); border-radius: 18px; background: var(--proto-surface); }
+.food-product-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .proto-product-art { height: 100px; display: grid; place-items: center; font-size: 3rem; background: var(--proto-accent-soft); border-radius: 12px; }
 .proto-paper { background: #edeae1; color: #26333c; padding: clamp(20px,4vw,50px); min-height: 320px; border-radius: 4px; box-shadow: 0 12px 24px #0003; }
 .proto-paper h3 { border-bottom: 1px solid #26333c40; padding-bottom: 16px; margin-bottom: 20px; }
@@ -680,6 +832,134 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
   }
 }
 
+/* O quadro de pedidos se adapta ao espaço disponível e não empurra a página para fora. */
+.prototype {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.proto-orders-board {
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+}
+
+.proto-orders-board > .proto-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.order-dropzone,
+.order-card,
+.order-card-heading,
+.order-card-heading > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.order-card-heading h3,
+.order-card-heading > small,
+.order-card p,
+.order-card > small {
+  overflow-wrap: anywhere;
+}
+
+.prototype button.order-card-close {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid #db7b7b99;
+  border-radius: 50%;
+  background: #51232a;
+  color: #ffd9dc;
+  box-shadow: 0 3px 10px #0005;
+  line-height: 0;
+}
+
+.prototype button.order-card-close:hover {
+  background: #7a303b;
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .proto-orders-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .proto-orders-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* O assistente é um painel flutuante: nunca pode ultrapassar a janela. */
+.food-assistant {
+  box-sizing: border-box;
+  left: auto;
+  right: 24px;
+  bottom: 24px;
+  width: min(560px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  min-width: 0;
+}
+
+.food-assistant-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.food-assistant-heading {
+  position: sticky;
+  top: -1px;
+  z-index: 3;
+  min-width: 0;
+  padding-bottom: 10px;
+  background: var(--proto-panel);
+}
+
+.food-assistant-heading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.food-assistant-heading .proto-subtle {
+  flex: 0 0 auto;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+@media (max-width: 760px) {
+  .food-assistant {
+    right: 16px;
+    bottom: 16px;
+    width: min(520px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+  }
+}
+
+@media (max-width: 560px) {
+  .food-assistant {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
+
 /* Customer directory */
 .customers-page { display: grid; gap: 22px; }
 .customers-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 24px 40px; padding: 22px 24px; border: 1px solid var(--proto-line); border-radius: 18px; background: var(--proto-surface); }
@@ -773,6 +1053,81 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 @media (max-width: 1100px) { .customers-summary { gap: 22px; } .customers-summary > div { flex: 1 1 180px; } .customers-summary .customer-create { margin-left: 0; } }
 @media (max-width: 700px) { .customers-summary { display: grid; grid-template-columns: 1fr 1fr; padding: 18px; gap: 20px 14px; } .customers-summary > div { align-items: start; flex-direction: column; gap: 9px; } .prototype .customer-create { grid-column: 1 / -1; margin: 0; width: 100%; } .customers-directory { padding: 16px; } .customers-toolbar { flex-wrap: wrap; gap: 12px; } .customer-search { flex-basis: 100%; } .customer-sort { flex: 1; } .customers-filter-bar { gap: 6px; } .prototype .customers-filters button { gap: 6px; padding-inline: 9px; font-size: .7rem; } .customers-table-wrap { overflow: visible; } .prototype .customers-table { min-width: 0; display: block; } .customers-table thead { display: none; } .customers-table tbody { display: grid; gap: 12px; } .customers-table tr { display: grid; padding: 16px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); } .prototype .customers-table td { border: 0; padding: 6px 0; } .customer-row-actions { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--proto-line); } .customers-pagination { margin-top: 16px; } .customer-drawer-header { padding: 20px; } .customer-drawer-body { padding: 22px 20px; } .customer-drawer-footer { padding: 16px 20px; } .customer-feedback.is-error { flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { .customers-page .animate-spin { animation: none; } }
+
+/* O assistente mantém o mesmo contraste escuro em todas as etapas e modais. */
+.food-assistant.prototype .food-assistant-panel,
+.food-assistant.prototype .food-assistant-stock-modal,
+.food-assistant.prototype .order-finalize-modal {
+  background: #17242d;
+  color: #f2f6f7;
+  border-color: #3b505a;
+}
+.food-assistant.prototype .food-assistant-guided-choice,
+.food-assistant.prototype .food-assistant-state-grid button,
+.food-assistant.prototype .food-assistant-guided-products button,
+.food-assistant.prototype .food-assistant-confirm-box,
+.food-assistant.prototype .food-assistant-order-item,
+.food-assistant.prototype .food-assistant-allocation-item,
+.food-assistant.prototype .food-assistant-selected-flavor,
+.food-assistant.prototype .food-assistant-order-final,
+.food-assistant.prototype .food-assistant-order-line-adjustments,
+.food-assistant.prototype .food-assistant-ready-summary span,
+.food-assistant.prototype .food-assistant-ready-choice,
+.food-assistant.prototype .food-assistant-register-section,
+.food-assistant.prototype .food-assistant-register-details,
+.food-assistant.prototype .food-assistant-review {
+  background: #22343e;
+  color: #f2f6f7;
+  border-color: #4b626c;
+}
+.food-assistant.prototype .food-assistant-panel input,
+.food-assistant.prototype .food-assistant-panel select,
+.food-assistant.prototype .food-assistant-panel textarea {
+  background: #263b46;
+  color: #f2f6f7;
+  border-color: #4b626c;
+  color-scheme: dark;
+}
+.food-assistant.prototype .food-assistant-panel h2,
+.food-assistant.prototype .food-assistant-panel strong,
+.food-assistant.prototype .food-assistant-order-item strong,
+.food-assistant.prototype .food-assistant-allocation-item strong,
+.food-assistant.prototype .food-assistant-confirm-box strong,
+.food-assistant.prototype .food-assistant-selected-flavor strong,
+.food-assistant.prototype .food-assistant-order-final strong,
+.food-assistant.prototype .food-assistant-register-section strong,
+.food-assistant.prototype .food-assistant-review strong {
+  color: #f2f6f7;
+}
+.food-assistant.prototype .food-assistant-panel small,
+.food-assistant.prototype .food-assistant-panel p,
+.food-assistant.prototype .food-assistant-panel span,
+.food-assistant.prototype .food-assistant-order-item small,
+.food-assistant.prototype .food-assistant-allocation-item small,
+.food-assistant.prototype .food-assistant-confirm-box span,
+.food-assistant.prototype .food-assistant-order-final > small,
+.food-assistant.prototype .food-assistant-order-line-adjustments > small,
+.food-assistant.prototype .food-assistant-register-section > small,
+.food-assistant.prototype .food-assistant-review span {
+  color: #b9c9ce;
+}
+.food-assistant.prototype .food-assistant-guided-choice:hover,
+.food-assistant.prototype .food-assistant-state-grid button:hover,
+.food-assistant.prototype .food-assistant-guided-products button:hover,
+.food-assistant.prototype .food-assistant-ready-choice.is-selected {
+  background: #2b4a50;
+  border-color: #7dd3d0;
+}
+.food-assistant.prototype .food-assistant-guided-products button.is-selected {
+  background: #28585b;
+  border-color: #7dd3d0;
+  box-shadow: inset 0 0 0 2px #7dd3d0;
+}
+.food-assistant.prototype .food-assistant-error {
+  background: #51232a;
+  border-color: #d36b76;
+  color: #ffd9dc;
+}
 
 /* Crediário */
 .credit-page { display: grid; gap: 18px; min-width: 0; }
@@ -886,3 +1241,536 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .credit-risk-label { display: block; margin-top: 3px; color: #59c38a; font-size: .66rem; font-weight: 700; }
 .credit-selected-customer.is-late .credit-risk-label { color: #e58b8b; }
 @media (max-width: 560px) { .credit-customer-selected { grid-template-columns: 1fr auto; } .credit-customer-status { grid-column: 1 / -1; justify-self: start; text-align: left; } .credit-customer-clear { grid-column: 2; grid-row: 1; } }
+
+/* Tema base dos controles: componentes novos devem herdar estes tokens. */
+.prototype,
+.food-assistant.prototype {
+  color-scheme: dark;
+}
+
+.prototype input:not([type="checkbox"]):not([type="radio"]),
+.prototype select,
+.prototype textarea,
+.food-assistant.prototype .food-assistant-panel input:not([type="checkbox"]):not([type="radio"]),
+.food-assistant.prototype .food-assistant-panel select,
+.food-assistant.prototype .food-assistant-panel textarea {
+  background: var(--proto-control);
+  color: var(--proto-ink);
+  border-color: var(--proto-line);
+}
+
+.prototype input:not([type="checkbox"]):not([type="radio"]):focus,
+.prototype select:focus,
+.prototype textarea:focus,
+.food-assistant.prototype .food-assistant-panel input:not([type="checkbox"]):not([type="radio"]):focus,
+.food-assistant.prototype .food-assistant-panel select:focus,
+.food-assistant.prototype .food-assistant-panel textarea:focus {
+  background: var(--proto-control);
+  color: var(--proto-ink);
+  border-color: var(--proto-focus);
+  box-shadow: 0 0 0 3px #7dd3d044;
+}
+
+.prototype input::placeholder,
+.prototype textarea::placeholder,
+.food-assistant.prototype .food-assistant-panel input::placeholder,
+.food-assistant.prototype .food-assistant-panel textarea::placeholder {
+  color: var(--proto-muted);
+  opacity: 1;
+}
+
+.prototype select option,
+.prototype select optgroup,
+.food-assistant.prototype select option,
+.food-assistant.prototype select optgroup {
+  background: var(--proto-panel);
+  color: var(--proto-ink);
+}
+
+.prototype input:-webkit-autofill,
+.prototype input:-webkit-autofill:hover,
+.prototype input:-webkit-autofill:focus,
+.food-assistant.prototype .food-assistant-panel input:-webkit-autofill,
+.food-assistant.prototype .food-assistant-panel input:-webkit-autofill:hover,
+.food-assistant.prototype .food-assistant-panel input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--proto-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--proto-control) inset;
+  caret-color: var(--proto-ink);
+}
+
+.prototype .product-mode-help {
+  display: block;
+  margin: -3px 0 3px;
+  color: var(--proto-muted);
+  line-height: 1.45;
+}
+
+.prototype .product-mode-grid button,
+.food-assistant.prototype .food-assistant-register-mode-grid button {
+  background: var(--proto-control);
+  color: var(--proto-ink);
+  border-color: var(--proto-line);
+}
+
+.prototype .product-mode-grid button strong,
+.prototype .product-mode-grid button small,
+.food-assistant.prototype .food-assistant-register-mode-grid button strong,
+.food-assistant.prototype .food-assistant-register-mode-grid button small {
+  color: var(--proto-ink);
+}
+
+.prototype .product-mode-grid button:hover,
+.food-assistant.prototype .food-assistant-register-mode-grid button:hover {
+  background: var(--proto-control-hover);
+  border-color: var(--proto-focus);
+}
+
+.prototype .product-mode-grid button.is-selected,
+.food-assistant.prototype .food-assistant-register-mode-grid button.is-selected,
+.food-assistant.prototype .food-assistant-register-mode-grid button.is-selected:hover {
+  background: #28585b;
+  color: #f2ffff;
+  border-color: var(--proto-focus);
+  box-shadow: inset 0 0 0 2px var(--proto-focus), 0 0 0 2px #173b40;
+}
+
+.prototype .product-mode-grid button.is-selected strong,
+.prototype .product-mode-grid button.is-selected small,
+.food-assistant.prototype .food-assistant-register-mode-grid button.is-selected strong,
+.food-assistant.prototype .food-assistant-register-mode-grid button.is-selected small {
+  color: #f2ffff;
+}
+
+.food-assistant.prototype .food-assistant-panel,
+.food-assistant.prototype .food-assistant-stock-modal,
+.food-assistant.prototype .order-finalize-modal {
+  background: var(--proto-panel);
+  color: var(--proto-ink);
+  border-color: var(--proto-line);
+}
+
+.food-assistant.prototype .food-assistant-guided-choice,
+.food-assistant.prototype .food-assistant-state-grid button,
+.food-assistant.prototype .food-assistant-guided-products button,
+.food-assistant.prototype .food-assistant-confirm-box,
+.food-assistant.prototype .food-assistant-order-item,
+.food-assistant.prototype .food-assistant-allocation-item,
+.food-assistant.prototype .food-assistant-selected-flavor,
+.food-assistant.prototype .food-assistant-order-final,
+.food-assistant.prototype .food-assistant-order-line-adjustments,
+.food-assistant.prototype .food-assistant-ready-summary span,
+.food-assistant.prototype .food-assistant-ready-choice,
+.food-assistant.prototype .food-assistant-register-section,
+.food-assistant.prototype .food-assistant-register-details,
+.food-assistant.prototype .food-assistant-review {
+  background: var(--proto-control);
+  color: var(--proto-ink);
+  border-color: var(--proto-line);
+}
+
+.food-assistant.prototype .food-assistant-guided-choice:hover,
+.food-assistant.prototype .food-assistant-state-grid button:hover,
+.food-assistant.prototype .food-assistant-guided-products button:hover,
+.food-assistant.prototype .food-assistant-ready-choice.is-selected {
+  background: var(--proto-control-hover);
+  border-color: var(--proto-focus);
+}
+
+.food-assistant.prototype .food-assistant-register-details summary,
+.food-assistant.prototype .food-assistant-panel a {
+  color: var(--proto-accent);
+}
+
+.food-assistant.prototype .food-assistant-panel label,
+.food-assistant.prototype .food-assistant-register-checks label,
+.food-assistant.prototype .food-assistant-search,
+.food-assistant.prototype .food-assistant-guided-fields label,
+.food-assistant.prototype .food-assistant-register-form label {
+  color: var(--proto-muted);
+}
+
+.food-assistant.prototype .food-assistant-message,
+.food-assistant.prototype .food-assistant-stock-warning,
+.prototype .proto-form-error {
+  background: var(--proto-danger-surface);
+  color: var(--proto-danger-ink);
+  border-color: #d36b76;
+}
+
+.food-assistant.prototype .food-assistant-message {
+  background: var(--proto-control);
+  color: var(--proto-ink);
+  border-color: var(--proto-line);
+}
+
+.food-assistant.prototype .food-assistant-message.is-user {
+  background: var(--proto-accent-soft);
+  border-color: var(--proto-focus);
+}
+
+.prototype .credit-search input,
+.prototype .credit-search input:focus,
+.prototype .credit-customer-search input,
+.prototype .credit-customer-search input:focus,
+.prototype .credit-currency input,
+.prototype .credit-currency input:focus {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  outline: 0;
+}
+
+.prototype .food-delete-icon,
+.prototype .food-danger-button,
+.prototype .food-delete-button {
+  background: var(--proto-danger-surface) !important;
+  color: var(--proto-danger-ink) !important;
+  border-color: #d36b76 !important;
+}
+
+.food-product-basic-fields input,
+.food-product-flavor-fields input,
+.food-product-suggestions button,
+.food-flavor-stock-field input,
+.proto-variants-field input,
+.proto-variants-field select {
+  color-scheme: dark;
+}
+
+/* Pop-ups responsivos: compactam o conteúdo antes de recorrer à rolagem. */
+.food-assistant-panel,
+.food-assistant-stock-modal,
+.order-finalize-modal,
+.order-schedule-modal,
+.mosaic-top-popover {
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+}
+
+.food-assistant-panel {
+  max-height: min(760px, calc(100dvh - 112px));
+  padding: clamp(12px, 1.6vw, 18px);
+}
+
+.food-assistant-guided,
+.food-assistant form,
+.food-assistant-order-items,
+.food-assistant-order-selection-footer {
+  gap: 8px;
+}
+
+.food-assistant-order-item.is-order {
+  grid-template-columns: minmax(0, 1fr) minmax(94px, .34fr);
+  align-items: center;
+  gap: 7px 10px;
+  padding: 9px 10px;
+}
+
+.food-assistant-order-item.is-order > div {
+  align-self: center;
+}
+
+.food-assistant-order-item.is-order > label {
+  gap: 4px;
+}
+
+.food-assistant-order-item.is-order input[type="number"] {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.food-assistant-order-item.is-order small {
+  line-height: 1.25;
+}
+
+.food-assistant-inline-ready {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--proto-line);
+  color: var(--proto-muted);
+  font-size: .72rem;
+}
+
+.food-assistant-inline-ready-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.food-assistant-inline-ready-choice {
+  display: inline-flex !important;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 30px;
+  min-height: 28px !important;
+  padding: 4px 6px;
+  border: 1px solid var(--proto-line);
+  border-radius: 7px;
+  background: var(--proto-surface);
+  color: var(--proto-muted);
+  cursor: pointer;
+}
+
+.food-assistant-inline-ready-choice input {
+  width: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--proto-accent);
+}
+
+.food-assistant-inline-ready-choice span {
+  color: inherit;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.food-assistant-inline-ready-choice.is-selected {
+  border-color: var(--proto-focus);
+  background: var(--proto-accent-soft);
+  color: var(--proto-ink);
+}
+
+.food-assistant-inline-ready-choice:has(input:disabled) {
+  opacity: .45;
+  cursor: default;
+}
+
+.food-assistant-order-final,
+.food-assistant-confirm-box {
+  padding: 9px 11px;
+}
+
+.food-assistant-confirm,
+.food-assistant .proto-toolbar button {
+  min-height: 46px;
+}
+
+.food-assistant-stock-modal,
+.order-finalize-modal,
+.order-schedule-modal {
+  max-height: min(820px, calc(100dvh - 28px));
+}
+
+.order-finalize-modal {
+  overflow-y: auto;
+}
+
+@media (max-width: 560px) {
+  .food-assistant-panel {
+    max-height: calc(100dvh - 96px);
+    padding: 12px;
+  }
+
+  .food-assistant-order-item.is-order {
+    grid-template-columns: minmax(0, 1fr) minmax(86px, .4fr);
+  }
+
+  .food-assistant-stock-modal,
+  .order-finalize-modal,
+  .order-schedule-modal {
+    max-height: calc(100dvh - 16px);
+    padding: 14px;
+  }
+}
+
+@media (max-height: 680px) {
+  .food-assistant-panel {
+    max-height: calc(100dvh - 96px);
+    padding: 10px;
+  }
+
+  .food-assistant-order-item.is-order {
+    padding: 7px 9px;
+  }
+
+  .food-assistant-order-item.is-order input[type="number"] {
+    min-height: 32px;
+    padding-block: 5px;
+  }
+
+  .food-assistant-confirm,
+  .food-assistant .proto-toolbar button {
+    min-height: 42px;
+  }
+}
+
+/* Seleção de estoque no pedido: os números representam unidades prontas reais. */
+.food-assistant-order-item.is-order {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  background: var(--proto-control);
+  border-color: var(--proto-line);
+  box-shadow: 0 8px 18px #06121922;
+}
+
+.food-assistant-order-item.is-order .food-assistant-order-item-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 124px);
+  align-items: start;
+  gap: 14px;
+}
+
+.food-assistant-order-item.is-order .food-assistant-order-item-heading > div {
+  gap: 5px;
+}
+
+.food-assistant-order-item.is-order .food-assistant-order-item-heading strong {
+  font-size: 1rem;
+  letter-spacing: -.01em;
+}
+
+.food-assistant-quantity-field {
+  gap: 5px;
+  color: var(--proto-muted);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.food-assistant-quantity-field input {
+  min-height: 39px !important;
+  padding: 8px 10px !important;
+  font-size: .92rem;
+  font-weight: 700;
+}
+
+.food-assistant-stock-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.food-assistant-stock-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--proto-line);
+  border-radius: 10px;
+  background: var(--proto-surface);
+}
+
+.food-assistant-stock-stat strong {
+  color: var(--proto-ink) !important;
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.food-assistant-stock-stat span {
+  color: var(--proto-muted);
+  font-size: .72rem;
+  line-height: 1.2;
+}
+
+.food-assistant-stock-stat.is-ready { border-color: #4e9a8e; }
+.food-assistant-stock-stat.is-preparation { border-color: #6c7e9a; }
+
+.food-assistant-inline-ready {
+  gap: 10px;
+  padding: 11px 0 0;
+  border-top-color: var(--proto-line);
+}
+
+.food-assistant-inline-ready-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.food-assistant-inline-ready-heading > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.food-assistant-inline-ready-heading strong {
+  color: var(--proto-ink) !important;
+  font-size: .8rem;
+}
+
+.food-assistant-inline-ready-heading span {
+  color: var(--proto-muted);
+  font-size: .71rem;
+}
+
+.food-assistant-inline-ready-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.food-assistant-inline-ready-action {
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--proto-focus);
+  border-radius: 7px;
+  background: var(--proto-accent-soft);
+  color: var(--proto-ink);
+  font-size: .68rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.food-assistant-inline-ready-action.is-quiet {
+  border-color: var(--proto-line);
+  background: transparent;
+  color: var(--proto-muted);
+}
+
+.food-assistant-inline-ready-action:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.food-assistant-inline-ready-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 6px;
+  max-height: 132px;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.food-assistant-inline-ready-choice {
+  min-width: 0;
+  min-height: 36px !important;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: var(--proto-surface);
+}
+
+.food-assistant-inline-ready-choice span {
+  font-size: .74rem;
+}
+
+.food-assistant-inline-ready-choice.is-selected {
+  background: var(--proto-accent-soft);
+  border-color: var(--proto-focus);
+  color: var(--proto-ink);
+  box-shadow: inset 0 0 0 1px var(--proto-focus);
+}
+
+@media (max-width: 560px) {
+  .food-assistant-order-item.is-order .food-assistant-order-item-heading {
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 104px);
+  }
+
+  .food-assistant-inline-ready-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .food-assistant-inline-ready-actions {
+    justify-content: flex-start;
+  }
+}

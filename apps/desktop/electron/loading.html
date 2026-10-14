@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mosaico Food</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #14232d;
+        color: #edf5f6;
+      }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; }
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 34%, #1f414b 0, #14232d 42%, #0e1820 100%);
+      }
+      main { display: grid; justify-items: center; gap: 22px; width: min(420px, calc(100vw - 48px)); text-align: center; }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 92px;
+        height: 92px;
+        border: 1px solid #75c9c966;
+        border-radius: 28px;
+        background: #19343d;
+        box-shadow: 0 0 0 9px #75c9c612, 0 18px 50px #0008;
+        animation: float 2.4s ease-in-out infinite;
+      }
+      .mark img { width: 62px; height: 62px; object-fit: contain; }
+      h1 { margin: 0; font-size: 1.45rem; letter-spacing: -.035em; }
+      p { margin: -12px 0 0; color: #aec2c8; font-size: .88rem; }
+      .loader { display: flex; align-items: center; gap: 8px; height: 18px; }
+      .loader i { width: 8px; height: 8px; border-radius: 50%; background: #7dd3d0; animation: pulse 1.15s ease-in-out infinite; }
+      .loader i:nth-child(2) { animation-delay: .16s; }
+      .loader i:nth-child(3) { animation-delay: .32s; }
+      .bar { width: min(300px, 100%); height: 5px; overflow: hidden; border-radius: 999px; background: #2b4650; }
+      .bar::before { content: ""; display: block; width: 38%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #17808a, #9de5df); animation: progress 1.65s ease-in-out infinite; }
+      .hint { color: #7f9ba3; font-size: .72rem; }
+      @keyframes pulse { 0%, 80%, 100% { opacity: .35; transform: scale(.7); } 40% { opacity: 1; transform: scale(1); } }
+      @keyframes progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
+      @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+      @media (prefers-reduced-motion: reduce) { .mark, .loader i, .bar::before { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <main aria-live="polite">
+      <div class="mark"><img src="assets/mosaico-food.png" alt="" /></div>
+      <h1>Mosaico Food</h1>
+      <p>Preparando seu ambiente local</p>
+      <div class="loader" aria-label="Carregando"><i></i><i></i><i></i></div>
+      <div class="bar" aria-hidden="true"></div>
+      <span class="hint">Isso pode levar alguns segundos na primeira abertura.</span>
+    </main>
+  </body>
+</html>

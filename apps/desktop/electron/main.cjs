@@ -4,7 +4,7 @@ const defaultUserDataPath = app.getPath("userData");
 const stableUserDataPath = path.join(app.getPath("appData"), "Mosaico Food");
 app.setPath("userData", stableUserDataPath);
 if (defaultUserDataPath !== stableUserDataPath) process.env.MOSAICO_LEGACY_USER_DATA_DIR = defaultUserDataPath;
-const { getBackendDiagnostic, getBackendUrl, startLocalBackend, stopLocalBackend } = require("./local-backend.cjs");
+const { createNewLocalDatabase, getBackendDiagnostic, getBackendUrl, startLocalBackend, stopLocalBackend } = require("./local-backend.cjs");
 const { chooseBackupFolder, getBackupSettings, readBackupFile, startBackupScheduler, stopBackupScheduler, writeBackupFile } = require("./backup-manager.cjs");
 const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
 const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
@@ -37,13 +37,32 @@ if (process.env.MOSAICO_ELECTRON_DISABLE_GPU === "1") {
   app.commandLine.appendSwitch("disable-gpu");
 }
 
-function createWindow() {
+function loadMainRenderer(window) {
+  if (window.isDestroyed()) return;
+
+  if (isDevelopment && !useBuiltRenderer) {
+    void window
+      .loadURL("http://127.0.0.1:5173")
+      .catch((error) => console.error("[Mosaico Food] Falha na URL do Vite", error));
+
+    if (process.env.MOSAICO_ELECTRON_DEVTOOLS === "1") {
+      window.webContents.openDevTools({ mode: "detach" });
+    }
+
+    return;
+  }
+
+  void window.loadFile(path.join(__dirname, "../dist/index.html"));
+}
+
+function createWindow({ loading = false } = {}) {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 640,
-    backgroundColor: "#f4f7f8",
+    show: !loading,
+    backgroundColor: loading ? "#14232d" : "#f4f7f8",
     title: "Mosaico Food",
     icon: path.join(__dirname, "assets/mosaico-food.png"),
     webPreferences: {
@@ -76,19 +95,17 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  if (isDevelopment && !useBuiltRenderer) {
-    void window
-      .loadURL("http://127.0.0.1:5173")
-      .catch((error) => console.error("[Mosaico Food] Falha na URL do Vite", error));
-
-    if (process.env.MOSAICO_ELECTRON_DEVTOOLS === "1") {
-      window.webContents.openDevTools({ mode: "detach" });
-    }
-
-    return;
+  if (loading) {
+    window.once("ready-to-show", () => {
+      if (!window.isDestroyed()) window.show();
+    });
+    void window.loadFile(path.join(__dirname, "loading.html"))
+      .catch((error) => console.error("[Mosaico Food] Falha ao carregar a tela de abertura", error));
+    return window;
   }
 
-  void window.loadFile(path.join(__dirname, "../dist/index.html"));
+  loadMainRenderer(window);
+  return window;
 }
 
 function configureMediaPermissions() {
@@ -110,16 +127,27 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
     return backendUrl;
   });
   ipcMain.handle("mosaico:backend-diagnostic", () => getBackendDiagnostic());
+  ipcMain.handle("mosaico:create-new-database", () => createNewLocalDatabase());
   ipcMain.handle("mosaico:transcribe-audio", (_event, audio, mimeType, prompt) => transcribeAudio(audio, mimeType, prompt));
   ipcMain.handle("mosaico:interpret-text", (_event, text, products) => interpretFoodText(text, products));
   ipcMain.handle("mosaico:choose-backup-folder", () => chooseBackupFolder());
   ipcMain.handle("mosaico:get-backup-settings", () => getBackupSettings());
   ipcMain.handle("mosaico:write-backup-file", (_event, input) => writeBackupFile(input));
   ipcMain.handle("mosaico:read-backup-file", () => readBackupFile());
-  void Promise.all([startLocalBackend(), startLocalSpeech(), startLocalInterpreter()])
-    .catch((error) => console.error("[Mosaico Food] Falha ao iniciar recursos locais", error))
+  createWindow({ loading: true });
+
+  // A interface não precisa esperar o motor de voz e o interpretador local.
+  // Eles continuam subindo em segundo plano enquanto o usuário já vê o
+  // carregamento e, depois, a tela principal.
+  void Promise.all([startLocalSpeech(), startLocalInterpreter()])
+    .catch((error) => console.error("[Mosaico Food] Falha ao iniciar recursos auxiliares", error));
+  void startLocalBackend()
+    .catch((error) => console.error("[Mosaico Food] Falha ao iniciar o backend local", error))
     .finally(() => {
-      createWindow();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        loadMainRenderer(mainWindow);
+        mainWindow.show();
+      }
       startBackupScheduler(getBackendUrl);
     });
 
