@@ -5,7 +5,11 @@ const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-
 const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
 
 const isDevelopment = !app.isPackaged;
-const configuredBackendUrl = process.env.MOSAICO_BACKEND_URL || "https://mosaico.rotatix.com.br";
+if (isDevelopment) {
+  const envFile = path.join(__dirname, "../.env");
+  if (require("node:fs").existsSync(envFile)) process.loadEnvFile(envFile);
+}
+const configuredBackendUrl = process.env.MOSAICO_BACKEND_URL || (isDevelopment ? "http://localhost:3000" : "https://mosaico.rotatix.com.br");
 
 if (process.env.MOSAICO_ELECTRON_NO_SANDBOX === "1") {
   app.commandLine.appendSwitch("no-sandbox");

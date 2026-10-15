@@ -122,7 +122,8 @@ function getApiBaseUrl() {
   return apiBaseUrlPromise;
 }
 
-export type SalePaymentMethod = "pix" | "cash" | "card" | "crediario";
+export type ReceivedPaymentMethod = "pix" | "cash" | "card_credit" | "card_debit" | "meal_voucher";
+export type SalePaymentMethod = ReceivedPaymentMethod | "crediario";
 export type AssistantDraft = { id: string; action: "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
 export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
@@ -350,6 +351,6 @@ export async function getCreditLedger() {
     entries: Array.isArray(data.entries) ? data.entries : [],
   };
 }
-export async function receiveCreditPayment(customerId: string, amountCents: number) {
-  return foodApi("/api/v1/credit-entries", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ customerId, type: "payment", amountCents, note: "Recebimento de crediário" }) });
+export async function receiveCreditPayment(customerId: string, amountCents: number, paymentMethod: ReceivedPaymentMethod, operationId: string) {
+  return foodApi("/api/v1/credit-entries", { method: "POST", headers: { "Idempotency-Key": operationId }, body: JSON.stringify({ customerId, type: "payment", amountCents, paymentMethod, note: "Recebimento de crediário" }) });
 }

@@ -1,11 +1,12 @@
 import { useEffect, useState, type DragEvent, type FormEvent } from "react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type NotificationEntry, type RecordItem } from "@/components/shared/prototype-kit";
+import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type NotificationEntry } from "@/components/shared/prototype-kit";
 import { FoodAutomationPanel } from "@/features/automation/food-automation-panel";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
 import { CreditPage } from "@/features/credit/credit-page";
+import { FinancePage } from "@/features/finance/finance-page";
 import { createFoodProduct, registerCounterSale, getFoodOrders, getFoodProducts, updateFoodOrderStatus, updateFoodProduct, type FoodOrder, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
 
 export const foodModules = {
@@ -26,11 +27,6 @@ export const foodModules = {
 export type FoodModule = keyof typeof foodModules;
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const productIcon = (category: string) => ({ Lanches: "🍔", Porções: "🍟", Bebidas: "🥤", Combos: "🍽️", Sobremesas: "🍰" }[category] ?? "🍴");
-const movements: RecordItem[] = [
-  { id: "m1", name: "Venda #1042", detail: "Pix · balcão", status: "Recebido", value: "R$ 45,00" },
-  { id: "m2", name: "Compra de ingredientes", detail: "Despesa · fornecedores", status: "Pago", value: "R$ 180,00" },
-  { id: "m3", name: "Venda #1043", detail: "Crediário · Bruno Lima", status: "Pendente", value: "R$ 84,00" },
-];
 export function FoodPrototype({ module, notifications, onReadNotifications }: { module: FoodModule; notifications?: NotificationEntry[]; onReadNotifications?: () => void }) {
   return <div className="prototype"><header className="proto-heading"><Badge>Mosaico Food</Badge><h1>{foodModules[module][0]}</h1><p>{foodModules[module][1]}</p></header>
     {module === "pos" && <Catalog pos />}
@@ -40,7 +36,7 @@ export function FoodPrototype({ module, notifications, onReadNotifications }: { 
     {module === "credit" && <CreditPage />}
     {module === "inventory" && <Catalog />}
     {module === "customers" && <CustomersPage />}
-    {module === "finance" && <Finance />}
+    {module === "finance" && <FinancePage />}
     {module === "fiscal" && <Fiscal />}
     {module === "notifications" && <NotificationList notifications={notifications} onReadAll={onReadNotifications} />}
     {module === "offline" && <OfflinePreview />}
@@ -118,7 +114,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     {!pos && showForm && <ProductForm key={editingProduct?.id ?? "new"} products={products} initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
     {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{filtered.map((product) => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div><small>{product.category}{!product.active ? " · inativo" : ""}</small><h3>{product.name}</h3>{product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}<Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.preparationCapacity > 0 && (product.fryToOrder || product.allowOnDemand) ? "Pode preparar" : "Indisponível"}</Badge>{product.stockQuantity === 0 && product.preparationCapacity > 0 && product.fryToOrder && <small>Sem unidades prontas · disponível para fritar na hora</small>}{product.variants.length > 0 && <small>Opções: {product.variants.map((variant) => variant.name).join(", ")}</small>}{product.fryToOrder && <small>Permite fritar/preparar na hora</small>}<small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small><button type="button" disabled={selling || (pos && product.salePriceCents <= 0)} onClick={() => { if (pos) setCart({ ...cart, [product.id]: (cart[product.id] ?? 0) + 1 }); else { setEditingProduct(product); setShowForm(true); } }}>{pos ? product.salePriceCents <= 0 ? "Definir preço para vender" : product.stockQuantity === 0 && product.fryToOrder ? "Adicionar para fritar" : "Adicionar à venda" : "Editar cadastro"}</button>{!pos && <ProductStock key={`${product.id}-${product.productionMode}`} product={product} onSaved={loadProducts} />}</article>)}</div>
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo."}</p>}
-      {pos && <Panel title="Venda de balcão" subtitle="Confirme os itens e registre a venda"><label>Cliente<select><option>Consumidor final</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map((product) => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" disabled={selling} aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" disabled={selling} aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.salePriceCents * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento recebido<select disabled={selling} value={paymentMethod ?? ""} onChange={event => setPaymentMethod(event.target.value ? event.target.value as SalePaymentMethod : null)}><option value="">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card">Cartão</option><option value="crediario">Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={selling || !selected.length} onClick={() => void finalizeSale()}>{selling ? "Registrando…" : "Confirmar venda"}</button></div></Panel>}
+      {pos && <Panel title="Venda de balcão" subtitle="Confirme os itens e registre a venda"><label>Cliente<select><option>Consumidor final</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map((product) => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" disabled={selling} aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" disabled={selling} aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.salePriceCents * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento recebido<select disabled={selling} value={paymentMethod ?? ""} onChange={event => setPaymentMethod(event.target.value ? event.target.value as SalePaymentMethod : null)}><option value="">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={selling || !selected.length} onClick={() => void finalizeSale()}>{selling ? "Registrando…" : "Confirmar venda"}</button></div></Panel>}
     </div>}
     {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
     {notice && <p role="status">{notice}</p>}
@@ -328,10 +324,6 @@ function Orders() {
 function Inventory() {
   const [tab, setTab] = useState("Posição atual");
   return <><Metrics items={[["Itens controlados", "18", "Itens cadastrados"], ["Abaixo do mínimo", "2", "Reposição sugerida"], ["Movimentações", "7", "Entradas e saídas do dia"]]} /><Tabs items={["Posição atual", "Movimentações", "Fichas técnicas"]} value={tab} onChange={setTab} />{tab === "Fichas técnicas" ? <Editor title="Receita do hambúrguer" tabs={["Ingredientes", "Rendimento", "Perdas"]} labels={["Produto vendido", "Rendimento", "Unidade"]} initialText="1 pão · 150 g de carne · 30 g de queijo." /> : <Records key={tab} title={tab} action="Nova movimentação" fields={["Item", "Unidade / origem", "Situação", "Quantidade"]} rows={tab === "Posição atual" ? [{ id: "i1", name: "Pão de hambúrguer", detail: "Unidade · mínimo 20", status: "Baixo", value: "12 un" }, { id: "i2", name: "Queijo", detail: "Quilograma · mínimo 2", status: "Regular", value: "5,2 kg" }, { id: "i3", name: "Refrigerante cola", detail: "Unidade · mínimo 12", status: "Regular", value: "36 un" }] : [{ id: "im1", name: "Entrada de queijo", detail: "Compra · fornecedor local", status: "Entrada", value: "+3 kg" }, { id: "im2", name: "Pão de hambúrguer", detail: "Venda #1043", status: "Saída", value: "−1 un" }]} />}</>;
-}
-function Finance() {
-  const [tab, setTab] = useState("Movimentações");
-  return <><Metrics items={[["Caixa do dia", "R$ 1.842", "Fechamento atual"], ["A receber", "R$ 119", "Crediário em aberto"], ["Despesas", "R$ 180", "Compras do período"]]} /><Tabs items={["Movimentações", "Abertura e fechamento", "Despesas", "Conciliação"]} value={tab} onChange={setTab} />{tab === "Abertura e fechamento" ? <Editor title="Conferência de caixa" tabs={["Abertura", "Sangria", "Fechamento"]} labels={["Operador", "Saldo inicial", "Dinheiro contado", "Cartão", "Pix"]} /> : <Records key={tab} title={tab} action="Novo lançamento" fields={["Descrição", "Origem / categoria", "Situação", "Valor"]} rows={movements} />}</>;
 }
 function Fiscal() {
   const [tab, setTab] = useState("Documentos");

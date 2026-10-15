@@ -41,11 +41,11 @@ async function prepareDatabase(root, databaseUrl) {
 
   const prismaCli = path.join(root, "node_modules", "prisma", "build", "index.js");
   const schema = path.join(root, "prisma", "schema.prisma");
-  if (!fs.existsSync(prismaCli) || !fs.existsSync(schema)) {
-    throw new Error("O instalador não contém o schema local do banco.");
+  if (!fs.existsSync(prismaCli) || !fs.existsSync(schema) || !fs.existsSync(path.join(root, "prisma", "migrations"))) {
+    throw new Error("O instalador não contém o schema e as migrations locais do banco.");
   }
 
-  await runNodeScript(prismaCli, ["db", "push", "--schema", schema, "--skip-generate"], {
+  await runNodeScript(prismaCli, ["migrate", "deploy", "--schema", schema], {
     NODE_ENV: "development",
     DATABASE_URL: databaseUrl,
   }, root);
@@ -92,6 +92,7 @@ async function startLocalBackend() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: "development",
+      MOSAICO_RELAY_ONLY: "0",
       PORT: String(LOCAL_PORT),
       HOST: "127.0.0.1",
       DATABASE_URL: databaseUrl,
