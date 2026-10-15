@@ -279,7 +279,8 @@ backend; o WA-AKG é usado somente para receber o webhook e enviar mensagens.
 
 - `GET /api/v1/food/products` lista o catálogo persistido;
 - `POST /api/v1/food/products` e `PATCH /api/v1/food/products/{id}` cadastram e atualizam o produto-base,
-  sabor opcional, aliases, preço, estoque e a opção de preparar/fritar na hora;
+  sabor opcional, aliases, custo editável, composição opcional do custo por receita,
+  preço, estoque e a opção de preparar/fritar na hora;
 - `POST /api/v1/food/sales` registra a venda de balcão com personalização por item,
   adicionais/remoções justificadas e marcação de brinde;
 - `GET /api/v1/food/conversations` lista os atendimentos;

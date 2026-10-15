@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { CalendarClock, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { CalendarClock, Calculator, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Badge, Editor, Metrics, OfflinePreview, Panel, Preferences, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
 import { CreditPage } from "@/features/credit/credit-page";
 import { FoodBackupPanel } from "@/features/system/food-backup-panel";
-import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, createFoodProducts, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, updateFoodProduct, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
+import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, createFoodProduct, createFoodProducts, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, updateFoodProduct, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodCostBreakdown, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
+import { CostCalculator } from "./cost-calculator";
+import { IngredientForm } from "./ingredient-form";
 
 export const foodModules = {
   pos: ["PDV", "Monte a venda, confira os itens e escolha o pagamento."],
@@ -24,6 +26,7 @@ export const foodModules = {
 } as const;
 export type FoodModule = keyof typeof foodModules;
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const ingredientPackage = (product: FoodProduct) => product.stockUnit === "g" && product.unitWeightGrams ? `${product.unitWeightGrams >= 1000 && product.unitWeightGrams % 1000 === 0 ? product.unitWeightGrams / 1000 : product.unitWeightGrams} ${product.unitWeightGrams >= 1000 && product.unitWeightGrams % 1000 === 0 ? "kg" : "g"}` : product.stockUnit === "ml" && product.unitVolumeMl ? `${product.unitVolumeMl >= 1000 && product.unitVolumeMl % 1000 === 0 ? product.unitVolumeMl / 1000 : product.unitVolumeMl} ${product.unitVolumeMl >= 1000 && product.unitVolumeMl % 1000 === 0 ? "L" : "ml"}` : "1 un.";
 const scheduleWeekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const scheduleDaysFromJson = (value: string) => {
   try {
@@ -71,8 +74,11 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [editingProduct, setEditingProduct] = useState<FoodProduct | null>(null);
+  const [editingIngredient, setEditingIngredient] = useState<FoodProduct | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showIngredientForm, setShowIngredientForm] = useState(false);
   const [selling, setSelling] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod | null>(null);
   const [creditCustomers, setCreditCustomers] = useState<CreditCustomerRecord[]>([]);
@@ -93,7 +99,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
 
   const loadProducts = async () => {
     try {
-      setProducts(await getFoodProducts({ activeOnly: pos, availableOnly: pos }));
+      setProducts(await getFoodProducts({ activeOnly: !showInactive, availableOnly: pos }));
       setError("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o catálogo.");
@@ -107,7 +113,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     const refresh = () => void loadProducts();
     window.addEventListener("food-stock-changed", refresh);
     return () => window.removeEventListener("food-stock-changed", refresh);
-  }, [pos]);
+  }, [pos, showInactive]);
 
   const categories = ["Todos", ...new Set(products.map((product) => product.productName).filter(Boolean))];
   const selected = products.filter((product) => (cart[product.id]?.quantity ?? 0) > 0);
@@ -166,6 +172,22 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     }
   };
 
+  const saveIngredient = async (input: ProductInput) => {
+    setSaving(true);
+    try {
+      const saved = editingIngredient ? await updateFoodProduct(editingIngredient.id, input) : await createFoodProduct(input);
+      setProducts(current => editingIngredient ? current.map(item => item.id === saved.id ? saved : item) : [saved, ...current]);
+      setShowIngredientForm(false);
+      setEditingIngredient(null);
+      setNotice(editingIngredient ? "Insumo atualizado. Os próximos cálculos usarão o novo valor." : "Insumo cadastrado para reutilizar nos cálculos de custo.");
+      setError("");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar o insumo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const removeProduct = async (product: FoodProduct) => {
     if (!window.confirm(`Apagar “${product.name}” do catálogo? O histórico de vendas e pedidos será preservado.`)) return;
     setSaving(true);
@@ -183,10 +205,11 @@ function Catalog({ pos = false }: { pos?: boolean }) {
 
   return <div className="proto-stack">
     <Tabs items={categories} value={category} onChange={setCategory} />
-    <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label>{!pos && <button type="button" onClick={() => { setEditingProduct(null); setShowForm((current) => !current); }}>Cadastrar produto</button>}</div>
+    <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label>{!pos && <><button type="button" onClick={() => { setEditingProduct(null); setShowIngredientForm(false); setShowForm((current) => !current); }}>Cadastrar produto</button><button type="button" className="proto-subtle" onClick={() => { setEditingIngredient(null); setShowForm(false); setShowIngredientForm(current => !current); }}>Cadastrar insumo</button><button type="button" className="proto-subtle" onClick={() => setShowInactive(current => !current)}>{showInactive ? "Ocultar inativos" : "Mostrar inativos"}</button></>}</div>
     {!pos && search.trim() && familyEntries.some((group) => group.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{familyEntries.filter(group => group.length > 1).map(group => <span key={group[0].productName}><b>{group[0].productName}</b>: {group.map(product => product.flavor || "sem sabor").join(", ")}</span>)}</div>}
     {!pos && showForm && <ProductForm key={editingProduct?.id ?? "new"} products={products} initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
-    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{pos ? familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />) : filtered.map(product => <ProductTile key={product.id} product={product} busy={saving} onEdit={() => { setEditingProduct(product); setShowForm(true); }} onDelete={() => void removeProduct(product)} onStockSaved={loadProducts} />)}</div>
+    {!pos && showIngredientForm && <IngredientForm initial={editingIngredient} saving={saving} onCancel={() => { setShowIngredientForm(false); setEditingIngredient(null); }} onSubmit={(input) => void saveIngredient(input)} />}
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{pos ? familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />) : filtered.map(product => <ProductTile key={product.id} product={product} busy={saving} onEdit={() => { if (product.productionMode === "ingredient") { setEditingIngredient(product); setShowIngredientForm(true); setShowForm(false); setEditingProduct(null); } else { setEditingProduct(product); setShowForm(true); setShowIngredientForm(false); } }} onDelete={() => void removeProduct(product)} onStockSaved={loadProducts} />)}</div>
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo."}</p>}
       {pos && <Panel title="Venda de balcão" subtitle="Ajuste adicionais, remoções ou brinde por item antes de confirmar.">
         <div className="proto-stack" style={{ marginTop: 16 }}>
@@ -272,20 +295,21 @@ function lineUnitPrice(product: FoodProduct, line: CartLine) {
 }
 
 function ProductTile({ product, busy, onEdit, onDelete, onStockSaved }: { product: FoodProduct; busy: boolean; onEdit: () => void; onDelete: () => void; onStockSaved: () => Promise<void> }) {
+  const isIngredient = product.productionMode === "ingredient";
   return <article className="proto-product">
     <div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div>
     <small>Produto · {product.productName}{!product.active ? " · inativo" : ""}</small>
     <h3>{product.productName}</h3>
     {product.flavor && <span className="food-family-label">Sabor: {product.flavor}</span>}
     {product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}
-    {product.costPriceCents > 0 && <small>Custo: {money(product.costPriceCents)} · margem: {money(Math.max(0, product.salePriceCents - product.costPriceCents))}</small>}
-    <Badge>{!product.active ? "Inativo" : product.productionMode === "made_here" ? `${product.stockQuantity} prontos · preparo livre` : product.stockQuantity > 0 ? `${product.stockQuantity} prontos` : product.unpreparedQuantity > 0 ? `${product.unpreparedQuantity} congelados` : "Indisponível"}</Badge>
+    {isIngredient ? <small>Embalagem: {ingredientPackage(product)} · valor pago: {money(product.costPriceCents)}</small> : product.costPriceCents > 0 ? <small>Insumos: {money(product.costPriceCents)} · lucro bruto: {money(product.salePriceCents - product.costPriceCents)}{product.salePriceCents > 0 ? ` (${((product.salePriceCents - product.costPriceCents) / product.salePriceCents * 100).toFixed(1).replace(".", ",")}%)` : ""}</small> : <small>Custo ainda não informado</small>}
+    <Badge>{!product.active ? "Inativo" : isIngredient ? "Insumo · sem estoque" : product.productionMode === "made_here" ? `${product.stockQuantity} prontos · preparo livre` : product.stockQuantity > 0 ? `${product.stockQuantity} prontos` : product.unpreparedQuantity > 0 ? `${product.unpreparedQuantity} congelados` : "Indisponível"}</Badge>
     {product.customization && <small>{product.customization.label}: base de {product.customization.baseQuantity} {product.customization.unit}</small>}
-    {product.productionMode === "frozen" || product.productionMode === "resale" ? <small>{product.stockQuantity} prontos · {product.unpreparedQuantity} congelados</small> : product.productionMode === "ready" ? <small>Comprado pronto · sem etapa de preparo</small> : <small>Feito aqui · pode preparar na hora ou deixar pronto</small>}
+    {!isIngredient && (product.productionMode === "frozen" || product.productionMode === "resale" ? <small>{product.stockQuantity} prontos · {product.unpreparedQuantity} congelados</small> : product.productionMode === "ready" ? <small>Comprado pronto · sem etapa de preparo</small> : <small>Feito aqui · pode preparar na hora ou deixar pronto</small>)}
     {product.variants.length > 0 && <small>Opções antigas: {product.variants.map(variant => variant.name).join(", ")}</small>}
     <small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small>
     <div className="food-product-actions"><button type="button" disabled={busy} onClick={onEdit}><Pencil size={15} />Editar</button><button type="button" className="food-delete-icon" disabled={busy} title="Apagar produto" aria-label={`Apagar ${product.name}`} onClick={onDelete}><Trash2 size={16} /></button></div>
-    <ProductStock product={product} onSaved={onStockSaved} />
+    {!isIngredient && <ProductStock product={product} onSaved={onStockSaved} />}
   </article>;
 }
 
@@ -315,6 +339,8 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
   const [flavorFields, setFlavorFields] = useState<string[]>([initial?.flavor ?? ""]);
   const [price, setPrice] = useState(initial ? String(initial.salePriceCents / 100).replace(".", ",") : "");
   const [costPrice, setCostPrice] = useState(initial ? String(initial.costPriceCents / 100).replace(".", ",") : "");
+  const [costBreakdown, setCostBreakdown] = useState<FoodCostBreakdown | null>(initial?.costBreakdown ?? null);
+  const [costCalculatorOpen, setCostCalculatorOpen] = useState(false);
   const [initialStockByFlavor, setInitialStockByFlavor] = useState<Record<string, string>>(() => ({
     [stockFlavorKey(initial?.flavor ?? "")]: String(initial?.unpreparedQuantity ?? 0),
   }));
@@ -374,6 +400,7 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
         aliases: aliasesList,
         variants: cleanedVariants,
         costPriceCents,
+        costBreakdown,
         salePriceCents,
         stockQuantity: initial ? initial.stockQuantity : initialReady,
         allowOnDemand: modeForSave === "made_here",
@@ -396,13 +423,13 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
     setProductionMode(mode);
   };
 
-  return <form className="proto-form" onSubmit={submit}>
+  return <><form className="proto-form" onSubmit={submit}>
     <h3>{initial ? "Editar produto" : "Cadastrar produto"}</h3>
     <fieldset className="product-mode-field" disabled={Boolean(initial)}><legend>Como este produto chega?</legend><small className="product-mode-help">Escolha um dos três tipos de produto. Não há cadastro de insumos nem dependências.</small><div className="product-mode-grid"><button type="button" className={productionMode === "frozen" ? "is-selected" : ""} onClick={() => selectProductionMode("frozen")}><strong>Congelado</strong><small>Tem unidades congeladas para preparar e unidades já prontas.</small></button><button type="button" className={productionMode === "ready" ? "is-selected" : ""} onClick={() => selectProductionMode("ready")}><strong>Já pronto</strong><small>Você compra pronto. Ele entra direto como unidade pronta, sem preparo.</small></button><button type="button" className={productionMode === "made_here" ? "is-selected" : ""} onClick={() => selectProductionMode("made_here")}><strong>Faço aqui</strong><small>O preparo é ilimitado: pode fazer na hora ou deixar unidades prontas.</small></button></div></fieldset>
     <div className="food-product-basic-fields">
       <label>Produto-base<input type="text" autoComplete="off" required value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Ex.: Esfirra ou Pão com mortadela" /><small>Digite livremente o nome. Se já existir, sugestões aparecerão abaixo para reaproveitar o cadastro.</small></label>
       <div className="food-product-flavor-fields"><span className="food-assistant-field-label">{initial ? "Sabor" : "Sabores"} {!initial && <small>(um por campo)</small>}</span>{flavorFields.map((flavor, index) => <div className="food-product-flavor-row" key={index}><input type="text" autoComplete="off" value={flavor} onChange={(event) => setFlavorFields(current => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={index === 0 ? "Ex.: Carne" : "Outro sabor"} />{!initial && flavorFields.length > 1 && <button type="button" className="proto-subtle food-assistant-remove-flavor" aria-label={`Remover sabor ${index + 1}`} onClick={() => setFlavorFields(current => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>}</div>)}{!initial && <button type="button" className="proto-subtle food-assistant-add-flavor" onClick={() => setFlavorFields(current => [...current, ""])}><Plus size={15} />Adicionar sabor</button>}<small>{initial ? "Você pode alterar este sabor. Para adicionar outro sabor, cadastre-o no mesmo produto-base." : "Cada campo cria um produto separado, com estoque próprio por sabor."}</small></div>
-      <label>Custo para você (R$)<input inputMode="decimal" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder="Ex.: 2,50" /><small>Quanto este produto sai para você.</small></label>
+      <div className="food-cost-field"><label>Custo para você (R$)<input inputMode="decimal" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder="Ex.: 2,50" /><small>Quanto este produto sai para você.</small></label><button type="button" className="proto-subtle food-cost-calculator-button" onClick={() => setCostCalculatorOpen(true)}><Calculator size={15} />{costBreakdown ? "Recalcular custo" : "Calcular custo"}</button>{costBreakdown && <small className="food-cost-reference">Cálculo salvo para {costBreakdown.yieldQuantity} unidade{costBreakdown.yieldQuantity === 1 ? "" : "s"}. Você pode editar o valor acima.</small>}</div>
       <label>Preço de venda (R$)<input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Ex.: 5,00" /><small>Quanto será cobrado do cliente.</small></label>
       {productSuggestions.length > 0 && <div className="food-product-suggestions" role="listbox" aria-label="Produtos encontrados">{productSuggestions.map(option => <button type="button" key={option} onClick={() => setProductName(option)}>{option}</button>)}</div>}
       {relatedFlavors.length > 0 && <div className="food-family-notice"><strong>Sabores já cadastrados para “{productName}”</strong><small>{relatedFlavors.map(product => product.flavor).filter(Boolean).join(", ")}</small></div>}
@@ -430,7 +457,7 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
     <label className="proto-switch"><span>Produto ativo</span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>
     {formError && <p role="alert" className="proto-form-error">{formError}</p>}
     <div className="proto-toolbar"><button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar produto"}</button><button type="button" className="proto-subtle" onClick={onCancel}>Cancelar</button></div>
-  </form>;
+  </form>{costCalculatorOpen && <CostCalculator initial={costBreakdown} onClose={() => setCostCalculatorOpen(false)} onApply={result => { setCostBreakdown(result.breakdown); setCostPrice((result.costPriceCents / 100).toFixed(2).replace(".", ",")); setPrice((result.salePriceCents / 100).toFixed(2).replace(".", ",")); setCostCalculatorOpen(false); setFormError(""); }} />}</>;
 }
 function Orders() {
   const stages = ["Recebido", "Em preparo", "Pronto", "Em trânsito", "Finalizado"];

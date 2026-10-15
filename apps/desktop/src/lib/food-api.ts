@@ -9,6 +9,7 @@ export type FoodProduct = {
   variants: FoodProductVariant[];
   customization: FoodProductCustomization | null;
   costPriceCents: number;
+  costBreakdown: FoodCostBreakdown | null;
   salePriceCents: number;
   stockQuantity: number;
   unpreparedQuantity: number;
@@ -25,6 +26,23 @@ export type FoodProduct = {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FoodCostUnit = "g" | "kg" | "ml" | "l" | "un";
+
+export type FoodCostBreakdownItem = {
+  ingredientId?: string;
+  name: string;
+  packageQuantity: number;
+  packageUnit: FoodCostUnit;
+  packageCostCents: number;
+  usedQuantity: number;
+  usedUnit: FoodCostUnit;
+};
+
+export type FoodCostBreakdown = {
+  yieldQuantity: number;
+  items: FoodCostBreakdownItem[];
 };
 
 export type FoodProductCustomization = {
@@ -125,6 +143,7 @@ export type ProductInput = {
   aliases: string[];
   variants: FoodProductVariant[];
   costPriceCents: number;
+  costBreakdown?: FoodCostBreakdown | null;
   salePriceCents: number;
   stockQuantity: number;
   allowOnDemand: boolean;
@@ -348,6 +367,25 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
       } satisfies FoodProductCustomization;
     })(),
     costPriceCents: typeof product.costPriceCents === "number" ? product.costPriceCents : 0,
+    costBreakdown: (() => {
+      const breakdown = asRecord(product.costBreakdown);
+      const validUnits = new Set<FoodCostUnit>(["g", "kg", "ml", "l", "un"]);
+      const items = Array.isArray(breakdown.items) ? breakdown.items.flatMap(value => {
+        const item = asRecord(value);
+        const packageUnit = item.packageUnit;
+        const usedUnit = item.usedUnit;
+        if (typeof item.name !== "string" || typeof item.packageQuantity !== "number" || typeof item.packageCostCents !== "number" || typeof item.usedQuantity !== "number" || typeof packageUnit !== "string" || typeof usedUnit !== "string" || !validUnits.has(packageUnit as FoodCostUnit) || !validUnits.has(usedUnit as FoodCostUnit)) return [];
+        return [{
+          name: item.name,
+          packageQuantity: item.packageQuantity,
+          packageUnit: packageUnit as FoodCostUnit,
+          packageCostCents: item.packageCostCents,
+          usedQuantity: item.usedQuantity,
+          usedUnit: usedUnit as FoodCostUnit,
+        } satisfies FoodCostBreakdownItem];
+      }) : [];
+      return typeof breakdown.yieldQuantity === "number" && breakdown.yieldQuantity > 0 && items.length > 0 ? { yieldQuantity: breakdown.yieldQuantity, items } satisfies FoodCostBreakdown : null;
+    })(),
     salePriceCents: typeof product.salePriceCents === "number" ? product.salePriceCents : 0,
     stockQuantity: typeof product.stockQuantity === "number" ? product.stockQuantity : 0,
     unpreparedQuantity: typeof product.unpreparedQuantity === "number" ? product.unpreparedQuantity : 0,

@@ -29,10 +29,10 @@
 
 | Entidade | Responsabilidade |
 |---|---|
-| `product` | produto-base, sabor opcional, preço, disponibilidade, unidade, perfil fiscal e preparo na hora |
+| `product` | produto-base, sabor opcional, custo unitário editável, composição opcional do custo, preço, disponibilidade, unidade, perfil fiscal e preparo na hora |
 | `product_alias` | sinônimos e frases reconhecidas |
 | `product_option_group` / `product_option` | adicionais e escolhas configuráveis, como quantidade-base e preço por fatia |
-| `ingredient` | item controlado no estoque |
+| `ingredient` | cadastro reutilizável de insumo, com embalagem e valor pago para cálculo de custo; o fluxo atual não controla saldo físico |
 | `recipe` / `recipe_item` | composição opcional do produto |
 | `stock_balance` | saldo por item e local |
 | `stock_movement` | entrada, saída, reserva, liberação, perda e ajuste |
@@ -42,6 +42,10 @@
 Regras:
 
 - preço e disponibilidade são revalidados ao criar venda/pedido;
+- o custo unitário pode ser informado manualmente ou calculado a partir dos insumos,
+  quantidades usadas e rendimento; o detalhamento do cálculo é salvo como referência
+  para revisão quando os preços mudarem; cada item pode referenciar o cadastro do
+  insumo, e alterar embalagem/valor no calculador atualiza esse cadastro;
 - `stock_movement` nunca é apagado;
 - produto sem foto continua plenamente utilizável;
 - alias pertence ao produto e tem normalização para busca;

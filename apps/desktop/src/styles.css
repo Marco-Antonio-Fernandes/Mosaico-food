@@ -810,6 +810,76 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .food-product-basic-fields > label input {
   min-height: 48px;
 }
+.food-cost-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+.food-cost-field > label { min-width: 0; }
+.food-cost-calculator-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  white-space: nowrap;
+}
+.food-cost-reference {
+  grid-column: 1 / -1;
+  color: var(--proto-muted);
+  line-height: 1.35;
+}
+.ingredient-form-panel { display: grid; gap: 10px; }
+.ingredient-form-help { margin: -4px 0 4px; color: var(--proto-muted); font-size: .8rem; line-height: 1.45; }
+.ingredient-form-grid { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1fr) minmax(140px, .8fr); gap: 12px; }
+.cost-calculator-ingredient-note { color: var(--proto-muted); font-size: .74rem; line-height: 1.4; }
+.cost-calculator-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: #061018aa; backdrop-filter: blur(4px); }
+.cost-calculator-modal { width: min(860px, 100%); max-height: min(840px, calc(100dvh - 40px)); overflow-y: auto; display: grid; gap: 16px; box-shadow: 0 24px 80px #0008; }
+.cost-calculator-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.cost-calculator-header > div { display: grid; gap: 5px; }
+.cost-calculator-header h3, .cost-calculator-header p { margin: 0; }
+.cost-calculator-header h3 { display: flex; align-items: center; gap: 7px; }
+.cost-calculator-header p, .cost-calculator-item-heading + small { color: var(--proto-muted); font-size: .78rem; line-height: 1.4; }
+.cost-calculator-close { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; padding: 7px; }
+.cost-calculator-example { padding: 10px 12px; border: 1px solid #39777a; border-radius: 10px; background: #173b40; color: #dff8f7; font-size: .78rem; line-height: 1.45; }
+.cost-calculator-form, .cost-calculator-items { display: grid; gap: 12px; }
+.cost-calculator-section-heading, .cost-calculator-item-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cost-calculator-section-heading > div { display: grid; gap: 3px; }
+.cost-calculator-section-heading small { color: var(--proto-muted); font-size: .72rem; }
+.cost-calculator-item { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--proto-line); border-radius: 12px; background: var(--proto-canvas); }
+.cost-calculator-item-heading { color: var(--proto-ink); }
+.cost-calculator-remove { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 6px 8px; }
+.cost-calculator-item-grid { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 1fr) minmax(120px, .8fr) minmax(150px, 1fr); gap: 10px; }
+.cost-calculator-item-grid label { min-width: 0; }
+.cost-calculator-input-pair { display: grid; grid-template-columns: minmax(0, 1fr) 70px; gap: 5px; }
+.cost-calculator-currency { position: relative; display: grid; align-items: center; }
+.cost-calculator-currency span { position: absolute; left: 9px; z-index: 1; color: var(--proto-muted); font-size: .78rem; pointer-events: none; }
+.cost-calculator-currency input { padding-left: 31px; }
+.cost-calculator-line-total { color: var(--proto-accent); font-weight: 700; }
+.cost-calculator-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 12px; border: 1px solid var(--proto-focus); border-radius: 10px; background: var(--proto-accent-soft); color: var(--proto-ink); font-size: .8rem; }
+.cost-calculator-summary > span { display: grid; gap: 2px; }
+.cost-calculator-summary small { color: var(--proto-muted); font-size: .7rem; }
+.cost-calculator-pricing-note { margin: 0; color: var(--proto-muted); font-size: .74rem; line-height: 1.45; }
+.cost-calculator-sale-price { border: 1px solid var(--proto-focus); border-radius: 10px; padding: 10px 12px; background: var(--proto-accent-soft); }
+.cost-calculator-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+@media(max-width:700px) {
+  .ingredient-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ingredient-form-grid > label:first-child { grid-column: 1 / -1; }
+  .cost-calculator-item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cost-calculator-item-name { grid-column: 1 / -1; }
+}
+@media(max-width:560px) {
+  .ingredient-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .ingredient-form-grid > label:first-child { grid-column: auto; }
+  .food-cost-field { grid-template-columns: minmax(0, 1fr); }
+  .food-cost-calculator-button { justify-content: center; }
+  .cost-calculator-backdrop { padding: 10px; }
+  .cost-calculator-modal { max-height: calc(100dvh - 20px); padding: 16px; }
+  .cost-calculator-item-grid { grid-template-columns: minmax(0, 1fr); }
+  .cost-calculator-item-name { grid-column: auto; }
+  .cost-calculator-actions > button { flex: 1 1 140px; }
+}
 .food-assistant.prototype .food-assistant-choices > button:hover,
 .food-assistant.prototype .food-assistant-back:hover,
 .food-assistant.prototype .food-assistant-guided-add-stock:hover,

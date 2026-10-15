@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Boxes, Check, ChefHat, PackagePlus, Play, Plus, ShoppingCart, Trash2, Wand2, X } from "lucide-react";
-import { assistantConfirmBatch, assistantPreview, createFoodOrder, createFoodProduct, createFoodProducts, getCreditLedger, getFoodCashToday, getFoodProducts, registerCounterSale, registerFoodStock, updateFoodProduct, type AssistantDraft, type AssistantRegistrationDraft, type AssistantRegistrationQuestion, type CreditCustomerRecord, type FoodProduct, type ProductInput, type SalePaymentMethod, PRICE_ADJUSTMENT_REASONS } from "@/lib/food-api";
+import { ArrowLeft, Boxes, Calculator, Check, ChefHat, PackagePlus, Play, Plus, ShoppingCart, Trash2, Wand2, X } from "lucide-react";
+import { assistantConfirmBatch, assistantPreview, createFoodOrder, createFoodProduct, createFoodProducts, getCreditLedger, getFoodCashToday, getFoodProducts, registerCounterSale, registerFoodStock, updateFoodProduct, type AssistantDraft, type AssistantRegistrationDraft, type AssistantRegistrationQuestion, type CreditCustomerRecord, type FoodCostBreakdown, type FoodProduct, type ProductInput, type SalePaymentMethod, PRICE_ADJUSTMENT_REASONS } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
+import { CostCalculator } from "@/features/prototype/cost-calculator";
 
 const registrationWords = /\b(cadastre|cadastrar|cadastra|registre|registrar|registra|adicione|adicionar|adiciona)\b/i;
 const unitLabel = (unit: AssistantRegistrationDraft["stockUnit"]) => unit === "g" ? "g" : unit === "ml" ? "ml" : "un";
@@ -10,7 +11,7 @@ const registrationFlavorKey = (flavor: string) => flavor.normalize("NFD").replac
 type GuidedAction = "order" | "sale" | "stock" | "prepare" | "loss" | "register" | "edit";
 type GuidedStep = "menu" | "product" | "details" | "register";
 type GuidedPayment = "pending" | SalePaymentMethod;
-type RegistrationStep = "basic" | "source";
+type RegistrationStep = "mode" | "basic" | "source";
 type OrderAllocationItem = { product: FoodProduct; quantity: number; readyOptions: number; selectedReadyUnits: number[] };
 type OrderAllocationDraft = { items: OrderAllocationItem[] };
 
@@ -51,6 +52,8 @@ function GuidedAssistant() {
   const [registrationFlavorStock, setRegistrationFlavorStock] = useState<Record<string, string>>({});
   const [registrationFlavorReady, setRegistrationFlavorReady] = useState<Record<string, string>>({});
   const [registrationCost, setRegistrationCost] = useState("");
+  const [registrationCostBreakdown, setRegistrationCostBreakdown] = useState<FoodCostBreakdown | null>(null);
+  const [registrationCostCalculatorOpen, setRegistrationCostCalculatorOpen] = useState(false);
   const [registrationPrice, setRegistrationPrice] = useState("");
   const [registrationStock, setRegistrationStock] = useState("0");
   const [registrationRecipe, setRegistrationRecipe] = useState<FoodProduct["recipe"]>([]);
@@ -133,6 +136,8 @@ function GuidedAssistant() {
     setRegistrationFlavorStock({});
     setRegistrationFlavorReady({});
     setRegistrationCost("");
+    setRegistrationCostBreakdown(null);
+    setRegistrationCostCalculatorOpen(false);
     setRegistrationPrice("");
     setRegistrationStock("0");
     setRegistrationRecipe([]);
@@ -142,6 +147,7 @@ function GuidedAssistant() {
     setNewIngredientStock("0");
     setOrderAllocation(null);
     if (nextAction === "register") {
+      setRegistrationStep("mode");
       setStep("register");
       void loadProducts(nextAction);
       return;
@@ -173,6 +179,8 @@ function GuidedAssistant() {
       setRegistrationFlavorStock({ [registrationFlavorKey(currentFlavor)]: String(nextProduct.productionMode === "resale" ? nextProduct.unpreparedQuantity : nextProduct.stockQuantity) });
       setRegistrationFlavorReady({ [registrationFlavorKey(currentFlavor)]: String(nextProduct.stockQuantity) });
       setRegistrationCost(nextProduct.costPriceCents > 0 ? (nextProduct.costPriceCents / 100).toFixed(2).replace(".", ",") : "");
+      setRegistrationCostBreakdown(nextProduct.costBreakdown);
+      setRegistrationCostCalculatorOpen(false);
       setRegistrationPrice(nextProduct.salePriceCents > 0 ? (nextProduct.salePriceCents / 100).toFixed(2).replace(".", ",") : "");
       setRegistrationRecipe(nextProduct.recipe.map(row => ({ ...row })));
       setRegistrationAllowOnDemand(nextProduct.allowOnDemand);
@@ -238,6 +246,8 @@ function GuidedAssistant() {
     setSearch("");
     setError("");
     setRegistrationStep("basic");
+    setRegistrationCostBreakdown(null);
+    setRegistrationCostCalculatorOpen(false);
   };
 
   const confirmOrderProductSelection = () => {
@@ -280,8 +290,11 @@ function GuidedAssistant() {
   const goBack = () => {
     if (step === "menu") return;
     if (step === "register") {
-      const previous: Record<RegistrationStep, RegistrationStep | null> = { basic: null, source: "basic" };
-      const previousStep = previous[registrationStep];
+      const previousStep = registrationStep === "source"
+        ? "basic"
+        : registrationStep === "basic" && action === "register"
+          ? "mode"
+          : null;
       if (previousStep) setRegistrationStep(previousStep);
       else resetToMenu();
       return;
@@ -553,6 +566,7 @@ function GuidedAssistant() {
       variants: action === "edit" && product ? product.variants : [],
       salePriceCents: Math.round(parsedPrice * 100),
       costPriceCents: Math.round(parsedCost * 100),
+      costBreakdown: registrationCostBreakdown,
       stockQuantity: action === "edit" && product ? product.stockQuantity : ready,
       allowOnDemand: modeForSave === "made_here",
       fryToOrder: false,
@@ -631,6 +645,10 @@ function GuidedAssistant() {
 
   const continueRegistration = () => {
     setError("");
+    if (registrationStep === "mode") {
+      setRegistrationStep("basic");
+      return;
+    }
     if (registrationStep === "basic") {
       const parsedPrice = registrationPrice.trim() ? guidedNumber(registrationPrice) : 0;
       if (!registrationName.trim() || !Number.isFinite(parsedPrice) || parsedPrice < 0) {
@@ -653,10 +671,10 @@ function GuidedAssistant() {
   const registrationFlavorRows = registrationFlavors.length ? registrationFlavors : [""];
   const actionTitle = action === "order" ? "Novo pedido" : action === "sale" ? "Nova venda" : action === "stock" ? "Adicionar ao estoque" : action === "prepare" ? "Preparar" : action === "loss" ? "Dar baixa como perda" : action === "edit" ? "Editar produto" : "Preparo";
   const supportsMultipleSelection = action === "order" || action === "sale" || action === "prepare";
-  const flowStep = step === "product" ? 1 : step === "details" ? 2 : registrationStep === "basic" ? 1 : 2;
-  const flowLabels = action === "register" || action === "edit" ? ["Dados", "Origem e configuração"] : ["Produto", "Quantidade e confirmação"];
+  const flowStep = step === "product" ? 1 : step === "details" ? 2 : action === "register" ? registrationStep === "mode" ? 1 : registrationStep === "basic" ? 2 : 3 : registrationStep === "basic" ? 1 : 2;
+  const flowLabels = action === "register" ? ["Tipo", "Dados", "Estoque inicial"] : action === "edit" ? ["Dados", "Estoque inicial"] : ["Produto", "Quantidade e confirmação"];
 
-  return <div className="food-assistant-guided">
+  return <><div className="food-assistant-guided">
     {step !== "menu" && <button type="button" className="food-assistant-back proto-subtle" onClick={goBack} disabled={loading || saving}><ArrowLeft size={16} /> Voltar</button>}
     {step !== "menu" && <div className="food-assistant-flow" aria-label={`Etapa ${flowStep} de ${flowLabels.length}`}><span className="food-assistant-flow-count">Etapa {flowStep} de {flowLabels.length}</span>{flowLabels.map((label, index) => <span className={index + 1 === flowStep ? "is-current" : index + 1 < flowStep ? "is-done" : ""} key={label}>{index + 1}. {label}</span>)}</div>}
     {result && step !== "menu" && <p className="food-assistant-success" role="status"><Check size={17} /> {result}</p>}
@@ -724,24 +742,27 @@ function GuidedAssistant() {
     </>}
     {false && orderAllocation && action === "order" && <div className="food-assistant-stock-modal-backdrop" role="presentation"><section className="food-assistant-stock-modal" role="dialog" aria-modal="true" aria-labelledby="food-assistant-stock-title"><div className="food-assistant-stock-modal-heading"><div><strong id="food-assistant-stock-title">Distribuir estoque da comanda</strong><small>Escolha as unidades prontas de cada produto. O restante ficará para preparar.</small></div><button type="button" className="proto-subtle" onClick={() => setOrderAllocation(null)} disabled={saving}><X size={17} /></button></div><div className="food-assistant-allocation-list">{orderAllocation.items.map((allocation, allocationIndex) => { const readyQuantity = allocation.selectedReadyUnits.length; const prepareQuantity = allocation.quantity - readyQuantity; const availableToPrepare = allocation.product.productionMode === "recipe" ? allocation.product.preparationCapacity : allocation.product.unpreparedQuantity; return <article className="food-assistant-allocation-item" key={allocation.product.id}><header><div><strong>{allocation.product.productName || allocation.product.name}{allocation.product.flavor ? ` · ${allocation.product.flavor}` : ""}</strong><small>{allocation.quantity} unidade{allocation.quantity === 1 ? "" : "s"} · {allocation.product.stockQuantity} prontas · {availableToPrepare} para preparar</small></div><div className="food-assistant-ready-summary"><span><strong>{readyQuantity}</strong> prontas</span><span><strong>{prepareQuantity}</strong> preparar</span></div></header>{allocation.readyOptions > 0 ? <div className="food-assistant-ready-list">{Array.from({ length: allocation.readyOptions }, (_, index) => <label className={`food-assistant-ready-choice${allocation.selectedReadyUnits.includes(index) ? " is-selected" : ""}`} key={index}><input type="checkbox" checked={allocation.selectedReadyUnits.includes(index)} onChange={event => setOrderAllocation(current => current ? { ...current, items: current.items.map((entry, entryIndex) => entryIndex === allocationIndex ? { ...entry, selectedReadyUnits: event.target.checked ? [...entry.selectedReadyUnits, index] : entry.selectedReadyUnits.filter(item => item !== index) } : entry) } : current)} /><span>Pronta {index + 1}</span></label>)}</div> : <p className="food-assistant-stock-empty">Nenhuma unidade pronta disponível.</p>}{prepareQuantity > availableToPrepare && <p className="food-assistant-stock-warning">Selecione mais unidades prontas para completar este item.</p>}</article>; })}</div><div className="food-assistant-stock-modal-actions"><button type="button" className="proto-subtle" onClick={() => setOrderAllocation(null)} disabled={saving}>Voltar</button><button type="button" className="food-assistant-confirm" onClick={() => void confirmOrderAllocation()} disabled={saving || orderAllocation.items.some(item => item.quantity - item.selectedReadyUnits.length > (item.product.productionMode === "recipe" ? item.product.preparationCapacity : item.product.unpreparedQuantity))}>{saving ? "Salvando…" : "Confirmar comanda"}</button></div></section></div>}
     {step === "register" && <form className="food-assistant-register-form" onSubmit={event => { event.preventDefault(); void saveRegistration(); }}>
-      <div className="food-assistant-step-heading"><strong>{action === "edit" ? "Editar produto" : "Cadastrar produto"}</strong><span>{registrationStep === "basic" ? action === "edit" ? "Altere os dados principais do produto." : "Primeiro informe os dados principais." : "Agora me diga como este item chega ou é produzido."}</span></div>
-      {registrationStep === "basic" && <>
-        <div className="food-assistant-register-grid food-assistant-basic-grid"><label>Nome do produto<input required autoFocus value={registrationName} onChange={event => setRegistrationName(event.target.value)} placeholder="Ex.: Esfirra" /></label><div className="food-assistant-flavor-fields"><span className="food-assistant-field-label">Sabores <small>(opcional)</small></span>{registrationFlavorFields.map((flavor, index) => <div className="food-assistant-flavor-row" key={index}><input value={flavor} onChange={event => setRegistrationFlavorFields(current => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={index === 0 ? "Ex.: Carne" : "Outro sabor"} />{registrationFlavorFields.length > 1 && <button type="button" className="proto-subtle food-assistant-remove-flavor" aria-label={`Remover sabor ${index + 1}`} onClick={() => setRegistrationFlavorFields(current => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>}</div>)}{action !== "edit" && <button type="button" className="food-assistant-add-row food-assistant-add-flavor" onClick={() => setRegistrationFlavorFields(current => [...current, ""])}><Plus size={15} />Adicionar sabor</button>}<small>Cada sabor será criado como um produto separado, com estoque próprio.</small></div><label>Custo para você (R$)<input inputMode="decimal" value={registrationCost} onChange={event => setRegistrationCost(event.target.value)} placeholder="Ex.: 2,50" /></label><label>Preço de venda (R$)<input inputMode="decimal" value={registrationPrice} onChange={event => setRegistrationPrice(event.target.value)} placeholder="Ex.: 5,00" /></label></div>
-        <button type="button" className="food-assistant-confirm" onClick={continueRegistration}>Continuar</button>
-      </>}
-      {registrationStep === "source" && <>
-        <fieldset className="food-assistant-register-modes" disabled={action === "edit"}><legend>Como este item chega até a loja?</legend><div className="food-assistant-register-mode-grid">
+      <div className="food-assistant-step-heading"><strong>{action === "edit" ? "Editar produto" : "Cadastrar produto"}</strong><span>{registrationStep === "mode" ? "Primeiro escolha como este item chega até a loja." : registrationStep === "basic" ? action === "edit" ? "Altere os dados principais do produto." : "Agora informe os dados do produto." : "Confira o estoque inicial por sabor antes de salvar."}</span></div>
+      {registrationStep === "mode" && <>
+        <fieldset className="food-assistant-register-modes"><legend>Como este item chega até a loja?</legend><div className="food-assistant-register-mode-grid">
           <button type="button" className={registrationMode === "frozen" ? "is-selected" : ""} onClick={() => setRegistrationMode("frozen")}><strong>Congelado</strong><small>Tem unidades congeladas para preparar e unidades já prontas.</small></button>
           <button type="button" className={registrationMode === "ready" ? "is-selected" : ""} onClick={() => setRegistrationMode("ready")}><strong>Já pronto</strong><small>É comprado pronto e não passa por preparo.</small></button>
           <button type="button" className={registrationMode === "made_here" ? "is-selected" : ""} onClick={() => setRegistrationMode("made_here")}><strong>Faço aqui</strong><small>Preparo na hora ou deixo pronto, sem limite de quantidade.</small></button>
         </div></fieldset>
+        <button type="button" className="food-assistant-confirm" onClick={continueRegistration}>Continuar</button>
+      </>}
+      {registrationStep === "basic" && <>
+        <div className="food-assistant-register-grid food-assistant-basic-grid"><label>Nome do produto<input required autoFocus value={registrationName} onChange={event => setRegistrationName(event.target.value)} placeholder="Ex.: Esfirra" /></label><div className="food-assistant-flavor-fields"><span className="food-assistant-field-label">Sabores <small>(opcional)</small></span>{registrationFlavorFields.map((flavor, index) => <div className="food-assistant-flavor-row" key={index}><input value={flavor} onChange={event => setRegistrationFlavorFields(current => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={index === 0 ? "Ex.: Carne" : "Outro sabor"} />{registrationFlavorFields.length > 1 && <button type="button" className="proto-subtle food-assistant-remove-flavor" aria-label={`Remover sabor ${index + 1}`} onClick={() => setRegistrationFlavorFields(current => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>}</div>)}{action !== "edit" && <button type="button" className="food-assistant-add-row food-assistant-add-flavor" onClick={() => setRegistrationFlavorFields(current => [...current, ""])}><Plus size={15} />Adicionar sabor</button>}<small>Cada sabor será criado como um produto separado, com estoque próprio.</small></div><div className="food-cost-field"><label>Custo para você (R$)<input inputMode="decimal" value={registrationCost} onChange={event => setRegistrationCost(event.target.value)} placeholder="Ex.: 2,50" /></label><button type="button" className="proto-subtle food-cost-calculator-button" onClick={() => setRegistrationCostCalculatorOpen(true)}><Calculator size={15} />{registrationCostBreakdown ? "Recalcular custo" : "Calcular custo"}</button>{registrationCostBreakdown && <small className="food-cost-reference">Detalhamento salvo. Você pode editar o valor estimado acima.</small>}</div><label>Preço de venda (R$)<input inputMode="decimal" value={registrationPrice} onChange={event => setRegistrationPrice(event.target.value)} placeholder="Ex.: 5,00" /></label></div>
+        <button type="button" className="food-assistant-confirm" onClick={continueRegistration}>Continuar</button>
+      </>}
+      {registrationStep === "source" && <>
         <section className="food-assistant-register-section"><strong>Estoque inicial por sabor</strong><small>{registrationMode === "frozen" ? "Informe quantos estão congelados e quantos já estão prontos." : registrationMode === "ready" ? "Tudo o que você comprar entra como pronto." : "Este produto pode ser preparado sem limite. Informe apenas o que já está pronto, se houver."}</small>{registrationFlavorRows.map(flavor => <div className="food-assistant-register-flavor-row" key={registrationFlavorKey(flavor)}><strong>{flavor || "Produto sem sabor"}</strong>{registrationMode === "frozen" && <label>Congelados<input type="number" min="0" step="1" value={registrationFlavorStock[registrationFlavorKey(flavor)] ?? "0"} onChange={event => setRegistrationFlavorStock(current => ({ ...current, [registrationFlavorKey(flavor)]: event.target.value }))} /></label>}<label>Já preparados<input type="number" min="0" step="1" value={registrationFlavorReady[registrationFlavorKey(flavor)] ?? "0"} onChange={event => setRegistrationFlavorReady(current => ({ ...current, [registrationFlavorKey(flavor)]: event.target.value }))} /></label></div>)}</section>
         <div className="food-assistant-review"><strong>Resumo</strong><span><b>Produto:</b> {registrationName || "—"}</span><span><b>Sabores:</b> {registrationFlavors.join(", ") || "sem sabor"}</span><span><b>Tipo:</b> {registrationMode === "frozen" ? "Congelado" : registrationMode === "ready" ? "Já pronto" : "Faço aqui"}</span><span><b>Custo:</b> {registrationCost || "não informado"}</span><span><b>Venda:</b> {registrationPrice || "não informado"}</span></div>
         <button type="submit" className="food-assistant-confirm" disabled={saving}>{saving ? "Salvando…" : action === "edit" ? "Salvar alterações" : "Confirmar e salvar cadastro"}</button>
       </>}
     </form>}
     {error && <p role="alert" className="food-assistant-error">{error}</p>}
-  </div>;
+  </div>{registrationCostCalculatorOpen && <CostCalculator initial={registrationCostBreakdown} onApply={result => { setRegistrationCostBreakdown(result.breakdown); setRegistrationCost((result.costPriceCents / 100).toFixed(2).replace(".", ",")); setRegistrationPrice((result.salePriceCents / 100).toFixed(2).replace(".", ",")); setRegistrationCostCalculatorOpen(false); setError(""); }} onClose={() => setRegistrationCostCalculatorOpen(false)} />}</>;
 }
 
 export function FoodAssistant() {
