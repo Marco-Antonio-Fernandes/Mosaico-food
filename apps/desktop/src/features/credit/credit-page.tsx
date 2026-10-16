@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDownLeft, Check, CreditCard, History, RefreshCw, Search, Wallet } from "lucide-react";
-import { getCreditLedger, receiveCreditPayment, type CreditCustomerRecord, type CreditEntryRecord } from "@/lib/food-api";
+import { getCreditLedger, receiveCreditPayment, type CreditCustomerRecord, type CreditEntryRecord, type ReceivedPaymentMethod } from "@/lib/food-api";
 
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const formatDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -18,6 +18,8 @@ export function CreditPage() {
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
   const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<ReceivedPaymentMethod | "">("");
+  const [operationId, setOperationId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
@@ -50,25 +52,27 @@ export function CreditPage() {
   const selectedBalance = selectedCustomer?.creditAccount?.balanceCents ?? 0;
   const amountCents = parseAmount(amount);
   const overBalance = amountCents > selectedBalance;
-  const selectedIsLate = selectedCustomer?.creditStatus === "late";
 
   const chooseCustomer = (customer: CreditCustomerRecord) => {
     setSelected(customer.id);
     setAmount("");
+    setPaymentMethod(""); setOperationId(crypto.randomUUID());
     setError("");
     setNotice("");
   };
 
   const submit = async () => {
     if (!selectedCustomer) { setError("Selecione uma conta com saldo em aberto."); return; }
+    if (!paymentMethod) { setError("Informe como o pagamento foi recebido."); return; }
     if (amountCents <= 0) { setError("Informe um valor de recebimento maior que zero."); return; }
     if (amountCents > selectedBalance) { setError("O recebimento não pode ser maior que o saldo em aberto."); return; }
     setSaving(true);
     setError("");
     setNotice("");
     try {
-      await receiveCreditPayment(selectedCustomer.id, amountCents);
+      await receiveCreditPayment(selectedCustomer.id, amountCents, paymentMethod, operationId);
       setAmount("");
+      setOperationId(crypto.randomUUID());
       setNotice(`Recebimento de ${money(amountCents)} registrado para ${selectedCustomer.name}.`);
       await load(true);
     } catch (cause) {
@@ -98,7 +102,7 @@ export function CreditPage() {
               const account = customer.creditAccount!;
               const active = selected === customer.id;
               const available = account.creditLimitCents === null ? null : Math.max(account.creditLimitCents - account.balanceCents, 0);
-              return <button type="button" key={customer.id} className={`credit-account-row${active ? " is-selected" : ""}`} aria-pressed={active} onClick={() => chooseCustomer(customer)}>
+              return <button type="button" key={customer.id} className={`credit-account-row${active ? " is-selected" : ""}`} aria-pressed={active} disabled={saving} onClick={() => chooseCustomer(customer)}>
                 <span className="credit-avatar" aria-hidden="true">{customer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span>
                 <span className="credit-account-name"><strong>{customer.name}</strong><small>{customer.phone || "Telefone não informado"}</small></span>
                 <span className="credit-account-balance"><strong>{money(account.balanceCents)}</strong><small>{available === null ? "Sem limite" : `${money(available)} disponível`}</small></span>
@@ -110,11 +114,12 @@ export function CreditPage() {
       <section className="credit-card credit-receipt-panel" aria-labelledby="credit-receipt-title">
         <header className="credit-card-header"><div><h2 id="credit-receipt-title">Registrar recebimento</h2><p>Registre um pagamento parcial ou quite o saldo.</p></div><span className="credit-receipt-icon"><ArrowDownLeft size={19} aria-hidden="true" /></span></header>
         {selectedCustomer ? <>
-          <div className={`credit-selected-customer${selectedIsLate ? " is-late" : ""}`}><span className="credit-avatar">{selectedCustomer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span><div><small>Cliente selecionado</small><strong>{selectedCustomer.name}</strong><span className="credit-risk-label">{selectedIsLate ? `Não paga em dia${selectedCustomer.lateDays ? ` · até ${selectedCustomer.lateDays} dias` : ""}` : "Em dia"}</span></div><div className="credit-selected-balance"><small>Saldo atual</small><strong>{money(selectedBalance)}</strong></div></div>
-          <label className="credit-field">Valor recebido <span className="credit-currency"><span>R$</span><input inputMode="decimal" autoComplete="off" value={amount} onChange={event => { setAmount(event.target.value); setError(""); setNotice(""); }} placeholder="0,00" aria-describedby="credit-amount-hint" /></span></label>
-          <div className="credit-amount-hints" id="credit-amount-hint"><span>Saldo: {money(selectedBalance)}</span><button type="button" onClick={() => setAmount((selectedBalance / 100).toFixed(2).replace(".", ","))}>Quitar saldo</button></div>
+          <div className="credit-selected-customer"><span className="credit-avatar">{selectedCustomer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span><div><small>Cliente selecionado</small><strong>{selectedCustomer.name}</strong></div><div className="credit-selected-balance"><small>Saldo atual</small><strong>{money(selectedBalance)}</strong></div></div>
+          <label className="credit-field">Valor recebido <span className="credit-currency"><span>R$</span><input disabled={saving} inputMode="decimal" autoComplete="off" value={amount} onChange={event => { setAmount(event.target.value); setOperationId(crypto.randomUUID()); setError(""); setNotice(""); }} placeholder="0,00" aria-describedby="credit-amount-hint" /></span></label>
+          <div className="credit-amount-hints" id="credit-amount-hint"><span>Saldo: {money(selectedBalance)}</span><button type="button" disabled={saving} onClick={() => { setAmount((selectedBalance / 100).toFixed(2).replace(".", ",")); setOperationId(crypto.randomUUID()); }}>Quitar saldo</button></div>
+          <label className="credit-field">Forma de recebimento<select value={paymentMethod} disabled={saving} onChange={event => { setPaymentMethod(event.target.value as ReceivedPaymentMethod | ""); setOperationId(crypto.randomUUID()); setError(""); }}><option value="">Selecione a forma</option><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option></select></label>
           {amountCents > 0 && <p className={`credit-after-payment${overBalance ? " is-invalid" : ""}`}>Saldo após recebimento <strong>{money(Math.max(0, selectedBalance - amountCents))}</strong></p>}
-          <button className="credit-submit" type="button" disabled={saving || loading || amountCents <= 0 || overBalance} onClick={() => void submit()}>{saving ? <><span className="credit-button-spinner" />Registrando…</> : <><ArrowDownLeft size={17} />Registrar recebimento</>}</button>
+          <button className="credit-submit" type="button" disabled={saving || loading || !paymentMethod || amountCents <= 0 || overBalance} onClick={() => void submit()}>{saving ? <><span className="credit-button-spinner" />Registrando…</> : <><ArrowDownLeft size={17} />Registrar recebimento</>}</button>
           <p className="credit-secure-note">O lançamento atualiza o saldo e fica registrado no histórico da conta.</p>
         </> : <div className="credit-receipt-empty"><span className="credit-empty-icon"><ArrowDownLeft size={21} /></span><strong>Escolha uma conta</strong><span>Selecione um cliente na lista para informar o valor recebido.</span></div>}
       </section>

@@ -5,6 +5,7 @@ import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { ProductStock } from "./product-stock";
 import { CreditPage } from "@/features/credit/credit-page";
+import { FinancePage } from "@/features/finance/finance-page";
 import { FoodBackupPanel } from "@/features/system/food-backup-panel";
 import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, createFoodProduct, createFoodProducts, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, updateFoodProduct, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodCostBreakdown, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
@@ -59,7 +60,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "credit" && <CreditPage />}
     {module === "inventory" && <Catalog />}
     {module === "customers" && <CustomersPage />}
-    {module === "finance" && <Finance />}
+    {module === "finance" && <FinancePage />}
     {module === "fiscal" && <Fiscal />}
     {module === "backup" && <div className="proto-stack"><FoodBackupPanel /><OfflinePreview /></div>}
     {module === "settings" && <div className="proto-stack"><Editor title="Identidade da loja" tabs={["Dados da loja", "Entrega", "Impressão"]} labels={["Nome da loja", "Endereço", "Telefone público"]} /><Preferences groups={[{ title: "Equipe e acesso", labels: ["Operador de caixa", "Gerente", "Responsável fiscal"] }, { title: "Notificações", labels: ["Som de novo pedido", "Aviso de WhatsApp", "Alertas de estoque"] }]} /><Panel title="Integrações"><dl className="proto-facts"><div><dt>WhatsApp Cloud API</dt><dd>Não conectado</dd></div><div><dt>Fiscal</dt><dd>Configuração pendente</dd></div></dl></Panel></div>}

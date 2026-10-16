@@ -13,6 +13,12 @@ const isDevelopment = !app.isPackaged;
 const useBuiltRenderer = process.env.MOSAICO_USE_BUILT_RENDERER === "1";
 let mainWindow = null;
 
+if (isDevelopment) {
+  const envFile = path.join(__dirname, "../.env");
+  if (require("node:fs").existsSync(envFile)) process.loadEnvFile(envFile);
+}
+const configuredBackendUrl = process.env.MOSAICO_BACKEND_URL || (isDevelopment ? "http://localhost:3000" : "https://mosaico.rotatix.com.br");
+
 // O backend local usa uma porta fixa. Sem o lock, abrir o aplicativo duas
 // vezes deixava a segunda janela sem backend e exibia um erro enganoso de
 // conexão, embora a primeira instância ainda estivesse funcionando.

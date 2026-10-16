@@ -16,7 +16,9 @@
     "typecheck": "npm --workspace apps/desktop run typecheck",
     "typecheck:back": "npm --prefix ../mosaico-back run typecheck",
     "db:generate": "npm --prefix ../mosaico-back run db:generate",
-    "db:push": "npm --prefix ../mosaico-back run db:push"
+    "db:push": "npm --prefix ../mosaico-back run db:push",
+    "db:migrate": "npm --prefix ../mosaico-back run db:migrate --",
+    "db:migrate:deploy": "npm --prefix ../mosaico-back run db:migrate:deploy"
   },
   "allowScripts": {
     "electron@33.4.11": true,

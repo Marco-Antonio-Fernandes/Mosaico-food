@@ -25,7 +25,7 @@ Na raiz do projeto:
 npm install
 npm --prefix ../mosaico-back install
 cp ../mosaico-back/.env.example ../mosaico-back/.env
-npm run db:push
+npm run db:migrate:deploy
 npm run dev
 ```
 
