@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "npm --workspace apps/desktop run dev",
     "dev:web": "npm --workspace apps/desktop run dev:web",
+    "prepare:interpreter": "npm --workspace apps/desktop run prepare:interpreter",
     "dev:back": "npm --prefix ../mosaico-back run dev",
     "build": "npm --workspace apps/desktop run build",
     "build:back": "npm --prefix ../mosaico-back run build",

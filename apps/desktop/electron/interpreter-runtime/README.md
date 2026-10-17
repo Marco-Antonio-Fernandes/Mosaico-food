@@ -4,12 +4,16 @@ O interpretador local usa `llama.cpp` e o modelo `Qwen3-1.7B-Q8_0.gguf`. Ele
 fica no computador do desktop, em `127.0.0.1`, e não envia a transcrição para
 um serviço externo.
 
-Na raiz de `apps/desktop`, rode:
+Na raiz do projeto, rode:
 
 ```bash
 sudo pacman -S --needed git cmake base-devel
 npm run prepare:interpreter
 ```
+
+Esse comando baixa o modelo para `electron/interpreter-runtime/models/`.
+O arquivo é local e ignorado pelo Git; não é necessário adicioná-lo ao
+repositório.
 
 O script baixa o `llama.cpp`, compila somente o `llama-server` e baixa o modelo
 oficial de aproximadamente 1,83 GB. Se os arquivos já existirem, eles são
