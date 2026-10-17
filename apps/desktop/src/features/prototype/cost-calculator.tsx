@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Calculator, Plus, Trash2, X } from "lucide-react";
-import { createFoodProduct, getFoodProducts, updateFoodProduct, type FoodCostBreakdown, type FoodCostBreakdownItem, type FoodCostUnit, type FoodProduct } from "@/lib/food-api";
+import { createFoodProduct, getFoodProductLossSummary, getFoodProducts, updateFoodProduct, type FoodCostBreakdown, type FoodCostBreakdownItem, type FoodCostUnit, type FoodProduct, type FoodLossSummary } from "@/lib/food-api";
 
 type CostCalculatorResult = {
   breakdown: FoodCostBreakdown;
@@ -11,6 +11,8 @@ type CostCalculatorResult = {
 
 type CostCalculatorProps = {
   initial: FoodCostBreakdown | null;
+  productId?: string;
+  productName?: string;
   onApply: (result: CostCalculatorResult) => void;
   onClose: () => void;
 };
@@ -35,6 +37,7 @@ const unitOptions: { value: FoodCostUnit; label: string; dimension: "mass" | "vo
 ];
 
 const targetFoodCostPercent = 30;
+const operatingExpensePercent = 5;
 
 function unitDefinition(unit: FoodCostUnit) {
   return unitOptions.find(option => option.value === unit) ?? unitOptions[0];
@@ -110,13 +113,15 @@ function lineCostCents(row: CostCalculatorRow) {
   return Math.round(packageCostCents * (usedQuantity * usedUnit.factor) / (packageQuantity * packageUnit.factor));
 }
 
-export function CostCalculator({ initial, onApply, onClose }: CostCalculatorProps) {
+export function CostCalculator({ initial, productId, productName, onApply, onClose }: CostCalculatorProps) {
   const [yieldQuantity, setYieldQuantity] = useState(initial ? String(initial.yieldQuantity).replace(".", ",") : "");
   const [rows, setRows] = useState<CostCalculatorRow[]>(() => initial?.items.length ? initial.items.map(rowFromItem) : [emptyRow()]);
   const [salePriceOverride, setSalePriceOverride] = useState("");
   const [error, setError] = useState("");
   const [ingredients, setIngredients] = useState<FoodProduct[]>([]);
+  const [lossSummary, setLossSummary] = useState<FoodLossSummary | null>(null);
   const [ingredientLoading, setIngredientLoading] = useState(true);
+  const [lossLoading, setLossLoading] = useState(Boolean(productId));
   const [syncingIngredients, setSyncingIngredients] = useState(false);
 
   useEffect(() => {
@@ -149,17 +154,41 @@ export function CostCalculator({ initial, onApply, onClose }: CostCalculatorProp
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!productId) {
+      setLossLoading(false);
+      setLossSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setLossLoading(true);
+    void getFoodProductLossSummary(productId).then(summary => {
+      if (!cancelled) setLossSummary(summary);
+    }).catch(() => {
+      if (!cancelled) setLossSummary(null);
+    }).finally(() => {
+      if (!cancelled) setLossLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [productId]);
+
   const updateRow = (id: string, changes: Partial<CostCalculatorRow>) => {
     setRows(current => current.map(row => row.id === id ? { ...row, ...changes } : row));
   };
   const previewYield = decimalValue(yieldQuantity);
   const previewTotalCostCents = rows.reduce((total, row) => total + (lineCostCents(row) ?? 0), 0);
-  const previewUnitCostCents = Number.isFinite(previewYield) && previewYield > 0 ? Math.round(previewTotalCostCents / previewYield) : null;
+  const previewBaseUnitCostCents = Number.isFinite(previewYield) && previewYield > 0 ? Math.round(previewTotalCostCents / previewYield) : null;
+  const previewLossQuantity = lossSummary?.lossQuantity ?? 0;
+  const previewLossRate = previewBaseUnitCostCents === null || !Number.isFinite(previewYield) || previewYield <= 0 ? 0 : previewLossQuantity / previewYield;
+  const previewUnitCostCents = previewBaseUnitCostCents === null ? null : Math.round(previewBaseUnitCostCents * (1 + previewLossRate));
   const previewSuggestedSalePriceCents = previewUnitCostCents === null ? null : Math.ceil(previewUnitCostCents / (targetFoodCostPercent / 100));
   const previewSalePriceCents = previewSuggestedSalePriceCents === null ? null : salePriceOverride.trim() ? currencyCents(salePriceOverride) : previewSuggestedSalePriceCents;
   const previewGrossProfitCents = previewSalePriceCents === null || previewUnitCostCents === null || !Number.isFinite(previewSalePriceCents) ? null : previewSalePriceCents - previewUnitCostCents;
-  const previewIngredientPercent = previewSalePriceCents && previewSalePriceCents > 0 && previewUnitCostCents !== null ? previewUnitCostCents / previewSalePriceCents * 100 : null;
+  const previewExpenseCents = previewGrossProfitCents === null ? null : Math.max(0, Math.round(previewGrossProfitCents * operatingExpensePercent / 100));
+  const previewNetProfitCents = previewGrossProfitCents === null || previewExpenseCents === null ? null : previewGrossProfitCents - previewExpenseCents;
   const previewGrossMarginPercent = previewSalePriceCents && previewSalePriceCents > 0 && previewGrossProfitCents !== null ? previewGrossProfitCents / previewSalePriceCents * 100 : null;
+  const previewNetMarginPercent = previewSalePriceCents && previewSalePriceCents > 0 && previewNetProfitCents !== null ? previewNetProfitCents / previewSalePriceCents * 100 : null;
+  const previewTotalProfitCents = previewNetProfitCents === null || !Number.isFinite(previewYield) || previewYield <= 0 ? null : previewNetProfitCents * previewYield;
 
   const calculate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -242,11 +271,13 @@ export function CostCalculator({ initial, onApply, onClose }: CostCalculatorProp
         return next;
       });
       const totalBatchCostCents = validatedRows.reduce((total, { row }) => total + (lineCostCents(row) ?? 0), 0);
-      const costPriceCents = Math.round(totalBatchCostCents / parsedYield);
+      const baseCostPriceCents = Math.round(totalBatchCostCents / parsedYield);
+      const lossRate = previewLossQuantity / parsedYield;
+      const costPriceCents = Math.round(baseCostPriceCents * (1 + lossRate));
       const suggestedSalePriceCents = Math.ceil(costPriceCents / (targetFoodCostPercent / 100));
       const salePriceCents = salePriceOverride.trim() ? currencyCents(salePriceOverride) : suggestedSalePriceCents;
       if (!Number.isFinite(salePriceCents) || salePriceCents < 0) {
-        setError("Informe um preço de venda válido para simular o lucro.");
+        setError("Informe um preço de venda válido para calcular a margem.");
         return;
       }
       onApply({ breakdown: { yieldQuantity: parsedYield, items }, costPriceCents, suggestedSalePriceCents, salePriceCents });
@@ -284,9 +315,9 @@ export function CostCalculator({ initial, onApply, onClose }: CostCalculatorProp
         </div>
         {!ingredientLoading && !ingredients.length && <small className="cost-calculator-ingredient-note">Ainda não há insumos cadastrados. Ao confirmar um nome novo, ele será criado automaticamente para os próximos cálculos.</small>}
         {error && <p role="alert" className="proto-form-error">{error}</p>}
-        <label className="cost-calculator-sale-price">Preço de venda para simulação (R$)<input inputMode="decimal" value={salePriceOverride || (previewSuggestedSalePriceCents === null ? "" : (previewSuggestedSalePriceCents / 100).toFixed(2).replace(".", ","))} onChange={event => setSalePriceOverride(event.target.value)} placeholder="Será sugerido após o cálculo" /><small>O valor sugerido começa com food cost de {targetFoodCostPercent}%, mas você pode digitar o preço que realmente pretende cobrar.</small></label>
-        {previewUnitCostCents !== null && <div className="cost-calculator-summary"><span>Custo total dos insumos: <strong>{money(previewTotalCostCents)}</strong></span><span>Para recomprar insumos por unidade: <strong>{money(previewUnitCostCents)}</strong><small>{previewIngredientPercent === null ? "Informe um preço válido" : `${previewIngredientPercent.toFixed(1).replace(".", ",")}% do preço usado`}</small></span><span>Preço sugerido: <strong>{money(previewSuggestedSalePriceCents ?? 0)}</strong><small>Food cost de referência: {targetFoodCostPercent}%</small></span><span>Preço usado na simulação: <strong>{money(Number.isFinite(previewSalePriceCents) ? previewSalePriceCents ?? 0 : 0)}</strong></span><span>Lucro bruto por unidade: <strong>{money(previewGrossProfitCents ?? 0)}</strong><small>{previewGrossMarginPercent === null ? "Antes de despesas fixas, impostos e mão de obra" : `${previewGrossMarginPercent.toFixed(1).replace(".", ",")}%, antes de despesas fixas, impostos e mão de obra`}</small></span></div>}
-        <p className="cost-calculator-pricing-note">A sugestão usa custo dos ingredientes ÷ {targetFoodCostPercent}%. Ajuste o preço conforme seus impostos, mão de obra, aluguel, desperdícios e posicionamento.</p>
+        <label className="cost-calculator-sale-price">Preço que quero vender (R$)<input inputMode="decimal" value={salePriceOverride || (previewSuggestedSalePriceCents === null ? "" : (previewSuggestedSalePriceCents / 100).toFixed(2).replace(".", ","))} onChange={event => setSalePriceOverride(event.target.value)} placeholder="Será sugerido" /><small>O preço sugerido usa food cost de {targetFoodCostPercent}%, mas você pode editar o valor. A margem será recalculada.</small></label>
+        {previewUnitCostCents !== null && <div className="cost-calculator-summary"><span>Lucro bruto por unidade: <strong>{money(previewSalePriceCents ?? 0)}</strong><small>Preço de venda usado, antes dos custos</small></span><span>Parte que paga os insumos: <strong>{money(previewUnitCostCents)}</strong><small>{lossLoading ? "Consultando perdas…" : previewLossQuantity ? `${previewLossQuantity} perda${previewLossQuantity === 1 ? "" : "s"} neste mês incluída${previewLossQuantity === 1 ? "" : "s"}` : "Sem perdas registradas neste mês"}</small></span><span>Despesa operacional ({operatingExpensePercent}%): <strong>{money(previewExpenseCents ?? 0)}</strong><small>Percentual descontado do lucro bruto</small></span><span>Lucro para mim por unidade: <strong>{money(previewNetProfitCents ?? 0)}</strong><small>{previewNetMarginPercent === null ? "Margem líquida indisponível" : `Margem líquida de ${previewNetMarginPercent.toFixed(1).replace(".", ",")}%`}</small></span><span>Lucro para mim vendendo todas: <strong>{money(previewTotalProfitCents ?? 0)}</strong><small>{previewYield} unidades · custo da receita: {money(previewTotalCostCents)}</small></span></div>}
+        <p className="cost-calculator-pricing-note">As perdas baixadas para {productName || "este produto"} neste mês aumentam proporcionalmente o custo por unidade. O preço informado recalcula a margem, a despesa de {operatingExpensePercent}% e o lucro líquido da receita.</p>
         <div className="cost-calculator-actions"><button type="submit" disabled={syncingIngredients}>{syncingIngredients ? "Salvando insumos…" : "Usar custo e preço informado"}</button><button type="button" className="proto-subtle" onClick={onClose} disabled={syncingIngredients}>Cancelar</button></div>
       </form>
     </section>

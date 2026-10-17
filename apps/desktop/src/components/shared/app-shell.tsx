@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 
 
@@ -28,6 +28,18 @@ export function AppShell<T extends string>({
   topAction,
   children,
 }: AppShellProps<T>) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("mosaico-sidebar-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () => setSidebarCollapsed(current => {
+    const next = !current;
+    try { window.localStorage.setItem("mosaico-sidebar-collapsed", next ? "1" : "0"); } catch { /* preferência visual opcional */ }
+    return next;
+  });
   const groups = navigationItems.reduce<Record<string, NavigationItem<T>[]>>(
     (result, item) => {
       const groupItems = result[item.group] ?? [];
@@ -40,12 +52,18 @@ export function AppShell<T extends string>({
 
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
-      <aside className="mosaic-sidebar sticky top-0 h-dvh hidden w-64 xl:w-72 shrink-0 border-r border-line bg-surface px-4 py-5 lg:flex lg:flex-col">
+      <aside className={`mosaic-sidebar sticky top-0 h-dvh hidden shrink-0 border-r border-line bg-surface px-4 py-5 lg:flex lg:flex-col ${sidebarCollapsed ? "w-20 is-collapsed" : "w-64 xl:w-72"}`}>
         <div className="flex min-h-0 flex-1 gap-3">
           <div className="flex min-w-0 flex-1 flex-col">
-            <div className="px-1 pt-1">
+            <div className="mosaic-sidebar-topbar">
+              <div className="mosaic-sidebar-brand px-1 pt-1">
               <p className="text-base font-bold tracking-tight text-ink">Mosaico Food</p>
               <p className="mt-1 text-xs font-medium text-orange-200">Operação da loja</p>
+              </div>
+              <button className="mosaic-sidebar-toggle" type="button" onClick={toggleSidebar} aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"} title={sidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"}>
+                {sidebarCollapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+                <span>{sidebarCollapsed ? "Expandir" : "Recolher"}</span>
+              </button>
             </div>
 
             <nav className="mt-7 min-h-0 flex-1 space-y-7 overflow-y-auto pr-1" aria-label="Navegação principal">
@@ -69,6 +87,7 @@ export function AppShell<T extends string>({
                               : "text-muted hover:bg-white/[0.06] hover:text-ink"
                           }`}
                           aria-current={isActive ? "page" : undefined}
+                          title={sidebarCollapsed ? item.label : undefined}
                           onClick={() => onNavigate(item.id)}
                         >
                           <Icon

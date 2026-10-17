@@ -229,7 +229,7 @@ function getApiBaseUrl() {
 
 export type ReceivedPaymentMethod = "pix" | "cash" | "card_credit" | "card_debit" | "meal_voucher";
 export type SalePaymentMethod = ReceivedPaymentMethod | "crediario";
-export const PRICE_ADJUSTMENT_REASONS = ["Menos fresco"] as const;
+export const PRICE_ADJUSTMENT_REASONS = ["Menos fresco", "Decisão do dono"] as const;
 export type AssistantDraft = { id: string; action: "order" | "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; baseUnitPriceCents?: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
 export type AssistantRegistrationQuestion = { kind: "quantity" | "unit" | "name"; name?: string; quantity?: number; stockUnit?: "un" | "g" | "ml" };
@@ -586,6 +586,17 @@ export async function updateFoodProduct(id: string, input: Partial<ProductInput>
   const product = normalizeFoodProduct(data.product);
   if (!product) throw new Error("O backend devolveu um produto inválido.");
   return product;
+}
+
+export type FoodLossSummary = {
+  productId: string;
+  productName: string;
+  lossQuantity: number;
+  periodStart: string;
+};
+
+export async function getFoodProductLossSummary(id: string) {
+  return foodApi<FoodLossSummary>(`/api/v1/food/products/${encodeURIComponent(id)}/loss-summary`);
 }
 
 export async function deleteFoodProduct(id: string) {
