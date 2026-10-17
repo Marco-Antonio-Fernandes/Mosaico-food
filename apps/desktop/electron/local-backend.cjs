@@ -87,10 +87,30 @@ async function prepareDatabase(root, databaseUrl) {
     throw new Error("O instalador não contém o schema local do banco.");
   }
 
-  await runNodeScript(prismaCli, ["db", "push", "--schema", schema, "--skip-generate"], {
+  const pushArgs = ["db", "push", "--schema", schema, "--skip-generate"];
+  const environment = {
     NODE_ENV: "development",
     DATABASE_URL: databaseUrl,
-  }, root);
+  };
+  try {
+    await runNodeScript(prismaCli, pushArgs, environment, root);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    // Bancos locais criados antes do controle de caixa não têm activeKey.
+    // O Prisma classifica a criação do índice único como possível perda de
+    // dados, mesmo quando a coluna ainda não existe e todos os registros
+    // preservam seus valores. Faça backup e aceite somente essa alteração.
+    if (!/activeKey/.test(message) || !/accept-data-loss/.test(message)) throw error;
+
+    const backupPath = `${databaseFile}.antes-do-ajuste-${new Date().toISOString().replace(/[.:]/g, "-")}`;
+    fs.copyFileSync(databaseFile, backupPath);
+    for (const suffix of ["-wal", "-shm"]) {
+      const sidecar = `${databaseFile}${suffix}`;
+      if (fs.existsSync(sidecar)) fs.copyFileSync(sidecar, `${backupPath}${suffix}`);
+    }
+    console.warn(`[Mosaico Food] Banco local respaldado em ${backupPath}. Aplicando a compatibilidade do controle de caixa.`);
+    await runNodeScript(prismaCli, [...pushArgs, "--accept-data-loss"], environment, root);
+  }
 }
 
 function waitForHealth(port, child, timeoutMs = 30_000) {

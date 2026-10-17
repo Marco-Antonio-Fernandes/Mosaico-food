@@ -99,6 +99,7 @@ export type FoodNotification = {
   customerName: string;
   remoteJid: string;
   automationPaused: boolean;
+  needsHuman: boolean;
 };
 
 export type FoodStockNotification = {

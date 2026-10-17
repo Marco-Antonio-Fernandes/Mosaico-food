@@ -1335,6 +1335,7 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .credit-filter-hint { color: var(--proto-muted); font-size: .72rem; text-align: right; }
 .credit-toolbar { justify-content: flex-end; min-height: 42px; }
 .credit-toolbar .credit-search { flex: 0 1 320px; min-height: 40px; border-radius: 10px; background: var(--proto-surface); box-shadow: 0 4px 12px #0000000d; }
+.credit-toolbar .credit-search input { background: transparent !important; }
 .credit-toolbar .credit-search:focus-within { border-color: var(--proto-focus); box-shadow: 0 0 0 3px var(--proto-accent-soft); }
 .credit-filter-hint { display: none; }
 .credit-card-header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }

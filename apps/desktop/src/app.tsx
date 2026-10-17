@@ -102,7 +102,10 @@ export function App() {
         const cursor = new Date(new Date(notificationCursorRef.current).getTime() - 15_000).toISOString();
         const [incomingWhatsapp, incomingStock] = await Promise.all([getFoodNotifications(cursor), getFoodStockNotifications()]);
         if (!active) return;
-        const incomingEntries = [...incomingWhatsapp.map(toNotificationEntry), ...incomingStock.map(toStockNotificationEntry)];
+        const incomingEntries = [
+          ...incomingWhatsapp.filter(notification => notification.needsHuman).map(toNotificationEntry),
+          ...incomingStock.map(toStockNotificationEntry),
+        ];
         const unseen = incomingEntries.filter(notification => !seenNotificationIdsRef.current.has(notification.id));
         incomingEntries.forEach(notification => seenNotificationIdsRef.current.add(notification.id));
         const newest = incomingWhatsapp.reduce((latest, notification) => Math.max(latest, new Date(notification.createdAt).getTime()), 0);

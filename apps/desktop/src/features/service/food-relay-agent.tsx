@@ -5,6 +5,7 @@ import {
   acknowledgeFoodRelayMessage,
   getFoodRelayAudio,
   getFoodRelayMessages,
+  getFoodProducts,
   getFoodRemoteWhatsappStatus,
   ingestFoodRelayMessage,
   sendFoodRelayMessage,
@@ -23,18 +24,25 @@ export function FoodRelayAgent() {
         const remoteStatus = await getFoodRemoteWhatsappStatus();
         window.dispatchEvent(new CustomEvent("food-relay-status", { detail: remoteStatus }));
         const pending = await getFoodRelayMessages();
+        const blockedConversations = new Set<string>();
+        const catalog = pending.some(message => message.mediaType === "audio")
+          ? await getFoodProducts({ activeOnly: true }).catch(() => []) : [];
+        const vocabulary = catalog.filter(product => product.productionMode !== "ingredient")
+          .slice(0, 40).map(product => [product.name, ...product.variants.map(variant => variant.name)].join(", ")).join("; ").slice(0, 1200);
         for (const relayMessage of pending) {
           if (disposed) return;
+          const conversationKey = `${relayMessage.sessionId}:${relayMessage.remoteJid}`;
+          if (blockedConversations.has(conversationKey)) continue;
           try {
             let text = relayMessage.body?.trim() || "";
             if (relayMessage.mediaType === "audio" && !text) {
               const audio = await getFoodRelayAudio(relayMessage.id);
               const transcription = await transcribeFoodAudio(
                 await audioToWav(audio),
-                "Áudio de cliente do Mosaico Food. Preserve nomes de produtos, quantidades, vendas, compras, preparos, perdas e dúvidas.",
+                `Conversa em português de uma lanchonete: pedidos, sabores, quantidades, retirada, entrega e endereço. Vocabulário do cardápio: ${vocabulary}. Transcreva somente a fala, preservando negativas e correções.`,
               );
-              if (!transcription.understood || !transcription.text?.trim()) throw new Error("Não consegui entender o áudio do atendimento.");
-              text = transcription.text.trim();
+              if (!transcription.available) throw new Error("A transcrição local está temporariamente indisponível.");
+              text = transcription.understood ? transcription.text?.trim() || "" : "";
             }
 
             const local = await ingestFoodRelayMessage({
@@ -46,12 +54,14 @@ export function FoodRelayAgent() {
               mediaType: relayMessage.mediaType,
               createdAt: relayMessage.createdAt,
             });
+            if (local.errors?.length) throw new Error("O atendimento local não concluiu o processamento.");
 
             for (const reply of local.replies || []) {
               await sendFoodRelayMessage(reply.remoteJid, reply.body);
             }
             await acknowledgeFoodRelayMessage(relayMessage.id);
           } catch (error) {
+            blockedConversations.add(conversationKey);
             console.error("[Mosaico Food] Falha ao processar mensagem da ponte", error);
             // Uma mídia indisponível não significa que a sessão do WhatsApp caiu.
             // Deixe a mensagem pendente para tentar novamente no próximo ciclo e

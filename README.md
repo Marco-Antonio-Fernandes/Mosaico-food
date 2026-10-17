@@ -52,9 +52,8 @@ Para abrir no navegador, use `npm run dev:web` (porta padrão 5173).
 O backend unificado está publicado em `https://mosaico.rotatix.com.br`,
 com SQLite também no servidor nesta fase; PostgreSQL continua futuro.
 
-Veja o [handoff da implementação atual](docs/HANDOFF-IMPLEMENTACAO.md) antes
-dos planos históricos. As integrações oficiais e os testes de produção seguem
-abertos.
+Veja o [manual da implementação e dos testes](docs/IMPLEMENTACAO-E-TESTE.md).
+As integrações oficiais e os testes de produção seguem abertos.
 
 ## Escopo da primeira versão
 
@@ -85,15 +84,11 @@ baseada em sessão do WhatsApp Web.
 ## Documentação
 
 - [Proposta para apresentar ao cliente](PROPOSTA-CLIENTE.md)
-- [Handoff da implementação atual](docs/HANDOFF-IMPLEMENTACAO.md)
-- [Plano técnico](docs/PLANO-TECNICO.md)
+- [Implementação atual e reprodução](docs/IMPLEMENTACAO-E-TESTE.md)
 - [Modelo de dados](docs/DATA-MODEL.md)
 - [Contratos da API](docs/API-CONTRACTS.md)
-- [Roadmap](docs/ROADMAP.md)
 - [Checklist da integração oficial](docs/WHATSAPP-CHECKLIST.md)
 - [Plano fiscal e checklist NFC-e](docs/FISCAL-NFC-E.md)
-- [Responsabilidades do Marco](TASK-MARCO.md)
-- [Responsabilidades do Pedro](TASK-PEDRO.md)
 - [Regras de contribuição](AGENTS.md)
 
 ## Regra central do atendimento
