@@ -1,6 +1,7 @@
 import { useEffect, useState, type DragEvent, type FormEvent } from "react";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { Boxes, ChefHat, Check, CircleAlert, GripVertical, LoaderCircle, Plus, Scale, ShoppingBag, SlidersHorizontal, Tags, Trash2, Wheat } from "lucide-react";
 import { Badge, Editor, Metrics, NotificationList, OfflinePreview, Panel, Preferences, Records, Tabs, type NotificationEntry } from "@/components/shared/prototype-kit";
+import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodAutomationPanel } from "@/features/automation/food-automation-panel";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
@@ -15,7 +16,7 @@ export const foodModules = {
   service: ["Atendimento", "Conversas, carrinho e acompanhamento do WhatsApp."],
   credit: ["Crediário", "Consulte saldos e registre recebimentos."],
   products: ["Produtos", "Um catálogo para o balcão, o atendimento e os pedidos."],
-  inventory: ["Estoque e ingredientes", "Entradas, perdas, receitas e disponibilidade."],
+  inventory: ["Estoque e ingredientes", "Acompanhe quantidades, entradas e produção."],
   customers: ["Clientes", "Cadastre os contatos e os dados de entrega dos seus clientes."],
   finance: ["Caixa e financeiro", "Abertura, recebimentos, despesas e fechamento."],
   fiscal: ["Fiscal", "Documentos, revisão de rejeições e histórico por venda."],
@@ -34,7 +35,7 @@ export function FoodPrototype({ module, notifications, onReadNotifications }: { 
     {module === "orders" && <Orders />}
     {module === "service" && <FoodServicePanel />}
     {module === "credit" && <CreditPage />}
-    {module === "inventory" && <Catalog />}
+    {module === "inventory" && <Inventory />}
     {module === "customers" && <CustomersPage />}
     {module === "finance" && <FinancePage />}
     {module === "fiscal" && <Fiscal />}
@@ -110,14 +111,75 @@ function Catalog({ pos = false }: { pos?: boolean }) {
 
   return <div className="proto-stack">
     <Tabs items={categories} value={category} onChange={setCategory} />
-    <div className="proto-toolbar"><label>Buscar no catálogo<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Produto, categoria ou alias…" /></label>{!pos && <button type="button" onClick={() => { setEditingProduct(null); setShowForm((current) => !current); }}>Cadastrar produto</button>}</div>
+    <div className="proto-toolbar"><label>Buscar no catálogo<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Produto, categoria ou alias…" /></label>{!pos && <button type="button" className={showForm ? "proto-subtle" : ""} aria-expanded={showForm} onClick={() => { setEditingProduct(null); setShowForm(current => !current); }}>{showForm ? "Fechar cadastro" : "Cadastrar produto"}</button>}</div>
     {!pos && showForm && <ProductForm key={editingProduct?.id ?? "new"} products={products} initial={editingProduct} saving={saving} onCancel={() => { setShowForm(false); setEditingProduct(null); }} onSubmit={(input) => void saveProduct(input)} />}
-    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : ""}><div className="proto-three">{filtered.map((product) => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div><small>{product.category}{!product.active ? " · inativo" : ""}</small><h3>{product.name}</h3>{product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}<Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.preparationCapacity > 0 && (product.fryToOrder || product.allowOnDemand) ? "Pode preparar" : "Indisponível"}</Badge>{product.stockQuantity === 0 && product.preparationCapacity > 0 && product.fryToOrder && <small>Sem unidades prontas · disponível para fritar na hora</small>}{product.variants.length > 0 && <small>Opções: {product.variants.map((variant) => variant.name).join(", ")}</small>}{product.fryToOrder && <small>Permite fritar/preparar na hora</small>}<small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small><button type="button" disabled={selling || (pos && product.salePriceCents <= 0)} onClick={() => { if (pos) setCart({ ...cart, [product.id]: (cart[product.id] ?? 0) + 1 }); else { setEditingProduct(product); setShowForm(true); } }}>{pos ? product.salePriceCents <= 0 ? "Definir preço para vender" : product.stockQuantity === 0 && product.fryToOrder ? "Adicionar para fritar" : "Adicionar à venda" : "Editar cadastro"}</button>{!pos && <ProductStock key={`${product.id}-${product.productionMode}`} product={product} onSaved={loadProducts} />}</article>)}</div>
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : (!showForm || pos) && <div className={pos ? "proto-two" : ""}><div className="proto-three">{filtered.map((product) => <article key={product.id} className="proto-product"><div className="proto-product-art" aria-hidden="true">{productIcon(product.category)}</div><small>{product.category}{!product.active ? " · inativo" : ""}</small><h3>{product.name}</h3>{product.productionMode !== "ingredient" && <strong>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Preço não informado"}</strong>}<Badge>{!product.active ? "Inativo" : product.stockQuantity > 0 ? `${product.stockQuantity} em estoque` : product.preparationCapacity > 0 && (product.fryToOrder || product.allowOnDemand) ? "Pode preparar" : "Indisponível"}</Badge>{product.stockQuantity === 0 && product.preparationCapacity > 0 && product.fryToOrder && <small>Sem unidades prontas · disponível para fritar na hora</small>}{product.variants.length > 0 && <small>Opções: {product.variants.map((variant) => variant.name).join(", ")}</small>}{product.fryToOrder && <small>Permite fritar/preparar na hora</small>}<small>{product.aliases.length ? `Também reconhece: ${product.aliases.join(", ")}` : "Sem alias cadastrado"}</small><button type="button" disabled={selling || (pos && product.salePriceCents <= 0)} onClick={() => { if (pos) setCart({ ...cart, [product.id]: (cart[product.id] ?? 0) + 1 }); else { setEditingProduct(product); setShowForm(true); } }}>{pos ? product.salePriceCents <= 0 ? "Definir preço para vender" : product.stockQuantity === 0 && product.fryToOrder ? "Adicionar para fritar" : "Adicionar à venda" : "Editar cadastro"}</button></article>)}</div>
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Cadastre o primeiro produto para o atendimento reconhecê-lo."}</p>}
       {pos && <Panel title="Venda de balcão" subtitle="Confirme os itens e registre a venda"><label>Cliente<select><option>Consumidor final</option></select></label><div className="proto-stack" style={{ marginTop: 16 }}>{selected.map((product) => <div className="proto-ticket" key={product.id}><strong>{product.name}</strong><div className="proto-toolbar"><button type="button" disabled={selling} aria-label={"Diminuir " + product.name} onClick={() => setCart({ ...cart, [product.id]: Math.max(0, cart[product.id] - 1) })}>−</button><span>{cart[product.id]}</span><button type="button" disabled={selling} aria-label={"Aumentar " + product.name} onClick={() => setCart({ ...cart, [product.id]: cart[product.id] + 1 })}>+</button><strong>{money(product.salePriceCents * cart[product.id])}</strong></div></div>)}</div>{!selected.length && <p className="proto-empty">Selecione os produtos ao lado.</p>}<dl className="proto-facts"><div><dt>Total</dt><dd>{money(total)}</dd></div></dl><label>Pagamento recebido<select disabled={selling} value={paymentMethod ?? ""} onChange={event => setPaymentMethod(event.target.value ? event.target.value as SalePaymentMethod : null)}><option value="">Pendente / não informado</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option></select></label><div className="proto-toolbar"><button type="button" disabled={selling || !selected.length} onClick={() => void finalizeSale()}>{selling ? "Registrando…" : "Confirmar venda"}</button></div></Panel>}
     </div>}
     {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
     {notice && <p role="status">{notice}</p>}
+  </div>;
+}
+
+function Inventory() {
+  const [products, setProducts] = useState<FoodProduct[]>([]);
+  const [search, setSearch] = useState("");
+  const [kind, setKind] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadProducts = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      setProducts(await getFoodProducts());
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o estoque.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const refresh = () => void loadProducts();
+    void loadProducts(true);
+    window.addEventListener("food-stock-changed", refresh);
+    return () => window.removeEventListener("food-stock-changed", refresh);
+  }, []);
+
+  const query = search.trim().toLocaleLowerCase("pt-BR");
+  const filtered = products.filter(product => {
+    const matchesKind = kind === "all" || (kind === "ingredients" ? product.productionMode === "ingredient" : product.productionMode !== "ingredient");
+    const matchesSearch = `${product.name} ${product.category} ${product.aliases.join(" ")}`.toLocaleLowerCase("pt-BR").includes(query);
+    return matchesKind && matchesSearch;
+  });
+
+  return <div className="proto-stack">
+    <div className="proto-toolbar">
+      <label>Buscar no estoque<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Produto, ingrediente ou categoria…" /></label>
+      <label>Tipo<select value={kind} onChange={event => setKind(event.target.value)}><option value="all">Todos</option><option value="products">Produtos</option><option value="ingredients">Insumos</option></select></label>
+    </div>
+    {loading && <LoadingState icon={LoaderCircle} title="Carregando estoque" description="Buscando os produtos e ingredientes da loja." />}
+    {!loading && error && <div className="proto-stack"><ErrorState icon={CircleAlert} title="Não foi possível carregar o estoque" description={error} /><button type="button" onClick={() => void loadProducts(true)}>Tentar novamente</button></div>}
+    {!loading && !error && products.length === 0 && <EmptyState icon={Boxes} title="Estoque vazio" description="Cadastre um produto ou ingrediente para começar a controlar as quantidades." />}
+    {!loading && !error && products.length > 0 && filtered.length === 0 && <p className="proto-empty">Nenhum item corresponde à busca ou ao tipo selecionado.</p>}
+    {!loading && !error && filtered.length > 0 && <div className="inventory-list" aria-label="Produtos e ingredientes em estoque">
+      {filtered.map(product => <article className="inventory-row" key={product.id}>
+        <div className="inventory-row-name">
+          <div><h2>{product.name}</h2><small>{product.category} · {product.productionMode === "ingredient" ? "Insumo" : product.productionMode === "recipe" ? "Produção própria" : "Produto comprado"}</small></div>
+          {!product.active && <Badge>Inativo</Badge>}
+        </div>
+        <dl className="inventory-quantities">
+          {product.productionMode === "ingredient" ? <div><dt>Disponível</dt><dd>{product.stockQuantity} {product.stockUnit}</dd></div> : <>
+            <div><dt>Prontos</dt><dd>{product.stockQuantity}</dd></div>
+            <div><dt>Para finalizar</dt><dd>{product.unpreparedQuantity}</dd></div>
+          </>}
+          {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
+        </dl>
+        {product.active ? <ProductStock product={product} onSaved={loadProducts} /> : <p className="proto-caption">Ative o cadastro para movimentar o estoque.</p>}
+      </article>)}
+    </div>}
   </div>;
 }
 
@@ -199,25 +261,35 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
     if (!initial && (category === "Lanches" || category === "Insumos")) setCategory(mode === "ingredient" ? "Insumos" : "Lanches");
   };
 
-  return <form className="proto-form" onSubmit={submit}>
-    <h3>{initial ? "Editar produto" : "Cadastrar produto"}</h3>
-    <fieldset className="product-mode-field" disabled={Boolean(initial)}><legend>O que é este item?</legend><div className="product-mode-grid"><button type="button" className={productionMode === "ingredient" ? "is-selected" : ""} onClick={() => selectProductionMode("ingredient")}><strong>Insumo</strong><small>Uso para fazer outros produtos. Ex.: farinha, presunto ou óleo.</small></button><button type="button" className={productionMode === "resale" ? "is-selected" : ""} onClick={() => selectProductionMode("resale")}><strong>Produto comprado</strong><small>Recebo pronto ou recebo cru para fritar, assar ou finalizar.</small></button><button type="button" className={productionMode === "recipe" ? "is-selected" : ""} onClick={() => selectProductionMode("recipe")}><strong>Produto feito aqui</strong><small>Uso insumos, produzo e depois posso fritar, assar ou finalizar.</small></button></div></fieldset>
-    {productionMode === "ingredient" && <section className="proto-variants-field ingredient-measurement-field">
-      <strong>Como este insumo é controlado?</strong>
-      <small>O mais comum é controlar por unidade e informar o peso ou volume que existe em cada unidade.</small>
-      <div className="ingredient-measurement-grid">
-        <label>Entrada do estoque<select disabled={Boolean(initial)} value={stockUnit} onChange={event => setStockUnit(event.target.value as FoodProduct["stockUnit"])}><option value="un">Unidades (recomendado)</option><option value="g">Somente gramas</option><option value="ml">Somente mililitros</option></select></label>
-        <label>Peso de 1 unidade (g)<input type="number" min="1" step="1" value={unitWeightGrams} onChange={event => setUnitWeightGrams(event.target.value)} placeholder="Ex.: 200" /><small>Opcional — use quando a unidade tiver peso.</small></label>
-        <label>Volume de 1 unidade (ml)<input type="number" min="1" step="1" value={unitVolumeMl} onChange={event => setUnitVolumeMl(event.target.value)} placeholder="Ex.: 500" /><small>Opcional — use quando a unidade tiver volume.</small></label>
+  return <form className="product-form" onSubmit={submit}>
+    <header className="product-form-heading"><div><h3>{initial ? "Editar produto" : "Cadastrar produto"}</h3><p>Preencha os dados principais. Estoque e produção são controlados na aba Estoque.</p></div></header>
+    <fieldset className="product-mode-field" disabled={Boolean(initial)}>
+      <legend>Tipo de cadastro</legend>
+      <div className="product-mode-grid">
+        <button type="button" aria-pressed={productionMode === "ingredient"} className={productionMode === "ingredient" ? "is-selected" : ""} onClick={() => selectProductionMode("ingredient")}><span className="product-mode-title"><Wheat size={18} aria-hidden="true" /><strong>Insumo</strong>{productionMode === "ingredient" && <Check size={16} aria-hidden="true" />}</span><small>Usado em receitas, como farinha e presunto.</small></button>
+        <button type="button" aria-pressed={productionMode === "resale"} className={productionMode === "resale" ? "is-selected" : ""} onClick={() => selectProductionMode("resale")}><span className="product-mode-title"><ShoppingBag size={18} aria-hidden="true" /><strong>Produto comprado</strong>{productionMode === "resale" && <Check size={16} aria-hidden="true" />}</span><small>Comprado pronto ou recebido para finalizar.</small></button>
+        <button type="button" aria-pressed={productionMode === "recipe"} className={productionMode === "recipe" ? "is-selected" : ""} onClick={() => selectProductionMode("recipe")}><span className="product-mode-title"><ChefHat size={18} aria-hidden="true" /><strong>Feito na loja</strong>{productionMode === "recipe" && <Check size={16} aria-hidden="true" />}</span><small>Produzido aqui a partir de insumos.</small></button>
       </div>
-      <small>Se for vendido apenas por peso ou volume, escolha “Somente gramas” ou “Somente mililitros”.</small>
+    </fieldset>
+    <section className="product-form-section">
+      <h4><Tags size={16} aria-hidden="true" />Dados do item</h4>
+      <div className={`product-form-fields${productionMode === "ingredient" ? " is-ingredient" : ""}`}>
+        <label>Nome<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Coxinha" /></label>
+        <label>Categoria<input required value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Ex.: Salgados" /></label>
+        {productionMode !== "ingredient" && <label>Preço de venda (R$)<input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Opcional" /><small>Se deixar em branco, o atendimento perguntará o preço ao registrar a venda.</small></label>}
+      </div>
+    </section>
+    {productionMode === "ingredient" && <section className="product-form-section ingredient-measurement-field">
+      <h4><Scale size={16} aria-hidden="true" />Unidade de controle</h4>
+      <p>Escolha como você registra a entrada desse insumo.</p>
+      <div className="ingredient-measurement-grid">
+        <label>Unidade<select disabled={Boolean(initial)} value={stockUnit} onChange={event => setStockUnit(event.target.value as FoodProduct["stockUnit"])}><option value="un">Unidades</option><option value="g">Gramas</option><option value="ml">Mililitros</option></select></label>
+        <label>Peso por unidade (g)<input type="number" min="1" step="1" value={unitWeightGrams} onChange={event => setUnitWeightGrams(event.target.value)} placeholder="Opcional" /></label>
+        <label>Volume por unidade (ml)<input type="number" min="1" step="1" value={unitVolumeMl} onChange={event => setUnitVolumeMl(event.target.value)} placeholder="Opcional" /></label>
+      </div>
     </section>}
-    <label>Nome<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Coxinha" /></label>
-    <label>Categoria<input required value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Ex.: Salgados" /></label>
-    <label>Preço de venda (R$) — opcional<input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Deixe em branco para informar depois" /><small>Você pode preencher depois. Se vender sem preço cadastrado, o assistente perguntará o total.</small></label>
-    <small>Depois de salvar, use o botão de estoque no cartão para dizer se entrou pronto, entrou para finalizar ou foi preparado.</small>
-    {productionMode === "recipe" && <section className="proto-variants-field">
-      <strong>O que entra em uma unidade? (opcional por enquanto)</strong><small>Ex.: uma esfirra usa 100 g de presunto. Você pode salvar agora sem anexar ingredientes e completar esta receita depois.</small>
+    {productionMode === "recipe" && <section className="product-form-section">
+      <h4><ChefHat size={16} aria-hidden="true" />Ingredientes da receita <small>(opcional)</small></h4><p>Informe o que é usado em uma unidade do produto. Você pode completar a receita depois.</p>
       {recipe.map((row, index) => <div className="proto-variant-row" key={index}>
         <label>Ingrediente<select required value={row.ingredientId} onChange={event => setRecipe(current => current.map((entry, i) => i === index ? { ...entry, ingredientId: event.target.value } : entry))}><option value="">Escolha…</option>{ingredients.map(ingredient => <option key={ingredient.id} value={ingredient.id}>{ingredient.name} ({ingredient.stockQuantity} {ingredient.stockUnit})</option>)}</select></label>
         <label>Quantidade ({ingredients.find(ingredient => ingredient.id === row.ingredientId)?.stockUnit ?? "unidade do ingrediente"})<input required type="number" min="1" step="1" value={row.quantity || ""} onChange={event => setRecipe(current => current.map((entry, i) => i === index ? { ...entry, quantity: Number(event.target.value) } : entry))} /></label>
@@ -226,11 +298,11 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
       <button type="button" disabled={!ingredients.length} onClick={() => setRecipe(current => [...current, { ingredientId: "", quantity: 0 }])}>Adicionar ingrediente</button>
       {!ingredients.length && <small>Nenhum insumo cadastrado ainda. Salve o produto sem ingredientes e anexe-os depois, ou diga ao assistente: “cadastre 200 gramas de presunto”.</small>}
     </section>}
-    {productionMode !== "ingredient" && <details className="proto-variants-field"><summary>Aliases, variações e atendimento</summary>
-    <label>Outros nomes do produto<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="Ex.: coxinha, salgado" /><small className="text-muted">Separe por vírgula. O atendimento usa esses nomes para entender mensagens informais.</small></label>
+    {productionMode !== "ingredient" && <details className="product-form-section product-form-advanced"><summary><span><SlidersHorizontal size={16} aria-hidden="true" />Opções e atendimento</span><small>Aliases, sabores e preparo</small></summary>
+    <label className="product-aliases-field">Como o cliente também pode chamar este produto?<input value={aliases} onChange={(event) => setAliases(event.target.value)} placeholder="Ex.: coxinha, salgado" /><small className="text-muted">Separe os nomes por vírgula para o atendimento reconhecer mensagens informais.</small></label>
     <div className="proto-variants-field">
       <div className="proto-toolbar">
-        <div><strong>Variações e sabores</strong><small className="block text-muted">Cadastre o nome e os jeitos que o cliente pode escrever cada opção.</small></div>
+        <div><strong>Variações e sabores</strong><small className="block text-muted">Cadastre opções como tamanho, sabor ou recheio.</small></div>
         <button type="button" className="proto-subtle" onClick={() => { const id = crypto.randomUUID(); setVariants((current) => [...current, { id, name: "", aliases: [], priceDeltaCents: 0 }]); setVariantPrices((current) => ({ ...current, [id]: "" })); }}><Plus size={15} />Adicionar variação</button>
       </div>
       {variants.map((variant) => <div className="proto-variant-row" key={variant.id}>
@@ -239,15 +311,19 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
         <label>Adicional (R$)<input min="0" inputMode="decimal" value={variantPrices[variant.id] ?? ""} onChange={(event) => { const value = event.target.value; setVariantPrices((current) => ({ ...current, [variant.id]: value })); const cents = Math.round(Number(value.replace(",", ".")) * 100); updateVariant(variant.id, { priceDeltaCents: Number.isFinite(cents) && cents >= 0 ? cents : 0 }); }} placeholder="0,00" /></label>
         <button type="button" className="proto-subtle" aria-label={`Remover variação ${variant.name || "sem nome"}`} onClick={() => { setVariants((current) => current.filter((item) => item.id !== variant.id)); setVariantPrices((current) => { const next = { ...current }; delete next[variant.id]; return next; }); }}><Trash2 size={15} /></button>
       </div>)}
-      {!variants.length && <small className="text-muted">Sem variações: o atendimento usará apenas o nome e os aliases do produto.</small>}
+      {!variants.length && <p className="product-variants-empty">Sem variações cadastradas. O atendimento usará o nome do produto.</p>}
     </div>
-    <small>Variações compartilham esta receita e este estoque. Se os sabores usam ingredientes diferentes, cadastre um produto para cada sabor.</small>
-    <label className="proto-switch"><span>Aceitar pedidos para preparar na hora</span><input type="checkbox" checked={allowOnDemand} onChange={(event) => setAllowOnDemand(event.target.checked)} /><small className="text-muted">Somente enquanto houver unidades para finalizar ou ingredientes suficientes.</small></label>
-    <label className="proto-switch"><span>Oferecer fritura na hora</span><input type="checkbox" checked={fryToOrder} onChange={(event) => setFryToOrder(event.target.checked)} /><small className="text-muted">Oferece mesmo com unidades prontas, desde que haja estoque para fritar.</small></label>
+    <p className="product-variants-note">As variações compartilham receita e estoque. Para sabores com ingredientes diferentes, cadastre produtos separados.</p>
+    <div className="product-preparation-options">
+      <label className="product-option-switch"><span><strong>Aceitar pedidos para preparar na hora</strong><small>Disponível quando houver itens para finalizar ou ingredientes suficientes.</small></span><input type="checkbox" checked={allowOnDemand} onChange={(event) => setAllowOnDemand(event.target.checked)} /></label>
+      <label className="product-option-switch"><span><strong>Oferecer preparo na hora</strong><small>Permite oferecer fritura ou preparo mesmo quando já há unidades prontas.</small></span><input type="checkbox" checked={fryToOrder} onChange={(event) => setFryToOrder(event.target.checked)} /></label>
+    </div>
     </details>}
-    <label className="proto-switch"><span>Produto ativo</span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>
-    {formError && <p role="alert" className="proto-form-error">{formError}</p>}
-    <div className="proto-toolbar"><button type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar produto"}</button><button type="button" className="proto-subtle" onClick={onCancel}>Cancelar</button></div>
+    <div className="product-form-footer">
+      <label className="product-active-switch"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span>Produto ativo</span></label>
+      {formError && <p role="alert" className="proto-form-error">{formError}</p>}
+      <div className="product-form-actions"><button type="submit" disabled={saving}>{saving ? "Salvando…" : initial ? "Salvar alterações" : "Salvar produto"}</button><button type="button" className="proto-subtle" onClick={onCancel}>Cancelar</button></div>
+    </div>
   </form>;
 }
 function Orders() {
@@ -320,10 +396,6 @@ function Orders() {
   if (loading) return <p className="proto-empty">Carregando pedidos…</p>;
   if (error && !orders.length) return <div className="proto-stack"><p role="alert" className="text-sm text-red-200">{error}</p><button type="button" onClick={() => { setLoading(true); void loadOrders(); }}>Tentar novamente</button></div>;
   return <><p className="sr-only" role="status">{statusMessage}</p>{error && <p role="alert" className="mb-4 text-sm text-red-200">{error}</p>}{!orders.length ? <Panel title="Pedidos"><p className="proto-empty">Nenhum pedido registrado ainda. Quando um cliente confirmar pelo WhatsApp, ele aparecerá aqui.</p></Panel> : <div className="proto-orders-board">{stages.map((stage, stageIndex) => { const stageOrders = orders.filter(order => stageForStatus(order.status) === stageIndex); return <Panel key={stage} title={stage} subtitle={stageOrders.length + " pedidos"}><div className={`order-dropzone${dragOverStage === stageIndex ? " is-drag-over" : ""}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverStage(stageIndex); }} onDragLeave={() => setDragOverStage(current => current === stageIndex ? null : current)} onDrop={event => handleDrop(event, stageIndex)}>{stageOrders.map(order => <article aria-label={`Pedido ${order.id}. Segure e arraste para mudar de etapa.`} className={`proto-ticket order-card${draggedOrderId === order.id ? " is-dragging" : ""}`} draggable onDragEnd={() => { setDraggedOrderId(null); setDragOverStage(null); }} onDragStart={event => handleDragStart(event, order.id)} key={order.id}><div className="order-card-grab"><GripVertical aria-hidden="true" size={18} />Segure e arraste</div><div><Badge>{order.source === "whatsapp" ? "WhatsApp" : order.source}</Badge><h3>#{order.id.slice(0, 8)}</h3></div><p>{orderItemsLabel(order)}</p><strong>{formatOrderTotal(order)}</strong><small>{order.fulfillment === "delivery" ? `Entrega · ${order.deliveryAddress || "endereço pendente"}` : "Retirada na loja"}</small></article>)}{!stageOrders.length && <div className="order-dropzone-empty"><span>Solte aqui</span><small>Arraste um pedido para esta etapa</small></div>}</div></Panel>; })}</div>}</>;
-}
-function Inventory() {
-  const [tab, setTab] = useState("Posição atual");
-  return <><Metrics items={[["Itens controlados", "18", "Itens cadastrados"], ["Abaixo do mínimo", "2", "Reposição sugerida"], ["Movimentações", "7", "Entradas e saídas do dia"]]} /><Tabs items={["Posição atual", "Movimentações", "Fichas técnicas"]} value={tab} onChange={setTab} />{tab === "Fichas técnicas" ? <Editor title="Receita do hambúrguer" tabs={["Ingredientes", "Rendimento", "Perdas"]} labels={["Produto vendido", "Rendimento", "Unidade"]} initialText="1 pão · 150 g de carne · 30 g de queijo." /> : <Records key={tab} title={tab} action="Nova movimentação" fields={["Item", "Unidade / origem", "Situação", "Quantidade"]} rows={tab === "Posição atual" ? [{ id: "i1", name: "Pão de hambúrguer", detail: "Unidade · mínimo 20", status: "Baixo", value: "12 un" }, { id: "i2", name: "Queijo", detail: "Quilograma · mínimo 2", status: "Regular", value: "5,2 kg" }, { id: "i3", name: "Refrigerante cola", detail: "Unidade · mínimo 12", status: "Regular", value: "36 un" }] : [{ id: "im1", name: "Entrada de queijo", detail: "Compra · fornecedor local", status: "Entrada", value: "+3 kg" }, { id: "im2", name: "Pão de hambúrguer", detail: "Venda #1043", status: "Saída", value: "−1 un" }]} />}</>;
 }
 function Fiscal() {
   const [tab, setTab] = useState("Documentos");

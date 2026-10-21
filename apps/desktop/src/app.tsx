@@ -21,7 +21,6 @@ const navigationItems: NavigationItem<ViewId>[] = [
   { id: "finance", label: "Caixa e financeiro", group: "Gestão", icon: WalletCards },
   { id: "fiscal", label: "Fiscal", group: "Gestão", icon: FileText },
   { id: "automation", label: "Automação", group: "Sistema", icon: Wand2 },
-  { id: "notifications", label: "Notificações", group: "Sistema", icon: Bell },
   { id: "offline", label: "Offline", group: "Sistema", icon: Cloud },
   { id: "settings", label: "Configurações", group: "Sistema", icon: Settings },
 ];

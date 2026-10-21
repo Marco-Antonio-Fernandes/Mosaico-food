@@ -19,12 +19,8 @@ export function ProductStock({ product, onSaved }: { product: FoodProduct; onSav
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível registrar."); }
     finally { setBusy(false); }
   }
-  const unitDetails = product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl)
-    ? ` · 1 unidade = ${[product.unitWeightGrams ? `${product.unitWeightGrams} g` : "", product.unitVolumeMl ? `${product.unitVolumeMl} ml` : ""].filter(Boolean).join(" e ")}`
-    : "";
   return <div className="proto-stack">
-    <small>{product.productionMode === "ingredient" ? `${product.stockQuantity} ${product.stockUnit} disponíveis para usar${unitDetails}` : `${product.stockQuantity} prontos · ${product.unpreparedQuantity} para fritar / assar / finalizar · pode preparar mais ${product.preparationCapacity}`}</small>
-    <button type="button" className="proto-subtle" onClick={() => setOpen(!open)}>{product.productionMode === "recipe" ? "Registrar produção" : "Registrar estoque"}</button>
+    <button type="button" className="proto-subtle" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Fechar movimentação" : "Registrar movimentação"}</button>
     {open && <form className="proto-stack" onSubmit={event => void submit(event)}>
       <label>O que aconteceu?<select disabled={busy} value={action} onChange={event => { setAction(event.target.value as typeof action); setOperationId(crypto.randomUUID()); }}>
         {product.productionMode !== "recipe" && <option value="receive_ready">{product.productionMode === "ingredient" ? "Recebi ingredientes" : "Recebi produtos prontos"}</option>}

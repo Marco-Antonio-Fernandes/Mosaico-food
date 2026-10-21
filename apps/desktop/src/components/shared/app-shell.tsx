@@ -1,8 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ChevronRight } from "lucide-react";
-
-
+import { ChevronDown } from "lucide-react";
 
 export interface NavigationItem<T extends string> {
   id: T;
@@ -28,6 +26,7 @@ export function AppShell<T extends string>({
   topAction,
   children,
 }: AppShellProps<T>) {
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const groups = navigationItems.reduce<Record<string, NavigationItem<T>[]>>(
     (result, item) => {
       const groupItems = result[item.group] ?? [];
@@ -49,50 +48,48 @@ export function AppShell<T extends string>({
             </div>
 
             <nav className="mt-7 min-h-0 flex-1 space-y-7 overflow-y-auto pr-1" aria-label="Navegação principal">
-              {Object.entries(groups).map(([group, items]) => (
-                <div key={group}>
-                  <p className="px-3 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-muted">
-                    {group}
-                  </p>
-                  <div className="mt-2 space-y-1">
-                    {items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = item.id === activeView;
+              {Object.entries(groups).map(([group, items], index) => {
+                const isCollapsed = collapsedGroups[group] ?? false;
+                const sectionId = `navigation-group-${index}`;
+                return (
+                  <section key={group}>
+                    <button
+                      aria-controls={sectionId}
+                      aria-expanded={!isCollapsed}
+                      className="mosaic-menu-group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.14em] text-muted transition"
+                      onClick={() => setCollapsedGroups(current => ({ ...current, [group]: !isCollapsed }))}
+                      type="button"
+                    >
+                      <span className="flex items-center gap-2">
+                        {group}
+                        {isCollapsed && items.some(item => item.id === activeView) && <span aria-hidden="true" className="size-1.5 rounded-full bg-brand-400" />}
+                      </span>
+                      <ChevronDown aria-hidden="true" className={`transition-transform ${isCollapsed ? "-rotate-90" : ""}`} size={15} />
+                    </button>
+                    <div id={sectionId} className={`mt-1 space-y-1 ${isCollapsed ? "hidden" : ""}`}>
+                      {items.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = item.id === activeView;
 
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className={`mosaic-menu-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
-                            isActive
-                              ? "bg-brand-50 text-brand-700"
-                              : "text-muted hover:bg-white/[0.06] hover:text-ink"
-                          }`}
-                          aria-current={isActive ? "page" : undefined}
-                          onClick={() => onNavigate(item.id)}
-                        >
-                          <Icon
-                            aria-hidden="true"
-                            className={isActive ? "text-brand-600" : "text-muted"}
-                            size={18}
-                            strokeWidth={2}
-                          />
-                          <span className="flex-1">{item.label}</span>
-                          <ChevronRight
-                            aria-hidden="true"
-                            className={`transition-transform ${
-                              isActive
-                                ? "translate-x-0 text-brand-500"
-                                : "-translate-x-1 text-transparent group-hover:translate-x-0 group-hover:text-white/30"
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`mosaic-menu-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                              isActive ? "bg-brand-50 text-brand-700" : "text-muted"
                             }`}
-                            size={15}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                            aria-current={isActive ? "page" : undefined}
+                            onClick={() => onNavigate(item.id)}
+                          >
+                            <Icon aria-hidden="true" className={isActive ? "text-brand-600" : "text-muted"} size={18} strokeWidth={2} />
+                            <span className="flex-1">{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
             </nav>
 
           </div>
@@ -117,10 +114,10 @@ export function AppShell<T extends string>({
         </header>
 
         <nav
-          className="grid grid-cols-2 gap-2 border-b border-line bg-surface px-3 py-3 sm:grid-cols-4 lg:hidden sm:px-6"
+          className="grid grid-cols-2 gap-2 border-b border-line bg-surface px-3 py-3 lg:hidden sm:grid-cols-4 sm:px-6"
           aria-label="Navegação rápida"
         >
-          {navigationItems.map((item) => {
+          {navigationItems.slice(0, 4).map((item) => {
             const Icon = item.icon;
             const isActive = item.id === activeView;
 
@@ -128,7 +125,7 @@ export function AppShell<T extends string>({
               <button
                 key={item.id}
                 type="button"
-                className={`inline-flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
                   isActive
                     ? "bg-brand-50 text-brand-700"
                     : "text-muted hover:bg-white/[0.06] hover:text-ink"
@@ -137,10 +134,32 @@ export function AppShell<T extends string>({
                 onClick={() => onNavigate(item.id)}
               >
                 <Icon aria-hidden="true" size={15} />
-                {item.label}
+                <span>{item.label}</span>
               </button>
             );
           })}
+          <details className="mosaic-mobile-more col-span-full">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-muted hover:bg-white/[0.06] hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500">
+              Mais <ChevronDown aria-hidden="true" size={15} />
+            </summary>
+            <div className="mosaic-mobile-more-menu mt-2 grid gap-1 rounded-xl border border-line bg-surface p-2 sm:grid-cols-2">
+              {navigationItems.slice(4).map((item) => {
+                const Icon = item.icon;
+                const isActive = item.id === activeView;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold ${isActive ? "bg-brand-50 text-brand-700" : "text-muted hover:bg-white/[0.06] hover:text-ink"}`}
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <Icon aria-hidden="true" size={16} />{item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </details>
         </nav>
 
         <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-6 xl:px-6">
