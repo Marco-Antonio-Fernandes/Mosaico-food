@@ -58,7 +58,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "orders" && <Orders />}
     {module === "service" && <FoodServicePanel />}
     {module === "credit" && <CreditPage />}
-    {module === "inventory" && <Catalog />}
+    {module === "inventory" && <Inventory />}
     {module === "customers" && <CustomersPage />}
     {module === "finance" && <FinancePage />}
     {module === "fiscal" && <Fiscal />}
@@ -258,6 +258,67 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     </div>}
     {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
     {notice && <p role="status">{notice}</p>}
+  </div>;
+}
+
+function Inventory() {
+  const [products, setProducts] = useState<FoodProduct[]>([]);
+  const [search, setSearch] = useState("");
+  const [kind, setKind] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadProducts = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      setProducts(await getFoodProducts());
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o estoque.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const refresh = () => void loadProducts();
+    void loadProducts(true);
+    window.addEventListener("food-stock-changed", refresh);
+    return () => window.removeEventListener("food-stock-changed", refresh);
+  }, []);
+
+  const query = search.trim().toLocaleLowerCase("pt-BR");
+  const filtered = products.filter(product => {
+    const matchesKind = kind === "all" || (kind === "ingredients" ? product.productionMode === "ingredient" : product.productionMode !== "ingredient");
+    const matchesSearch = `${product.name} ${product.category} ${product.aliases.join(" ")}`.toLocaleLowerCase("pt-BR").includes(query);
+    return matchesKind && matchesSearch;
+  });
+
+  return <div className="proto-stack">
+    <div className="proto-toolbar">
+      <label>Buscar no estoque<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Produto, ingrediente ou categoria…" /></label>
+      <label>Tipo<select value={kind} onChange={event => setKind(event.target.value)}><option value="all">Todos</option><option value="products">Produtos</option><option value="ingredients">Insumos</option></select></label>
+    </div>
+    {loading && <LoadingState icon={LoaderCircle} title="Carregando estoque" description="Buscando os produtos e ingredientes da loja." />}
+    {!loading && error && <div className="proto-stack"><ErrorState icon={CircleAlert} title="Não foi possível carregar o estoque" description={error} /><button type="button" onClick={() => void loadProducts(true)}>Tentar novamente</button></div>}
+    {!loading && !error && products.length === 0 && <EmptyState icon={Boxes} title="Estoque vazio" description="Cadastre um produto ou ingrediente para começar a controlar as quantidades." />}
+    {!loading && !error && products.length > 0 && filtered.length === 0 && <p className="proto-empty">Nenhum item corresponde à busca ou ao tipo selecionado.</p>}
+    {!loading && !error && filtered.length > 0 && <div className="inventory-list" aria-label="Produtos e ingredientes em estoque">
+      {filtered.map(product => <article className="inventory-row" key={product.id}>
+        <div className="inventory-row-name">
+          <div><h2>{product.name}</h2><small>{product.category} · {product.productionMode === "ingredient" ? "Insumo" : product.productionMode === "recipe" ? "Produção própria" : "Produto comprado"}</small></div>
+          {!product.active && <Badge>Inativo</Badge>}
+        </div>
+        <dl className="inventory-quantities">
+          {product.productionMode === "ingredient" ? <div><dt>Disponível</dt><dd>{product.stockQuantity} {product.stockUnit}</dd></div> : <>
+            <div><dt>Prontos</dt><dd>{product.stockQuantity}</dd></div>
+            <div><dt>Para finalizar</dt><dd>{product.unpreparedQuantity}</dd></div>
+          </>}
+          {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
+        </dl>
+        {product.active ? <ProductStock product={product} onSaved={loadProducts} /> : <p className="proto-caption">Ative o cadastro para movimentar o estoque.</p>}
+      </article>)}
+    </div>}
   </div>;
 }
 
@@ -462,7 +523,12 @@ function ProductForm({ initial, products, saving, onCancel, onSubmit }: ProductF
         <label>Adicional (R$)<input min="0" inputMode="decimal" value={variantPrices[variant.id] ?? ""} onChange={(event) => { const value = event.target.value; setVariantPrices((current) => ({ ...current, [variant.id]: value })); const cents = Math.round(Number(value.replace(",", ".")) * 100); updateVariant(variant.id, { priceDeltaCents: Number.isFinite(cents) && cents >= 0 ? cents : 0 }); }} placeholder="0,00" /></label>
         <button type="button" className="proto-subtle" aria-label={`Remover variação ${variant.name || "sem nome"}`} onClick={() => { setVariants((current) => current.filter((item) => item.id !== variant.id)); setVariantPrices((current) => { const next = { ...current }; delete next[variant.id]; return next; }); }}><Trash2 size={15} /></button>
       </div>)}
-      {!variants.length && <small className="text-muted">Sem variações: o atendimento usará apenas o nome e os aliases do produto.</small>}
+      {!variants.length && <p className="product-variants-empty">Sem variações cadastradas. O atendimento usará o nome do produto.</p>}
+    </div>
+    <p className="product-variants-note">As variações compartilham receita e estoque. Para sabores com ingredientes diferentes, cadastre produtos separados.</p>
+    <div className="product-preparation-options">
+      <label className="product-option-switch"><span><strong>Aceitar pedidos para preparar na hora</strong><small>Disponível quando houver itens para finalizar ou ingredientes suficientes.</small></span><input type="checkbox" checked={allowOnDemand} onChange={(event) => setAllowOnDemand(event.target.checked)} /></label>
+      <label className="product-option-switch"><span><strong>Oferecer preparo na hora</strong><small>Permite oferecer fritura ou preparo mesmo quando já há unidades prontas.</small></span><input type="checkbox" checked={fryToOrder} onChange={(event) => setFryToOrder(event.target.checked)} /></label>
     </div>
     <small>Produtos com sabores diferentes têm cadastro, preço e estoque próprios. O sabor é opcional.</small>
     </details>
