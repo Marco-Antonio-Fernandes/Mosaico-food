@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserView, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const defaultUserDataPath = app.getPath("userData");
 const stableUserDataPath = path.join(app.getPath("appData"), "Mosaico Food");
@@ -8,10 +8,117 @@ const { createNewLocalDatabase, getBackendDiagnostic, getBackendUrl, startLocalB
 const { chooseBackupFolder, getBackupSettings, readBackupFile, startBackupScheduler, stopBackupScheduler, writeBackupFile } = require("./backup-manager.cjs");
 const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
 const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
+const { getPrinterSettings, printFoodOrder, printTestOrder, savePrinterSettings } = require("./printer.cjs");
 
 const isDevelopment = !app.isPackaged;
 const useBuiltRenderer = process.env.MOSAICO_USE_BUILT_RENDERER === "1";
 let mainWindow = null;
+let whatsappBrowserView = null;
+let whatsappBrowserAccountId = null;
+let whatsappBrowserBounds = null;
+
+const WHATSAPP_URL = "https://web.whatsapp.com/";
+const WHATSAPP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+function whatsappPartition(accountId) {
+  const safeId = String(accountId || "default").replace(/[^a-zA-Z0-9_-]/g, "-") || "default";
+  return `persist:mosaico-whatsapp-${safeId}`;
+}
+
+function notifyWhatsappStatus(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send("mosaico:whatsapp-status", payload);
+}
+
+function removeWhatsappBrowserView() {
+  if (!mainWindow || mainWindow.isDestroyed() || !whatsappBrowserView) return;
+  if (mainWindow.getBrowserViews().includes(whatsappBrowserView)) {
+    mainWindow.removeBrowserView(whatsappBrowserView);
+  }
+}
+
+function destroyWhatsappBrowserView() {
+  removeWhatsappBrowserView();
+  if (whatsappBrowserView && !whatsappBrowserView.webContents.isDestroyed()) {
+    whatsappBrowserView.webContents.destroy();
+  }
+  whatsappBrowserView = null;
+  whatsappBrowserAccountId = null;
+}
+
+async function createWhatsappBrowserView(accountId) {
+  const normalizedAccountId = String(accountId || "default");
+  if (whatsappBrowserView && whatsappBrowserAccountId === normalizedAccountId) {
+    return whatsappBrowserView;
+  }
+
+  destroyWhatsappBrowserView();
+  const view = new BrowserView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      // Match the packaged Linux launcher. The host's Electron sandbox can
+      // start the guest renderer with both --enable-sandbox and --no-sandbox
+      // when the application is launched without the setuid helper, which
+      // makes WhatsApp die while creating its shared-memory surface.
+      sandbox: process.env.MOSAICO_ELECTRON_NO_SANDBOX !== "1",
+      partition: whatsappPartition(normalizedAccountId),
+    },
+  });
+  whatsappBrowserView = view;
+  whatsappBrowserAccountId = normalizedAccountId;
+  view.setBackgroundColor("#111b21");
+  view.webContents.setUserAgent(WHATSAPP_USER_AGENT);
+  view.webContents.session.setPermissionCheckHandler((_webContents, permission) => permission === "media");
+  view.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "media");
+  });
+  view.webContents.on("did-start-loading", () => {
+    notifyWhatsappStatus({ state: "loading", message: "Carregando WhatsApp Web…" });
+  });
+  view.webContents.on("did-finish-load", () => {
+    notifyWhatsappStatus({ state: "ready", message: "WhatsApp Web pronto para uso." });
+  });
+  view.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    notifyWhatsappStatus({ state: "error", message: `Falha ao carregar o WhatsApp Web (${errorCode}: ${errorDescription}).`, url: validatedURL });
+  });
+  view.webContents.on("render-process-gone", (_event, details) => {
+    notifyWhatsappStatus({ state: "error", message: `O processo interno do WhatsApp foi encerrado (${details.reason}).` });
+  });
+  view.webContents.on("page-title-updated", (_event, title) => {
+    const match = /^\((\d+)\)/.exec(title || "");
+    if (!match || Number(match[1]) <= 0) return;
+    mainWindow?.webContents.send("mosaico:whatsapp-notification", { unreadCount: Number(match[1]), title });
+  });
+  view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
+  try {
+    await view.webContents.loadURL(WHATSAPP_URL);
+  } catch (error) {
+    notifyWhatsappStatus({ state: "error", message: `Falha ao abrir o WhatsApp Web: ${error instanceof Error ? error.message : String(error)}.` });
+  }
+  return view;
+}
+
+function setWhatsappBrowserBounds(input) {
+  const values = ["left", "top", "width", "height"].map(key => Number(input?.[key]));
+  if (values.some(value => !Number.isFinite(value))) return;
+  const [left, top, width, height] = values;
+  whatsappBrowserBounds = { left, top, width, height };
+  if (!mainWindow || mainWindow.isDestroyed() || !whatsappBrowserView) return;
+  if (width < 2 || height < 2) {
+    removeWhatsappBrowserView();
+    return;
+  }
+  mainWindow.addBrowserView(whatsappBrowserView);
+  whatsappBrowserView.setBounds({
+    x: Math.max(0, Math.round(left)),
+    y: Math.max(0, Math.round(top)),
+    width: Math.max(2, Math.round(width)),
+    height: Math.max(2, Math.round(height)),
+  });
+}
 
 if (isDevelopment) {
   const envFile = path.join(__dirname, "../.env");
@@ -74,6 +181,7 @@ function createWindow({ loading = false } = {}) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
       sandbox: process.env.MOSAICO_ELECTRON_NO_SANDBOX !== "1",
       preload: path.join(__dirname, "preload.cjs"),
     },
@@ -81,6 +189,7 @@ function createWindow({ loading = false } = {}) {
   mainWindow = window;
 
   window.on("closed", () => {
+    destroyWhatsappBrowserView();
     if (mainWindow === window) mainWindow = null;
   });
 
@@ -133,6 +242,14 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
     return backendUrl;
   });
   ipcMain.handle("mosaico:backend-diagnostic", () => getBackendDiagnostic());
+  ipcMain.handle("mosaico:whatsapp-show", async (_event, accountId) => {
+    await createWhatsappBrowserView(accountId);
+    if (whatsappBrowserBounds) setWhatsappBrowserBounds(whatsappBrowserBounds);
+    return { ready: true };
+  });
+  ipcMain.on("mosaico:whatsapp-bounds", (_event, bounds) => setWhatsappBrowserBounds(bounds));
+  ipcMain.handle("mosaico:whatsapp-hide", () => removeWhatsappBrowserView());
+  ipcMain.handle("mosaico:whatsapp-reload", () => whatsappBrowserView?.webContents.reload());
   ipcMain.handle("mosaico:create-new-database", () => createNewLocalDatabase());
   ipcMain.handle("mosaico:transcribe-audio", (_event, audio, mimeType, prompt) => transcribeAudio(audio, mimeType, prompt));
   ipcMain.handle("mosaico:interpret-text", (_event, text, products) => interpretFoodText(text, products));
@@ -140,6 +257,10 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
   ipcMain.handle("mosaico:get-backup-settings", () => getBackupSettings());
   ipcMain.handle("mosaico:write-backup-file", (_event, input) => writeBackupFile(input));
   ipcMain.handle("mosaico:read-backup-file", () => readBackupFile());
+  ipcMain.handle("mosaico:get-printer-settings", () => getPrinterSettings());
+  ipcMain.handle("mosaico:save-printer-settings", (_event, input) => savePrinterSettings(input));
+  ipcMain.handle("mosaico:test-printer", () => printTestOrder());
+  ipcMain.handle("mosaico:print-food-order", (_event, order) => printFoodOrder(order));
   createWindow({ loading: true });
 
   // A interface não precisa esperar o motor de voz e o interpretador local.

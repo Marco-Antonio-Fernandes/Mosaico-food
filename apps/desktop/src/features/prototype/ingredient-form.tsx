@@ -101,9 +101,7 @@ export function IngredientForm({ initial, saving, onSubmit, onCancel }: Ingredie
     });
   };
 
-  return <section className="proto-panel ingredient-form-panel">
-    <form className="proto-form" onSubmit={submit}>
-      <h3>{initial ? "Editar insumo" : "Cadastrar insumo"}</h3>
+  return <form className="proto-form ingredient-form" onSubmit={submit}>
       <p className="ingredient-form-help">Cadastre somente a embalagem e o valor pago. Este cadastro serve para calcular custos e não controla quantidade em estoque.</p>
       <div className="ingredient-form-grid">
         <label>Nome do insumo<input required autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Farinha de trigo" /></label>
@@ -112,6 +110,5 @@ export function IngredientForm({ initial, saving, onSubmit, onCancel }: Ingredie
       </div>
       {error && <p role="alert" className="proto-form-error">{error}</p>}
       <div className="proto-toolbar"><button type="submit" disabled={saving}>{saving ? "Salvando…" : initial ? "Salvar alterações" : "Cadastrar insumo"}</button><button type="button" className="proto-subtle" onClick={onCancel} disabled={saving}>Cancelar</button></div>
-    </form>
-  </section>;
+  </form>;
 }

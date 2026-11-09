@@ -87,7 +87,7 @@ export type NotificationEntry = {
   title: string;
   body: string;
   createdAt: string;
-  kind?: "default" | "stock";
+  kind?: "default" | "stock" | "whatsapp";
   priority?: "urgent" | "high" | "normal";
 };
 

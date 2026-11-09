@@ -13,13 +13,41 @@ let localBackendError = null;
 
 function backendRoot() {
   if (!app.isPackaged) {
-    return process.env.MOSAICO_LOCAL_BACKEND_ROOT || path.resolve(__dirname, "../../../mosaico-back");
+    return process.env.MOSAICO_LOCAL_BACKEND_ROOT || path.resolve(__dirname, "../../../../mosaico-back");
   }
   return path.join(process.resourcesPath, "backend");
 }
 
+function readBackendEnvFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return {};
+  const values = {};
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match) continue;
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    values[match[1]] = value;
+  }
+  return values;
+}
+
+function backendEnv(root) {
+  const home = app.getPath("home");
+  const candidates = [
+    process.env.MOSAICO_BACKEND_ENV_FILE,
+    path.join(root, ".env"),
+    path.join(home, "Documentos", "mosaico-back", ".env"),
+    path.join(home, "Documents", "mosaico-back", ".env"),
+  ].filter(Boolean);
+  const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+  return filePath ? readBackendEnvFile(filePath) : {};
+}
+
 function nodeRuntimes() {
-  return [...new Set([process.env.MOSAICO_NODE_BIN || process.execPath, "node"].filter(Boolean))];
+  // The Electron executable inside an AppImage can launch the UI correctly
+  // but hang when it is reused as `node` through ELECTRON_RUN_AS_NODE. The
+  // local Prisma migration and backend must prefer a real system Node runtime.
+  return [...new Set([process.env.MOSAICO_NODE_BIN, "node", process.execPath].filter(Boolean))];
 }
 
 function localDatabasePath() {
@@ -201,6 +229,7 @@ function spawnBackend(root, entry, databaseUrl, runtime) {
     cwd: root,
     env: {
       ...process.env,
+      ...backendEnv(root),
       ...(runtime === process.execPath ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       NODE_ENV: "development",
       PORT: String(localPort),

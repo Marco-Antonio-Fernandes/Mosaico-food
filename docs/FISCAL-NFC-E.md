@@ -95,6 +95,11 @@ O certificado não será armazenado no renderer, no banco em texto aberto ou no
 instalador do Electron. A interface permitirá apenas cadastrar/rotacionar a
 referência secreta e testar o ambiente com permissão administrativa.
 
+No aplicativo instalado, a chave da Notaas fica no `.env` do backend
+`mosaico-back`. O desktop repassa essa configuração ao backend local sem
+expor o valor ao renderer; a interface recebe apenas o estado “configurada”
+ou “aguardando chave”.
+
 ## Arquitetura do adaptador
 
 ```text
@@ -193,6 +198,19 @@ resumo, chave ou link seguro, se a política da loja, o consentimento e as regra
 vigentes do canal permitirem. A mensagem deve ser criada pelo backend e passar
 pelas regras de janela/template da Meta. Falha no WhatsApp não desfaz a
 autorização fiscal.
+
+## Entrega atual do Mosaico Food
+
+A primeira entrega usa emissão manual a partir de uma venda paga. O módulo
+Fiscal lista as vendas do balcão e itens de pedidos pagos, valida o perfil
+fiscal do produto, envia a emissão para a Notaas, consulta o processamento e
+guarda número, chave, protocolo, QR Code, DANFE/XML e mensagens de erro no
+histórico. A emissão não acontece no fechamento do caixa e não altera estoque,
+pagamento ou pedido.
+
+O cadastro do produto já possui os campos fiscais obrigatórios e opcionais.
+Eles devem ser preenchidos com a orientação do contador; o sistema bloqueia a
+emissão quando o perfil está incompleto.
 
 ## Contrato de API fiscal
 

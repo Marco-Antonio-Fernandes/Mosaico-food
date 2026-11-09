@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Boxes, ClipboardList, Cloud, FileText, Gauge, Headset, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
+import { Bell, Boxes, ClipboardList, Cloud, FileText, Headset, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
 import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
-import { FoodOverviewPage } from "@/components/shared/food-overview-page";
+import { AccountSetupModal } from "@/components/shared/account-setup-modal";
+import { loadMosaicoAccount, normalizeCnpj, persistMosaicoAccount, type MosaicoAccount } from "@/components/shared/account-context";
 import { FoodPrototype, type FoodModule } from "@/features/prototype/food-prototype";
-import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNotifications, getFoodStockNotifications, type FoodNotification, type FoodStockNotification } from "@/lib/food-api";
+import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNotifications, getFoodOrders, getFoodProducts, getFoodStockNotifications, type FoodNotification, type FoodOrder, type FoodProduct, type FoodStockNotification, upsertMosaicoAccount } from "@/lib/food-api";
 import { NotificationList, type NotificationEntry } from "@/components/shared/prototype-kit";
 import { FoodAssistant } from "@/features/assistant/food-assistant";
 import { OrderAlerts } from "@/features/assistant/order-alerts";
 import { ConnectionStatus, type DesktopConnectionStatus } from "@/components/shared/connection-status";
 import { FoodRelayAgent } from "@/features/service/food-relay-agent";
+import { FoodPrinterAgent } from "@/features/service/food-printer-agent";
 
 type ViewId = FoodModule;
 const navigationItems: NavigationItem<ViewId>[] = [
@@ -18,7 +20,7 @@ const navigationItems: NavigationItem<ViewId>[] = [
   { id: "products", label: "Produtos", group: "Gestão", icon: Package },
   { id: "inventory", label: "Estoque", group: "Gestão", icon: Boxes },
   { id: "customers", label: "Clientes", group: "Gestão", icon: UsersRound },
-  { id: "finance", label: "Caixa e financeiro", group: "Gestão", icon: WalletCards },
+  { id: "finance", label: "Caixa", group: "Gestão", icon: WalletCards },
   { id: "fiscal", label: "Fiscal", group: "Gestão", icon: FileText },
   { id: "backup", label: "Backup", group: "Sistema", icon: Cloud },
   { id: "settings", label: "Configurações", group: "Sistema", icon: Settings },
@@ -65,10 +67,11 @@ function showFoodDesktopNotification(notification: NotificationEntry) {
 function toNotificationEntry(notification: FoodNotification): NotificationEntry {
   return {
     id: notification.id,
-    title: `WhatsApp · ${notification.customerName}`,
-    body: notification.body || "Nova mensagem recebida.",
+    kind: "whatsapp",
+    title: "O bot não conseguiu responder",
+    body: `${notification.customerName} está esperando. Abra a mensagem e responda no WhatsApp agora.`,
     createdAt: notification.createdAt,
-    priority: notification.automationPaused ? "urgent" : "high",
+    priority: "urgent",
   };
 }
 
@@ -83,12 +86,42 @@ function toStockNotificationEntry(notification: FoodStockNotification): Notifica
   };
 }
 
+function toOrderDelayEntry(order: FoodOrder, now: number): NotificationEntry | null {
+  const age = now - new Date(order.updatedAt).getTime();
+  if (age < 5 * 60_000) return null;
+  const stage = order.status === "out_for_delivery" ? "em trânsito" : order.status === "ready" ? "pronto" : "em preparo";
+  const level = Math.floor(age / (5 * 60_000));
+  return {
+    id: `order-delay:${order.id}:${level}`,
+    title: level >= 2 ? "Pedido muito atrasado" : "Pedido demorando",
+    body: `O pedido de ${order.customerName || order.customer?.name || "cliente"} está há ${Math.floor(age / 60_000)} minutos ${stage}. Confira a operação.`,
+    createdAt: order.updatedAt,
+    priority: level >= 2 ? "urgent" : "high",
+  };
+}
+
+function toLowStockEntry(product: FoodProduct): NotificationEntry | null {
+  if (!product.active || product.productionMode === "ingredient" || product.productionMode === "made_here") return null;
+  const available = product.productionMode === "recipe" ? product.saleCapacity : product.stockQuantity + product.unpreparedQuantity;
+  if (available <= 0 || available > 2) return null;
+  return {
+    id: `low-stock:${product.id}:${available}`,
+    title: "Produto acabando",
+    body: `${product.productName || product.name}${product.flavor ? ` · ${product.flavor}` : ""} tem apenas ${available} unidade${available === 1 ? "" : "s"} disponível${available === 1 ? "" : "eis"}.`,
+    createdAt: product.updatedAt,
+    priority: "high",
+  };
+}
+
 export function App() {
   const [activeView, setActiveView] = useState<ViewId>("orders");
-  const [overviewOpen, setOverviewOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [account, setAccount] = useState<MosaicoAccount | null>(() => loadMosaicoAccount());
+  const [accountSetupOpen, setAccountSetupOpen] = useState(() => {
+    const current = loadMosaicoAccount();
+    return current === null || normalizeCnpj(current.document).length !== 14;
+  });
   const [connectionStatus, setConnectionStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "Iniciando Food local" });
-  const [whatsappStatus, setWhatsappStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "WhatsApp remoto iniciando" });
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const notificationCursorRef = useRef(new Date(Date.now() - 15_000).toISOString());
@@ -100,12 +133,24 @@ export function App() {
     const poll = async () => {
       try {
         const cursor = new Date(new Date(notificationCursorRef.current).getTime() - 15_000).toISOString();
-        const [incomingWhatsapp, incomingStock] = await Promise.all([getFoodNotifications(cursor), getFoodStockNotifications()]);
+        const [whatsappResult, stockResult, ordersResult, productsResult] = await Promise.allSettled([getFoodNotifications(cursor), getFoodStockNotifications(), getFoodOrders("active"), getFoodProducts({ activeOnly: true })]);
         if (!active) return;
+        const incomingWhatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value : [];
+        const incomingStock = stockResult.status === "fulfilled" ? stockResult.value : [];
+        const delayedOrders = ordersResult.status === "fulfilled" ? ordersResult.value.map(order => toOrderDelayEntry(order, Date.now())).filter((entry): entry is NotificationEntry => Boolean(entry)) : [];
+        const lowStock = productsResult.status === "fulfilled" ? productsResult.value.map(toLowStockEntry).filter((entry): entry is NotificationEntry => Boolean(entry)) : [];
         const incomingEntries = [
           ...incomingWhatsapp.filter(notification => notification.needsHuman).map(toNotificationEntry),
           ...incomingStock.map(toStockNotificationEntry),
+          ...delayedOrders,
+          ...lowStock,
         ];
+        const dynamicIds = new Set([...delayedOrders, ...lowStock].map(entry => entry.id));
+        const activeWhatsappIds = new Set(incomingWhatsapp.filter(notification => notification.needsHuman).map(notification => notification.id));
+        setNotifications(current => current.filter(entry => {
+          if (entry.kind === "whatsapp") return activeWhatsappIds.has(entry.id);
+          return !/^(order-delay|low-stock):/.test(entry.id) || dynamicIds.has(entry.id);
+        }));
         const unseen = incomingEntries.filter(notification => !seenNotificationIdsRef.current.has(notification.id));
         incomingEntries.forEach(notification => seenNotificationIdsRef.current.add(notification.id));
         const newest = incomingWhatsapp.reduce((latest, notification) => Math.max(latest, new Date(notification.createdAt).getTime()), 0);
@@ -113,8 +158,7 @@ export function App() {
 
         if (!notificationPollInitializedRef.current) {
           notificationPollInitializedRef.current = true;
-          const initialStockEntries = incomingStock.map(toStockNotificationEntry);
-          if (initialStockEntries.length) setNotifications(current => [...initialStockEntries, ...current].slice(0, 50));
+          if (incomingEntries.length) setNotifications(current => [...incomingEntries, ...current].slice(0, 50));
           return;
         }
         if (!unseen.length) return;
@@ -140,20 +184,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const onRelayStatus = (event: Event) => {
-      const detail = (event as CustomEvent<{ state?: string; label?: string; message?: string }>).detail;
-      const state: DesktopConnectionStatus["state"] = detail?.state === "online" ? "online" : detail?.state === "offline" ? "offline" : "unknown";
-      const label = detail?.label || (state === "online" ? "WhatsApp remoto conectado" : "WhatsApp remoto aguardando status");
-      setWhatsappStatus({ state, label });
-    };
-    window.addEventListener("food-relay-status", onRelayStatus);
-    return () => window.removeEventListener("food-relay-status", onRelayStatus);
-  }, []);
-
-  useEffect(() => {
     const openOrders = () => {
       setActiveView("orders");
-      setOverviewOpen(false);
       setNotificationsOpen(false);
     };
     window.addEventListener("food-open-orders", openOrders);
@@ -174,19 +206,23 @@ export function App() {
 
   const openNotifications = () => {
     setNotificationsOpen(true);
-    setOverviewOpen(false);
     setUnreadNotifications(0);
-  };
-
-  const openOverview = () => {
-    setOverviewOpen(true);
-    setNotificationsOpen(false);
   };
 
   const navigate = (view: ViewId) => {
     setActiveView(view);
-    setOverviewOpen(false);
     setNotificationsOpen(false);
+  };
+
+  const saveAccount = async (next: MosaicoAccount) => {
+    const result = await upsertMosaicoAccount({ id: next.id, name: next.name, cnpj: next.document, city: next.city });
+    persistMosaicoAccount(next);
+    setAccount(next);
+    setAccountSetupOpen(false);
+    window.dispatchEvent(new CustomEvent("mosaico-account-changed", { detail: next }));
+    if (!result.integration.provisioned) {
+      console.warn(`[Mosaico Food] Empresa salva, mas a integração fiscal não foi provisionada: ${result.integration.message}`);
+    }
   };
 
   const confirmStockNotification = async (id: string) => {
@@ -199,13 +235,16 @@ export function App() {
     setNotifications(current => current.filter(notification => notification.id !== id));
   };
 
-  return <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={navigate} topAction={<div className="flex items-center gap-2"><ConnectionStatus status={whatsappStatus} /><button aria-pressed={overviewOpen} aria-label="Abrir visão geral" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${overviewOpen ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => overviewOpen ? setOverviewOpen(false) : openOverview()} type="button"><Gauge aria-hidden="true" size={19} /><span className="sr-only">Visão geral</span></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-11 items-center justify-center rounded-full border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-orange-300/40 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={19} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-bold text-slate-950">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></div>} connectionStatus={<ConnectionStatus status={connectionStatus} />}>
+  return <>
+    <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={navigate} account={account} onEditAccount={() => setAccountSetupOpen(true)} topAction={<button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-red-300/50 bg-red-50 text-red-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={17} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-4 animate-pulse items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button>} connectionStatus={<ConnectionStatus status={connectionStatus} compact />}>
     <FoodRelayAgent />
+    <FoodPrinterAgent />
     {connectionStatus.state === "offline" && <div className="mosaic-system-alert" role="alert">{connectionStatus.label}. Avise o suporte técnico.</div>}
-    <FoodPrototype key={activeView} module={activeView} />
-    {overviewOpen && <div className="mosaic-top-popover mosaic-overview-popover"><FoodOverviewPage onOpenNotifications={openNotifications} /></div>}
+    <FoodPrototype key={`${account?.id ?? "sem-conta"}:${activeView}`} module={activeView} />
     {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
     <FoodAssistant />
     <OrderAlerts onOpen={() => navigate("orders")} />
-  </AppShell>;
+    </AppShell>
+    <AccountSetupModal open={accountSetupOpen} account={account} onSave={saveAccount} onClose={account ? () => setAccountSetupOpen(false) : undefined} />
+  </>;
 }

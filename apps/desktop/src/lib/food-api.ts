@@ -24,6 +24,17 @@ export type FoodProduct = {
   allowOnDemand: boolean;
   fryToOrder: boolean;
   active: boolean;
+  fiscalNcm: string | null;
+  fiscalCest: string | null;
+  fiscalGtin: string | null;
+  fiscalUnit: "UN" | "KG" | "G" | "L" | "ML" | null;
+  fiscalCfop: string | null;
+  fiscalOrigin: number | null;
+  fiscalCst: string | null;
+  fiscalCsosn: string | null;
+  fiscalPisCst: string | null;
+  fiscalCofinsCst: string | null;
+  fiscalBenefitCode: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -63,6 +74,12 @@ export type FoodProductVariant = {
 export type FoodMessage = {
   mediaType?: string | null;
   transcriptionStatus?: string | null;
+  mediaUrl?: string | null;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
+  locationAddress?: string | null;
+  needsHuman?: boolean;
+  source?: string | null;
   id: string;
   conversationId: string;
   providerMessageId: string;
@@ -121,6 +138,11 @@ export type FoodRelayMessage = {
   body: string | null;
   mediaType: string | null;
   transcriptionStatus: string | null;
+  locationLatitude: number | null;
+  locationLongitude: number | null;
+  locationAddress: string | null;
+  direction: "inbound" | "outbound";
+  source: string;
   createdAt: string;
 };
 
@@ -151,6 +173,131 @@ export type ProductInput = {
   fryToOrder: boolean;
   active: boolean;
   customization?: FoodProductCustomization | null;
+  fiscalNcm?: string | null;
+  fiscalCest?: string | null;
+  fiscalGtin?: string | null;
+  fiscalUnit?: FoodProduct["fiscalUnit"];
+  fiscalCfop?: string | null;
+  fiscalOrigin?: number | null;
+  fiscalCst?: string | null;
+  fiscalCsosn?: string | null;
+  fiscalPisCst?: string | null;
+  fiscalCofinsCst?: string | null;
+  fiscalBenefitCode?: string | null;
+};
+
+export type FoodFiscalFieldIssue = { field: string; message: string };
+
+export type FoodFiscalStatus = {
+  configured: boolean;
+  provider: string;
+  model: 55 | 65 | number;
+  environment: "homologation" | "production" | string;
+  uf: string;
+  crt: number;
+  automaticIssuance: boolean;
+};
+
+export type FoodFiscalDocument = {
+  id: string;
+  sourceType: "counter_sale" | "order_item" | string;
+  sourceId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
+  model: number;
+  environment: string;
+  status: "pending" | "issued" | "error" | "cancelled" | string;
+  provider: string;
+  providerInvoiceId: string | null;
+  accessKey: string | null;
+  protocol: string | null;
+  number: number | null;
+  series: number | null;
+  qrCode: string | null;
+  publicUrl: string | null;
+  pdfUrl: string | null;
+  xmlUrl: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  issuedAt: string | null;
+};
+
+export type FoodFiscalSource = {
+  sourceType: "counter_sale" | "order_item";
+  sourceId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  totalCents: number;
+  paymentMethod: SalePaymentMethod | string | null;
+  fulfillment?: string;
+  createdAt: string;
+  fiscal: { ready: boolean; missing: FoodFiscalFieldIssue[] };
+  product?: FoodFiscalProductSnapshot;
+  document: FoodFiscalDocument | null;
+};
+
+export type FoodFiscalProductSnapshot = Pick<FoodProduct, "id" | "name" | "fiscalNcm" | "fiscalCest" | "fiscalGtin" | "fiscalUnit" | "fiscalCfop" | "fiscalOrigin" | "fiscalCst" | "fiscalCsosn" | "fiscalPisCst" | "fiscalCofinsCst" | "fiscalBenefitCode">;
+
+export type FoodFiscalBuyer = {
+  document?: string;
+  name?: string;
+  email?: string;
+  address?: {
+    street: string;
+    number: string;
+    neighborhood: string;
+    city: string;
+    ibge: number;
+    uf: string;
+    cep: string;
+  };
+};
+
+export type FoodFiscalIssueInput = {
+  sourceType: FoodFiscalSource["sourceType"];
+  sourceId: string;
+  productId: string;
+  quantity?: number;
+  paymentMethod?: string | null;
+  buyer?: FoodFiscalBuyer;
+  sourceSnapshot?: {
+    product: FoodFiscalProductSnapshot;
+    quantity: number;
+    unitPriceCents: number;
+    totalCents: number;
+    paymentMethod: string | null;
+    paymentStatus: string;
+    fulfillment: string;
+  };
+};
+
+export type FoodNotasemtupeStatus = {
+  configured: boolean;
+  reachable: boolean;
+  authenticated: boolean;
+  baseUrl: string;
+  company: { id: string; name: string; cnpj: string } | null;
+  error: string | null;
+};
+
+export type FoodNotasemtupeSyncResult = {
+  configured: boolean;
+  synced: boolean;
+  skipped: boolean;
+  duplicate?: boolean;
+  invoice?: Record<string, unknown>;
+  message: string;
+};
+
+export type FoodFiscalIssueResult = {
+  document: FoodFiscalDocument;
+  integration: FoodNotasemtupeSyncResult;
 };
 
 export type FoodOrderItem = {
@@ -174,6 +321,8 @@ export type FoodOrder = {
   fulfillment: "pickup" | "delivery" | string;
   deliveryAddress: string | null;
   totalCents: number;
+  cashReceivedCents: number | null;
+  cashChangeCents: number | null;
   source: string;
   paymentMethod: SalePaymentMethod | null;
   paymentStatus: string;
@@ -215,6 +364,24 @@ const remoteApiBaseUrl = (import.meta.env.VITE_MOSAICO_REMOTE_BACKEND_URL || imp
 const apiKey = import.meta.env.VITE_MOSAICO_API_KEY || "";
 let apiBaseUrlPromise: Promise<string> | null = null;
 
+function activeAccountId(): string | null {
+  try {
+    const raw = window.localStorage.getItem("mosaico-active-account");
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const id = (parsed as { id?: unknown }).id;
+    return typeof id === "string" && id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function addAccountHeader(headers: Headers): void {
+  const accountId = activeAccountId();
+  if (accountId) headers.set("X-Mosaico-Account-Id", accountId);
+}
+
 function getApiBaseUrl() {
   if (!apiBaseUrlPromise) {
     const bridge = window.mosaicoDesktop;
@@ -229,7 +396,7 @@ function getApiBaseUrl() {
 }
 
 export type ReceivedPaymentMethod = "pix" | "cash" | "card_credit" | "card_debit" | "meal_voucher";
-export type SalePaymentMethod = ReceivedPaymentMethod | "crediario";
+export type SalePaymentMethod = ReceivedPaymentMethod | "crediario" | "brinde";
 export const PRICE_ADJUSTMENT_REASONS = ["Menos fresco", "Decisão do dono"] as const;
 export type AssistantDraft = { id: string; action: "order" | "sale" | "prepare" | "loss" | "receive_ready" | "receive_unprepared"; quantity: number; productName: string; totalCents: number; baseUnitPriceCents?: number; paymentMethod: SalePaymentMethod | null };
 export type AssistantRegistrationDraft = { id: string; name: string; quantity: number; stockUnit: "un" | "g" | "ml"; unitWeightGrams: number | null; unitVolumeMl: number | null };
@@ -278,7 +445,7 @@ export type CounterSaleItemInput = {
   isGift?: boolean;
 };
 
-export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod | null; creditCustomerId?: string | null; items: CounterSaleItemInput[] }) {
+export function registerCounterSale(input: { operationId: string; paymentMethod: SalePaymentMethod; creditCustomerId?: string | null; items: CounterSaleItemInput[] }) {
   return foodApi<{ message: string }>("/api/v1/food/sales", { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -316,6 +483,59 @@ export function openFoodCash(openingCashCents: number) {
 
 export function closeFoodCash(countedCashCents: number, notes?: string) {
   return foodApi<FoodCashSnapshot>("/api/v1/food/cash/close", { method: "POST", body: JSON.stringify({ countedCashCents, notes: notes?.trim() || null }) });
+}
+
+export function getFoodFiscalStatus() {
+  return remoteFoodApi<FoodFiscalStatus>("/api/v1/food/fiscal/status", {}, "o módulo fiscal remoto");
+}
+
+export async function getFoodFiscalSources() {
+  const data = await foodApi<{ sources: FoodFiscalSource[] }>("/api/v1/food/fiscal/sources");
+  return Array.isArray(data.sources) ? data.sources : [];
+}
+
+export async function getFoodFiscalDocuments() {
+  const data = await remoteFoodApi<{ documents: FoodFiscalDocument[] }>("/api/v1/food/fiscal/documents", {}, "o módulo fiscal remoto");
+  return Array.isArray(data.documents) ? data.documents : [];
+}
+
+export function getFoodNotasemtupeStatus() {
+  return foodApi<FoodNotasemtupeStatus>("/api/v1/food/fiscal/notasemtupe/status");
+}
+
+export function syncFoodFiscalDocumentWithNotasemtupe(input: FoodFiscalIssueInput, document: FoodFiscalDocument) {
+  const snapshot = input.sourceSnapshot;
+  return foodApi<FoodNotasemtupeSyncResult>("/api/v1/food/fiscal/notasemtupe/sync", {
+    method: "POST",
+    body: JSON.stringify({
+      externalId: `mosaico-food:${input.sourceType}:${input.sourceId}`,
+      productName: snapshot?.product.name || document.productName,
+      quantity: input.quantity || snapshot?.quantity || document.quantity,
+      unitPriceCents: snapshot?.unitPriceCents ?? document.unitPriceCents,
+      client: input.buyer?.name?.trim() || "Consumidor final",
+      clientDocument: input.buyer?.document?.trim() || null,
+      status: document.status === "issued" ? "Autorizada" : "Rascunho",
+      environment: document.environment,
+      protocol: document.protocol,
+      accessKey: document.accessKey,
+    }),
+  });
+}
+
+export async function issueFoodFiscalDocument(input: FoodFiscalIssueInput): Promise<FoodFiscalIssueResult> {
+  const data = await remoteFoodApi<{ document: FoodFiscalDocument }>("/api/v1/food/fiscal/documents/issue", { method: "POST", body: JSON.stringify(input) }, "o módulo fiscal remoto");
+  let integration: FoodNotasemtupeSyncResult;
+  try {
+    integration = await syncFoodFiscalDocumentWithNotasemtupe(input, data.document);
+  } catch (error) {
+    integration = {
+      configured: true,
+      synced: false,
+      skipped: false,
+      message: `Nota processada, mas a centralização falhou: ${error instanceof Error ? error.message : "erro desconhecido"}`,
+    };
+  }
+  return { document: data.document, integration };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -415,6 +635,17 @@ function normalizeFoodProduct(value: unknown): FoodProduct | null {
     allowOnDemand: product.allowOnDemand === true,
     fryToOrder: product.fryToOrder === true,
     active: product.active !== false,
+    fiscalNcm: typeof product.fiscalNcm === "string" && product.fiscalNcm.trim() ? product.fiscalNcm : null,
+    fiscalCest: typeof product.fiscalCest === "string" && product.fiscalCest.trim() ? product.fiscalCest : null,
+    fiscalGtin: typeof product.fiscalGtin === "string" && product.fiscalGtin.trim() ? product.fiscalGtin : null,
+    fiscalUnit: product.fiscalUnit === "UN" || product.fiscalUnit === "KG" || product.fiscalUnit === "G" || product.fiscalUnit === "L" || product.fiscalUnit === "ML" ? product.fiscalUnit : null,
+    fiscalCfop: typeof product.fiscalCfop === "string" && product.fiscalCfop.trim() ? product.fiscalCfop : null,
+    fiscalOrigin: typeof product.fiscalOrigin === "number" ? product.fiscalOrigin : null,
+    fiscalCst: typeof product.fiscalCst === "string" && product.fiscalCst.trim() ? product.fiscalCst : null,
+    fiscalCsosn: typeof product.fiscalCsosn === "string" && product.fiscalCsosn.trim() ? product.fiscalCsosn : null,
+    fiscalPisCst: typeof product.fiscalPisCst === "string" && product.fiscalPisCst.trim() ? product.fiscalPisCst : null,
+    fiscalCofinsCst: typeof product.fiscalCofinsCst === "string" && product.fiscalCofinsCst.trim() ? product.fiscalCofinsCst : null,
+    fiscalBenefitCode: typeof product.fiscalBenefitCode === "string" && product.fiscalBenefitCode.trim() ? product.fiscalBenefitCode : null,
     createdAt: typeof product.createdAt === "string" ? product.createdAt : "",
     updatedAt: typeof product.updatedAt === "string" ? product.updatedAt : "",
   };
@@ -425,6 +656,7 @@ export async function foodApi<T>(path: string, init: RequestInit = {}): Promise<
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (apiKey) headers.set("X-API-Key", apiKey);
+  addAccountHeader(headers);
 
   const response = await fetch(`${await getApiBaseUrl()}${path}`, { ...init, headers });
   const payload: unknown = await response.json().catch(() => null);
@@ -434,22 +666,23 @@ export async function foodApi<T>(path: string, init: RequestInit = {}): Promise<
   return data as T;
 }
 
-async function remoteFoodApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function remoteFoodApi<T>(path: string, init: RequestInit = {}, context = "o servidor remoto do Mosaico Food"): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (apiKey) headers.set("X-API-Key", apiKey);
+  addAccountHeader(headers);
 
   let response: Response;
   try {
     response = await fetch(`${remoteApiBaseUrl}${path}`, { ...init, headers });
   } catch (error) {
     const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
-    throw new Error(`Servidor remoto do WhatsApp indisponível em ${remoteApiBaseUrl}${detail}`);
+    throw new Error(`${context} indisponível em ${remoteApiBaseUrl}${detail}`);
   }
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const message = errorMessage(payload, "Não foi possível acessar a ponte do WhatsApp.");
+    const message = errorMessage(payload, `Não foi possível acessar ${context}.`);
     throw new Error(`${message} (HTTP ${response.status} em ${remoteApiBaseUrl}${path})`);
   }
   return asRecord(payload).data as T;
@@ -460,6 +693,30 @@ export type FoodRemoteWhatsappStatus = {
   label: string;
   message?: string;
 };
+
+export type MosaicoAccountInput = {
+  id: string;
+  name: string;
+  cnpj: string;
+  city?: string;
+};
+
+export type MosaicoAccountSyncResult = {
+  account: { id: string; name: string; cnpj: string; city: string };
+  integration: {
+    configured: boolean;
+    provisioned: boolean;
+    companyId: string | null;
+    message: string;
+  };
+};
+
+export function upsertMosaicoAccount(input: MosaicoAccountInput) {
+  return foodApi<MosaicoAccountSyncResult>("/api/v1/accounts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
 
 function normalizeRemoteWhatsappStatus(payload: unknown): FoodRemoteWhatsappStatus {
   const root = asRecord(payload);
@@ -535,6 +792,9 @@ export async function ingestFoodRelayMessage(input: {
   customerName?: string | null;
   body: string | null;
   mediaType?: string | null;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
+  locationAddress?: string | null;
   createdAt?: string;
   direction?: "inbound" | "outbound";
 }) {
@@ -614,6 +874,22 @@ export async function getFoodConversations() {
   return data.conversations;
 }
 
+export type FoodConversationLog = {
+  format: "mosaico-food-conversation-log";
+  version: number;
+  exportedAt: string;
+  period: { from: string; to: string; timezone: string };
+  conversations: unknown[];
+};
+
+export async function exportFoodConversationLog(from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return foodApi<FoodConversationLog>(`/api/v1/food/conversations/export${query}`);
+}
+
 export async function registerFoodStock(id: string, input: { operationId: string; action: "receive_ready" | "receive_unprepared" | "prepare" | "loss" | "loss_ready" | "loss_unprepared" | "loss_split"; quantity?: number; readyQuantity?: number; unpreparedQuantity?: number }) {
   return foodApi(`/api/v1/food/products/${encodeURIComponent(id)}/stock`, { method: "POST", body: JSON.stringify(input) });
 }
@@ -628,6 +904,14 @@ export async function getFoodMessageAudio(conversationId: string, messageId: str
   if (apiKey) headers.set("X-API-Key", apiKey);
   const response = await fetch(`${await getApiBaseUrl()}/api/v1/food/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/audio`, { headers });
   if (!response.ok) throw new Error("Não foi possível baixar o áudio do atendimento.");
+  return response.blob();
+}
+
+export async function getFoodMessageMedia(conversationId: string, messageId: string) {
+  const headers = new Headers({ Accept: "image/*, audio/*" });
+  if (apiKey) headers.set("X-API-Key", apiKey);
+  const response = await fetch(`${await getApiBaseUrl()}/api/v1/food/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/media`, { headers });
+  if (!response.ok) throw new Error("Não foi possível carregar a mídia do WhatsApp.");
   return response.blob();
 }
 
@@ -671,6 +955,25 @@ export async function setFoodConversationMode(conversationId: string, automation
     body: JSON.stringify({ automationPaused }),
   });
   return data.conversation;
+}
+
+export type FoodAutomationRunResult = {
+  enabled: boolean;
+  conversations: number;
+  processedMessages: number;
+  repliesSent: number;
+  ordersCreated: number;
+  skipped: number;
+  errors: string[];
+  replies: Array<{ conversationId: string; remoteJid: string; body: string }>;
+  lastRunAt: string;
+};
+
+export async function runFoodAutomation(conversationId?: string) {
+  return foodApi<FoodAutomationRunResult>("/api/v1/food-automation/run", {
+    method: "POST",
+    body: JSON.stringify(conversationId ? { conversationId } : {}),
+  });
 }
 
 export async function setFoodCustomerAutomation(customerId: string, enabled: boolean) {
@@ -771,7 +1074,7 @@ export type FoodOrderItemInput = {
   isGift?: boolean;
 };
 
-export function createFoodOrder(input: { source?: string; customerName?: string | null; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; items: FoodOrderItemInput[] }) {
+export function createFoodOrder(input: { source?: string; customerName?: string | null; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; paymentMethod?: SalePaymentMethod | null; cashReceivedCents?: number | null; items: FoodOrderItemInput[] }) {
   return foodApi<{ order: FoodOrder }>("/api/v1/food/orders", {
     method: "POST",
     body: JSON.stringify(input),
@@ -786,10 +1089,10 @@ export async function updateFoodOrderStatus(id: string, status: string) {
   return data;
 }
 
-export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod, creditCustomerId?: string | null, adjustmentCents = 0, adjustmentNote?: string | null) {
+export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod, creditCustomerId?: string | null, adjustmentCents = 0, adjustmentNote?: string | null, cashReceivedCents?: number | null) {
   const data = await foodApi<{ order: FoodOrder; notification?: { sent: boolean; skipped: boolean } }>(`/api/v1/food/orders/${encodeURIComponent(id)}/finalize`, {
     method: "POST",
-    body: JSON.stringify({ paymentMethod, ...(creditCustomerId ? { creditCustomerId } : {}), adjustmentCents, ...(adjustmentNote?.trim() ? { adjustmentNote: adjustmentNote.trim() } : {}) }),
+    body: JSON.stringify({ paymentMethod, ...(creditCustomerId ? { creditCustomerId } : {}), adjustmentCents, ...(adjustmentNote?.trim() ? { adjustmentNote: adjustmentNote.trim() } : {}), ...(cashReceivedCents !== undefined ? { cashReceivedCents } : {}) }),
   });
   return data;
 }

@@ -16,13 +16,15 @@ export function FoodRelayAgent() {
   useEffect(() => {
     let disposed = false;
     let draining = false;
+    const retryAfter = new Map<string, number>();
 
     const drainRelay = async () => {
       if (draining) return;
       draining = true;
+      let lastRemoteStatus: Awaited<ReturnType<typeof getFoodRemoteWhatsappStatus>> | null = null;
       try {
-        const remoteStatus = await getFoodRemoteWhatsappStatus();
-        window.dispatchEvent(new CustomEvent("food-relay-status", { detail: remoteStatus }));
+        lastRemoteStatus = await getFoodRemoteWhatsappStatus();
+        window.dispatchEvent(new CustomEvent("food-relay-status", { detail: lastRemoteStatus }));
         const pending = await getFoodRelayMessages();
         const blockedConversations = new Set<string>();
         const catalog = pending.some(message => message.mediaType === "audio")
@@ -31,6 +33,7 @@ export function FoodRelayAgent() {
           .slice(0, 40).map(product => [product.name, ...product.variants.map(variant => variant.name)].join(", ")).join("; ").slice(0, 1200);
         for (const relayMessage of pending) {
           if (disposed) return;
+          if ((retryAfter.get(relayMessage.id) || 0) > Date.now()) continue;
           const conversationKey = `${relayMessage.sessionId}:${relayMessage.remoteJid}`;
           if (blockedConversations.has(conversationKey)) continue;
           try {
@@ -52,17 +55,27 @@ export function FoodRelayAgent() {
               customerName: relayMessage.customerName,
               body: text || null,
               mediaType: relayMessage.mediaType,
+              locationLatitude: relayMessage.locationLatitude,
+              locationLongitude: relayMessage.locationLongitude,
+              locationAddress: relayMessage.locationAddress,
               createdAt: relayMessage.createdAt,
+              direction: relayMessage.direction,
             });
-            if (local.errors?.length) throw new Error("O atendimento local não concluiu o processamento.");
+            if (local.errors?.length) {
+              // A mensagem já foi persistida no backend local. O worker local
+              // poderá reprocessá-la sem manter a fila remota presa neste item.
+              console.warn("[Mosaico Food] Mensagem recebida, mas a automação local retornou um aviso", local.errors);
+            }
 
             for (const reply of local.replies || []) {
               await sendFoodRelayMessage(reply.remoteJid, reply.body);
             }
             await acknowledgeFoodRelayMessage(relayMessage.id);
+            retryAfter.delete(relayMessage.id);
           } catch (error) {
             blockedConversations.add(conversationKey);
-            console.error("[Mosaico Food] Falha ao processar mensagem da ponte", error);
+            retryAfter.set(relayMessage.id, Date.now() + 15_000);
+            console.warn("[Mosaico Food] Mídia do WhatsApp indisponível; nova tentativa em 15 segundos.", error instanceof Error ? error.message : error);
             // Uma mídia indisponível não significa que a sessão do WhatsApp caiu.
             // Deixe a mensagem pendente para tentar novamente no próximo ciclo e
             // continue processando as próximas mensagens da fila.
@@ -70,10 +83,12 @@ export function FoodRelayAgent() {
         }
       } catch (error) {
         console.error("[Mosaico Food] Ponte do WhatsApp indisponível", error);
+        const connected = lastRemoteStatus?.state === "online";
         window.dispatchEvent(new CustomEvent("food-relay-status", {
           detail: {
-            state: "unknown",
-            label: "Reconectando WhatsApp remoto…",
+            state: connected ? "online" : "unknown",
+            label: connected ? "WhatsApp remoto conectado" : "Reconectando WhatsApp remoto…",
+            message: error instanceof Error ? error.message : "A fila remota não respondeu.",
           },
         }));
       } finally {

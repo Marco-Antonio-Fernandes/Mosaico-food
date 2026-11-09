@@ -1,5 +1,6 @@
 appId: br.com.mosaico.food
 productName: Mosaico Food
+executableName: mosaico-food
 icon: electron/assets/mosaico-food.png
 directories:
   output: release

@@ -9,6 +9,7 @@ export interface DesktopConnectionStatus {
 
 interface ConnectionStatusProps {
   status: DesktopConnectionStatus;
+  compact?: boolean;
 }
 
 const stateStyles: Record<
@@ -32,18 +33,19 @@ const stateStyles: Record<
   },
 };
 
-export function ConnectionStatus({ status }: ConnectionStatusProps) {
+export function ConnectionStatus({ status, compact = false }: ConnectionStatusProps) {
   const stateStyle = stateStyles[status.state];
   const Icon = stateStyle.Icon;
 
   return (
     <div
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${stateStyle.className}`}
+      className={`inline-flex items-center gap-2 rounded-full border text-xs font-semibold ${compact ? "mosaic-connection-compact size-9 justify-center p-0" : "px-3 py-1.5"} ${stateStyle.className}`}
       role="status"
       aria-label={`Estado da conexão: ${status.label}`}
+      title={status.label}
     >
       <Icon aria-hidden="true" className="shrink-0" size={14} strokeWidth={2.2} />
-      <span>{status.label}</span>
+      <span className={compact ? "sr-only" : undefined}>{status.label}</span>
     </div>
   );
 }

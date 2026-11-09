@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
   },
   getBackendUrl: () => ipcRenderer.invoke("mosaico:backend-url"),
   getBackendDiagnostic: () => ipcRenderer.invoke("mosaico:backend-diagnostic"),
+  showWhatsApp: (accountId) => ipcRenderer.invoke("mosaico:whatsapp-show", accountId),
+  setWhatsAppBounds: (bounds) => ipcRenderer.send("mosaico:whatsapp-bounds", bounds),
+  hideWhatsApp: () => ipcRenderer.invoke("mosaico:whatsapp-hide"),
+  reloadWhatsApp: () => ipcRenderer.invoke("mosaico:whatsapp-reload"),
+  onWhatsAppStatus: (listener) => {
+    const receive = (_event, payload) => listener(payload);
+    ipcRenderer.on("mosaico:whatsapp-status", receive);
+    return () => ipcRenderer.removeListener("mosaico:whatsapp-status", receive);
+  },
   createNewDatabase: () => ipcRenderer.invoke("mosaico:create-new-database"),
   transcribeAudio: (audio, mimeType, prompt) => ipcRenderer.invoke("mosaico:transcribe-audio", audio, mimeType, prompt),
   interpretText: (text, products) => ipcRenderer.invoke("mosaico:interpret-text", text, products),
@@ -43,4 +52,8 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
   getBackupSettings: () => ipcRenderer.invoke("mosaico:get-backup-settings"),
   writeBackupFile: (input) => ipcRenderer.invoke("mosaico:write-backup-file", input),
   readBackupFile: () => ipcRenderer.invoke("mosaico:read-backup-file"),
+  getPrinterSettings: () => ipcRenderer.invoke("mosaico:get-printer-settings"),
+  savePrinterSettings: (input) => ipcRenderer.invoke("mosaico:save-printer-settings", input),
+  testPrinter: () => ipcRenderer.invoke("mosaico:test-printer"),
+  printFoodOrder: (order) => ipcRenderer.invoke("mosaico:print-food-order", order),
 });
