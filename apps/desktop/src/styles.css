@@ -503,6 +503,10 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .inventory-quantities dd { margin-top: 3px; font-size: .9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .inventory-quantities .inventory-unit-detail { flex-basis: 100%; }
 .inventory-row > .proto-stack { gap: 8px; }
+.inventory-row.is-clickable { cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.inventory-row.is-clickable:hover { border-color: var(--proto-accent); background: var(--proto-surface); }
+.product-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.product-row-actions button { display: inline-flex; align-items: center; justify-content: center; }
 @media(max-width:700px) { .inventory-row { grid-template-columns: minmax(0,1fr); } }
 .proto-paper { background: #edeae1; color: #26333c; padding: clamp(20px,4vw,50px); min-height: 320px; border-radius: 4px; box-shadow: 0 12px 24px #0003; }
 .proto-paper h3 { border-bottom: 1px solid #26333c40; padding-bottom: 16px; margin-bottom: 20px; }

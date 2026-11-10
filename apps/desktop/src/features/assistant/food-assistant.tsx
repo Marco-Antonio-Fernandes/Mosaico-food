@@ -23,7 +23,7 @@ const parseCents = (value: string) => {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
 };
 
-function GuidedAssistant() {
+function GuidedAssistant({ editProductId, onEditHandled }: { editProductId: string | null; onEditHandled: () => void }) {
   const [step, setStep] = useState<GuidedStep>("menu");
   const [action, setAction] = useState<GuidedAction | null>(null);
   const [products, setProducts] = useState<FoodProduct[]>([]);
@@ -176,7 +176,8 @@ function GuidedAssistant() {
     void loadProducts(nextAction);
   };
 
-  const chooseProduct = (nextProduct: FoodProduct) => {
+  const chooseProduct = (nextProduct: FoodProduct, actionOverride?: GuidedAction) => {
+    const effectiveAction = actionOverride ?? action;
     setProduct(nextProduct);
     setFamilyOptions(null);
     setQuantity("");
@@ -187,9 +188,9 @@ function GuidedAssistant() {
     setAdjustment("");
     setAdjustmentNote("");
     setCreditCustomerId("");
-    setFryNow(action === "order" && nextProduct.stockQuantity <= 0 && (nextProduct.unpreparedQuantity > 0 || nextProduct.preparationCapacity > 0));
+    setFryNow(effectiveAction === "order" && nextProduct.stockQuantity <= 0 && (nextProduct.unpreparedQuantity > 0 || nextProduct.preparationCapacity > 0));
     setOrderAllocation(null);
-    if (action === "edit") {
+    if (effectiveAction === "edit") {
       const currentFlavor = nextProduct.flavor ?? "";
       setRegistrationMode(nextProduct.productionMode === "made_here" || nextProduct.productionMode === "recipe" ? "made_here" : nextProduct.productionMode === "ready" ? "ready" : "frozen");
       setRegistrationStep("basic");
@@ -208,13 +209,28 @@ function GuidedAssistant() {
       setStep("register");
       return;
     }
-    if (action === "sale") setPrice(nextProduct.salePriceCents > 0 ? (nextProduct.salePriceCents / 100).toFixed(2).replace(".", ",") : "");
-    if (action === "stock" || action === "prepare") {
+    if (effectiveAction === "sale") setPrice(nextProduct.salePriceCents > 0 ? (nextProduct.salePriceCents / 100).toFixed(2).replace(".", ",") : "");
+    if (effectiveAction === "stock" || effectiveAction === "prepare") {
       setStep("details");
       return;
     }
     setStep("details");
   };
+
+  useEffect(() => {
+    if (!editProductId) return;
+    let active = true;
+    void getFoodProducts().then(list => {
+      if (!active) return;
+      const found = list.find(item => item.id === editProductId);
+      if (found) {
+        setAction("edit");
+        chooseProduct(found, "edit");
+      }
+      onEditHandled();
+    }).catch(() => { if (active) onEditHandled(); });
+    return () => { active = false; };
+  }, [editProductId]);
 
   const toggleOrderProduct = (nextProduct: FoodProduct) => {
     setSelectedOrderProducts(current => current.some(item => item.id === nextProduct.id)
@@ -949,6 +965,7 @@ function GuidedAssistant() {
 export function FoodAssistant() {
   const [open, setOpen] = useState(false);
   const [guided, setGuided] = useState(true);
+  const [editProductId, setEditProductId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Escreva uma ou várias ações. Você confere tudo antes de registrar.");
@@ -964,7 +981,12 @@ export function FoodAssistant() {
   const [creditLoading, setCreditLoading] = useState(false);
   const textArea = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
-    const show = () => { setOpen(true); setGuided(true); };
+    const show = (event: Event) => {
+      setOpen(true);
+      setGuided(true);
+      const detail = (event as CustomEvent<{ action?: string; productId?: string }>).detail;
+      setEditProductId(detail?.action === "edit" && detail.productId ? detail.productId : null);
+    };
     window.addEventListener("food-open-assistant", show);
     return () => {
       window.removeEventListener("food-open-assistant", show);
@@ -1064,7 +1086,7 @@ export function FoodAssistant() {
   return <div className="food-assistant prototype">
     {open && <section className="proto-panel food-assistant-panel" aria-label="Assistente da loja">
       <header className="food-assistant-heading"><h2>Assistente da loja</h2><button type="button" className="proto-subtle" disabled={busy} aria-label="Fechar assistente" onClick={() => setOpen(false)}><X size={18} /></button></header>
-      {guided ? <GuidedAssistant /> : <>
+      {guided ? <GuidedAssistant editProductId={editProductId} onEditHandled={() => setEditProductId(null)} /> : <>
       <button type="button" className="food-assistant-back proto-subtle" onClick={() => setGuided(true)} disabled={busy}><ArrowLeft size={16} /> Voltar às opções</button>
       <p role="status">{notice}</p>
       <form onSubmit={event => { event.preventDefault(); void interpret(); }}>

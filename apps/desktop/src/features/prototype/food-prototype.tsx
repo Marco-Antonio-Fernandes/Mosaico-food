@@ -8,7 +8,7 @@ import { CreditPage } from "@/features/credit/credit-page";
 import { FinancePage } from "@/features/finance/finance-page";
 import { FoodSettingsPanel } from "@/features/system/food-settings-panel";
 import { FiscalPage } from "@/features/fiscal/fiscal-page";
-import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, deleteFoodOrderSchedule, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type SalePaymentMethod } from "@/lib/food-api";
+import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type SalePaymentMethod } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
 
 export const foodModules = {
@@ -106,6 +106,25 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     return () => window.removeEventListener("food-stock-changed", refresh);
   }, [pos]);
 
+  const openProductEditor = (productId: string) => {
+    window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action: "edit", productId } }));
+  };
+
+  const removeProduct = async (product: FoodProduct) => {
+    const label = `${product.productName || product.name}${product.flavor ? ` · ${product.flavor}` : ""}`;
+    if (!window.confirm(`Apagar ${label}? O item será desativado e não aparecerá mais no catálogo.`)) return;
+    setError("");
+    setNotice("");
+    try {
+      await deleteFoodProduct(product.id);
+      setNotice(`${label} apagado.`);
+      window.dispatchEvent(new Event("food-stock-changed"));
+      await loadProducts();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Não foi possível apagar o produto.");
+    }
+  };
+
   const catalogProducts = pos
     ? products.filter(product => product.productionMode !== "ingredient")
     : products.filter(product => product.productionMode !== "ingredient");
@@ -161,7 +180,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     <Tabs items={categories} value={category} onChange={setCategory} />
     <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label></div>
     {!pos && search.trim() && familyEntries.some((group) => group.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{familyEntries.filter(group => group.length > 1).map(group => <span key={group[0].productName}><b>{group[0].productName}</b>: {group.map(product => product.flavor || "sem sabor").join(", ")}</span>)}</div>}
-    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : "products-list-shell"}>{pos ? <div className="proto-three">{familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />)}</div> : <div className="inventory-list products-list" aria-label="Produtos cadastrados">{filtered.map(product => <ProductTile key={product.id} product={product} />)}</div>}
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : "products-list-shell"}>{pos ? <div className="proto-three">{familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />)}</div> : <div className="inventory-list products-list" aria-label="Produtos cadastrados">{filtered.map(product => <ProductTile key={product.id} product={product} onEdit={openProductEditor} onDelete={product => void removeProduct(product)} />)}</div>}
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Use o Assistente da loja para cadastrar o primeiro."}</p>}
       {pos && <Panel title="Venda de balcão" subtitle="Ajuste adicionais, remoções ou escolha Brinde no pagamento antes de confirmar.">
         <div className="proto-stack" style={{ marginTop: 16 }}>
@@ -229,6 +248,23 @@ function Inventory() {
     return () => window.removeEventListener("food-stock-changed", refresh);
   }, []);
 
+  const openEditor = (productId: string) => {
+    window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action: "edit", productId } }));
+  };
+
+  const removeItem = async (product: FoodProduct) => {
+    const label = `${product.name}${product.flavor ? ` · ${product.flavor}` : ""}`;
+    if (!window.confirm(`Apagar ${label} do estoque? O item será desativado.`)) return;
+    setError("");
+    try {
+      await deleteFoodProduct(product.id);
+      window.dispatchEvent(new Event("food-stock-changed"));
+      await loadProducts();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Não foi possível apagar o item.");
+    }
+  };
+
   const query = search.trim().toLocaleLowerCase("pt-BR");
   const filtered = products.filter(product => {
     const matchesKind = kind === "all" || (kind === "ingredients" ? product.productionMode === "ingredient" : product.productionMode !== "ingredient");
@@ -247,7 +283,7 @@ function Inventory() {
     {!loading && !error && products.length === 0 && <EmptyState icon={Boxes} title="Estoque vazio" description="Use o Assistente da loja para cadastrar o primeiro produto ou insumo." />}
     {!loading && !error && products.length > 0 && filtered.length === 0 && <p className="proto-empty">Nenhum item corresponde à busca ou ao tipo selecionado.</p>}
     {!loading && !error && filtered.length > 0 && <div className="inventory-list" aria-label="Produtos e ingredientes em estoque">
-      {filtered.map(product => <article className="inventory-row" key={product.id}>
+      {filtered.map(product => <article className="inventory-row is-clickable" key={product.id} role="button" tabIndex={0} onClick={() => openEditor(product.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openEditor(product.id); } }}>
         <div className="inventory-row-name">
           <div><h2>{product.name}</h2><small>{product.category} · {product.productionMode === "ingredient" ? "Insumo" : product.productionMode === "recipe" ? "Produção própria" : "Produto comprado"}</small></div>
         </div>
@@ -258,6 +294,10 @@ function Inventory() {
           </>}
           {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
         </dl>
+        <div className="product-row-actions">
+          <button type="button" className="proto-subtle" onClick={event => { event.stopPropagation(); openEditor(product.id); }}>Editar</button>
+          <button type="button" className="food-delete-button" onClick={event => { event.stopPropagation(); void removeItem(product); }}>Apagar</button>
+        </div>
       </article>)}
     </div>}
   </div>;
@@ -306,10 +346,10 @@ function lineUnitPrice(product: FoodProduct, line: CartLine) {
   return Math.max(0, line.unitPriceCents ?? baseLineUnitPrice(product, line));
 }
 
-function ProductTile({ product }: { product: FoodProduct }) {
+function ProductTile({ product, onEdit, onDelete }: { product: FoodProduct; onEdit: (id: string) => void; onDelete: (product: FoodProduct) => void }) {
   const isIngredient = product.productionMode === "ingredient";
   const typeLabel = product.productionMode === "ingredient" ? "Insumo" : product.productionMode === "recipe" || product.productionMode === "made_here" ? "Produção própria" : product.productionMode === "ready" ? "Comprado pronto" : "Produto congelado";
-  return <article className="inventory-row product-row">
+  return <article className="inventory-row product-row is-clickable" role="button" tabIndex={0} onClick={() => onEdit(product.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEdit(product.id); } }}>
     <div className="inventory-row-name">
       <div><h2>{product.productName || product.name}</h2><small>{typeLabel}{product.flavor ? ` · ${product.flavor}` : ""}{!product.active ? " · inativo" : ""}</small>{product.aliases.length > 0 && <small>Reconhece: {product.aliases.join(", ")}</small>}</div>
       <Badge>{!product.active ? "Inativo" : isIngredient ? "Insumo" : product.salePriceCents > 0 ? "Ativo" : "Sem preço"}</Badge>
@@ -321,6 +361,10 @@ function ProductTile({ product }: { product: FoodProduct }) {
       {!isIngredient && <div className="inventory-unit-detail"><dt>Fiscal</dt><dd>{product.fiscalNcm ? `NCM ${product.fiscalNcm} · CFOP ${product.fiscalCfop ?? "—"}` : "Perfil fiscal pendente"}</dd></div>}
       {isIngredient && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{ingredientPackage(product)}</dd></div>}
     </dl>
+    <div className="product-row-actions">
+      <button type="button" className="proto-subtle" onClick={event => { event.stopPropagation(); onEdit(product.id); }}>Editar</button>
+      <button type="button" className="food-delete-button" onClick={event => { event.stopPropagation(); onDelete(product); }}>Apagar</button>
+    </div>
   </article>;
 }
 
