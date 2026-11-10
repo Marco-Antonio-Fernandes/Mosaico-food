@@ -2,6 +2,7 @@ import { Building2 } from "lucide-react";
 
 import { loadMosaicoAccount } from "@/components/shared/account-context";
 import { FoodBackupPanel } from "@/features/system/food-backup-panel";
+import { FoodNotificationsPanel } from "@/features/system/food-notifications-panel";
 import { FoodPrinterPanel } from "@/features/system/food-printer-panel";
 import { FoodUpdatePanel } from "@/features/system/food-update-panel";
 
@@ -18,6 +19,7 @@ export function FoodSettingsPanel() {
       <span className="food-settings-hint">Para alterar, use o botão da conta no topo da tela.</span>
     </section>
     <FoodBackupPanel />
+    <FoodNotificationsPanel />
     <FoodUpdatePanel />
     <FoodPrinterPanel />
   </div>;

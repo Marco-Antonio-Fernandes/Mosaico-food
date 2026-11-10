@@ -4,7 +4,9 @@ import { getFoodOrders, type FoodOrder } from "@/lib/food-api";
 export function OrderAlerts({ onOpen }: { onOpen: () => void }) {
   const [orders, setOrders] = useState<FoodOrder[]>([]);
   const [now, setNow] = useState(Date.now());
-  const [sound, setSound] = useState(false);
+  const [sound, setSound] = useState(() => {
+    try { return window.localStorage.getItem("mosaico-order-sound-enabled") === "1"; } catch { return false; }
+  });
   const context = useRef<AudioContext | null>(null);
   const lastPing = useRef(0);
   const lastStages = useRef("");
@@ -38,15 +40,27 @@ export function OrderAlerts({ onOpen }: { onOpen: () => void }) {
     oscillator.connect(gain).connect(audio.destination); oscillator.start(); oscillator.stop(audio.currentTime + .31);
     oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
   }, [orders, now, interval, sound, urgent]);
-  async function toggle() {
-    if (sound) { setSound(false); return; }
-    try {
-      context.current ??= new AudioContext(); await context.current.resume();
-      setSound(context.current.state === "running");
-    } catch { setSound(false); }
-  }
+  useEffect(() => {
+    const onSetting = (event: Event) => {
+      const enabled = Boolean((event as CustomEvent<boolean>).detail);
+      setSound(enabled);
+      if (enabled) {
+        context.current ??= new AudioContext();
+        void context.current.resume();
+      }
+    };
+    const resume = () => {
+      if (sound && context.current?.state === "suspended") void context.current.resume();
+    };
+    window.addEventListener("mosaico-order-sound-changed", onSetting);
+    window.addEventListener("pointerdown", resume);
+    return () => {
+      window.removeEventListener("mosaico-order-sound-changed", onSetting);
+      window.removeEventListener("pointerdown", resume);
+    };
+  }, [sound]);
+  if (!orders.length) return null;
   return <aside className={`food-order-alert ${urgent ? "is-urgent" : ""}`} aria-label="Acompanhamento de pedidos">
-    {orders.length > 0 && <button type="button" onClick={onOpen}><span className="food-order-ping" aria-hidden="true" />{orders.length} pedido(s) em andamento · {Math.floor(oldest / 60000)} min na etapa mais antiga</button>}
-    <button type="button" onClick={() => void toggle()} aria-pressed={sound}>{sound ? "Silenciar pedidos" : "Ativar som dos pedidos"}</button>
+    <button type="button" onClick={onOpen}><span className="food-order-ping" aria-hidden="true" />{orders.length} pedido(s) em andamento · {Math.floor(oldest / 60000)} min na etapa mais antiga</button>
   </aside>;
 }
