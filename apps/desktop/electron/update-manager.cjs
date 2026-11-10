@@ -247,6 +247,7 @@ async function installUpdate(onProgress) {
 
   onProgress?.({ phase: "package", message: "Empacotando a nova versão…" });
   const desktopPath = path.join(repoPath, "apps", "desktop");
+  await run(npmCommand(), ["run", "prepare:build-info"], { cwd: desktopPath, label: "build-info" });
   await run(npxCommand(), ["--yes", "electron-builder", "--dir", "--config", "electron-builder.yml"], {
     cwd: desktopPath,
     label: "electron-builder",
