@@ -12,9 +12,10 @@
     "update:ncm": "node scripts/update-ncm-catalog.mjs",
     "prepare:speech": "node scripts/prepare-speech-runtime.mjs",
     "prepare:interpreter": "node scripts/prepare-local-interpreter.mjs",
-    "package:linux": "npm --prefix ../../../mosaico-back run build && npm run prepare:speech && npm run prepare:interpreter && npm run build && npx --yes electron-builder --linux AppImage --config electron-builder.yml",
-    "package:win": "npm --prefix ../../../mosaico-back run build && npm run prepare:speech && npm run prepare:interpreter && npm run build && npx --yes electron-builder --win --config electron-builder.yml",
-    "preview": "vite preview"
+    "package:linux": "npm --prefix ../../../mosaico-back run build && npm run prepare:build-info && npm run prepare:speech && npm run prepare:interpreter && npm run build && npx --yes electron-builder --linux AppImage --config electron-builder.yml",
+    "package:win": "npm --prefix ../../../mosaico-back run build && npm run prepare:build-info && npm run prepare:speech && npm run prepare:interpreter && npm run build && npx --yes electron-builder --win --config electron-builder.yml",
+    "preview": "vite preview",
+    "prepare:build-info": "node scripts/write-build-info.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

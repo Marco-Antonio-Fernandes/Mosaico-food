@@ -7,6 +7,35 @@ const APP_REPO_URL = process.env.MOSAICO_REPO_URL || "https://github.com/Marco-A
 const BACK_REPO_URL = process.env.MOSAICO_BACK_REPO_URL || "https://github.com/Marco-Antonio-Fernandes/mosaico-back.git";
 const BRANCH = process.env.MOSAICO_REPO_BRANCH || "main";
 
+function buildInfoPath() {
+  return path.join(__dirname, "build-info.json");
+}
+
+function readBuildInfo() {
+  try {
+    return JSON.parse(fs.readFileSync(buildInfoPath(), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function statePath() {
+  return path.join(app.getPath("userData"), "update-state.json");
+}
+
+function readState() {
+  try {
+    return JSON.parse(fs.readFileSync(statePath(), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function writeState(next) {
+  await fs.promises.mkdir(path.dirname(statePath()), { recursive: true });
+  await fs.promises.writeFile(statePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
 function sourceRoot() {
   if (process.platform === "linux") {
     return path.join(app.getPath("home"), ".local", "share", "mosaico-food", "source");
@@ -125,23 +154,33 @@ async function checkForUpdates(onProgress) {
     await ensureRepositories(onProgress);
     const repoPath = appRepository();
     await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
-    const currentCommit = await git(["rev-parse", "HEAD"], repoPath, "git rev-parse");
+    const cloneHead = await git(["rev-parse", "HEAD"], repoPath, "git rev-parse");
     const latestCommit = await git(["rev-parse", `origin/${BRANCH}`], repoPath, "git rev-parse");
-    const behind = Number(await git(["rev-list", "--count", `HEAD..origin/${BRANCH}`], repoPath, "git rev-list"));
+    const buildInfo = readBuildInfo();
+    const state = readState();
+    const installedCommit = buildInfo?.commit || state?.installedCommit || cloneHead;
     const latestSubject = await git(["log", "-1", "--format=%s", `origin/${BRANCH}`], repoPath, "git log");
     const dirty = Boolean((await git(["status", "--porcelain"], repoPath, "git status")).trim());
+    let behind = installedCommit === latestCommit ? 0 : 1;
+    if (installedCommit !== latestCommit) {
+      try {
+        behind = Number(await git(["rev-list", "--count", `${installedCommit}..origin/${BRANCH}`], repoPath, "git rev-list")) || 1;
+      } catch {
+        behind = 1;
+      }
+    }
     return {
       remoteUrl: APP_REPO_URL,
       backendUrl: BACK_REPO_URL,
       sourceDir: repoPath,
       branch: BRANCH,
-      currentCommit,
+      currentCommit: installedCommit,
       latestCommit,
       latestSubject,
-      updateAvailable: behind > 0,
+      updateAvailable: installedCommit !== latestCommit,
       commitsBehind: behind,
       dirty,
-      message: behind > 0 ? `${behind} commit(s) novo(s) em ${BRANCH}.` : "Você já está na versão mais recente do repositório.",
+      message: installedCommit !== latestCommit ? `${behind} commit(s) novo(s) em ${BRANCH}.` : "Você já está na versão mais recente do repositório.",
     };
   } catch (error) {
     return {
@@ -191,6 +230,7 @@ async function installUpdate(onProgress) {
   onProgress?.({ phase: "git", message: "Baixando alterações do Git…" });
   await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
   await git(["reset", "--hard", `origin/${BRANCH}`], repoPath, "git reset");
+  const targetCommit = await git(["rev-parse", `origin/${BRANCH}`], repoPath, "git rev-parse");
   await git(["fetch", "--prune", "origin", BRANCH], backendPath, "git fetch (backend)");
   await git(["reset", "--hard", `origin/${BRANCH}`], backendPath, "git reset (backend)");
 
@@ -211,6 +251,8 @@ async function installUpdate(onProgress) {
     cwd: desktopPath,
     label: "electron-builder",
   });
+
+  await writeState({ installedCommit: targetCommit, installedAt: new Date().toISOString() });
 
   onProgress?.({ phase: "install", message: "Instalando e reiniciando…" });
   const sourceDir = path.join(desktopPath, "release", "linux-unpacked");

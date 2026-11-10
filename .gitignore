@@ -16,3 +16,6 @@ apps/desktop/electron/speech-runtime/win32-*/
 # Modelo local do interpretador — baixar com `npm run prepare:interpreter`
 apps/desktop/electron/interpreter-runtime/models/*.gguf
 apps/desktop/electron/interpreter-runtime/models/*.gguf.part
+
+# Gerado no empacotamento com o commit instalado
+apps/desktop/electron/build-info.json
