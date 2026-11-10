@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, X } from "lucide-react";
+import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, Trash2, X } from "lucide-react";
 import { Badge, Panel, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
@@ -295,8 +295,7 @@ function Inventory() {
           {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
         </dl>
         <div className="product-row-actions">
-          <button type="button" className="proto-subtle" onClick={event => { event.stopPropagation(); openEditor(product.id); }}>Editar</button>
-          <button type="button" className="food-delete-button" onClick={event => { event.stopPropagation(); void removeItem(product); }}>Apagar</button>
+          <button type="button" className="product-action-button is-danger" title="Apagar item" aria-label={`Apagar ${product.name}`} onClick={event => { event.stopPropagation(); void removeItem(product); }}><Trash2 size={14} /></button>
         </div>
       </article>)}
     </div>}
@@ -362,8 +361,7 @@ function ProductTile({ product, onEdit, onDelete }: { product: FoodProduct; onEd
       {isIngredient && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{ingredientPackage(product)}</dd></div>}
     </dl>
     <div className="product-row-actions">
-      <button type="button" className="proto-subtle" onClick={event => { event.stopPropagation(); onEdit(product.id); }}>Editar</button>
-      <button type="button" className="food-delete-button" onClick={event => { event.stopPropagation(); onDelete(product); }}>Apagar</button>
+      <button type="button" className="product-action-button is-danger" title="Apagar produto" aria-label={`Apagar ${product.productName || product.name}`} onClick={event => { event.stopPropagation(); onDelete(product); }}><Trash2 size={14} /></button>
     </div>
   </article>;
 }
