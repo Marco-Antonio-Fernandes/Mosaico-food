@@ -16,6 +16,7 @@ interface AppShellProps<T extends string> {
   onNavigate: (view: T) => void;
   connectionStatus: ReactNode;
   topAction?: ReactNode;
+  sidebarActions?: ReactNode;
   account: MosaicoAccount | null;
   onEditAccount: () => void;
   children: ReactNode;
@@ -27,6 +28,7 @@ export function AppShell<T extends string>({
   onNavigate,
   connectionStatus,
   topAction,
+  sidebarActions,
   account,
   onEditAccount,
   children,
@@ -69,6 +71,8 @@ export function AppShell<T extends string>({
                 <span>{sidebarCollapsed ? "Expandir" : "Recolher"}</span>
               </button>
             </div>
+
+            {sidebarActions && <div className="mosaic-quick-actions">{sidebarActions}</div>}
 
             <nav className={`mt-7 min-h-0 flex-1 overflow-y-auto pr-1 ${sidebarCollapsed ? "space-y-2" : "space-y-6"}`} aria-label="Navegação principal">
               {Object.entries(groups).map(([group, items], index) => {

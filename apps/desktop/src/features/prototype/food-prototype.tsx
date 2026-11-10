@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, Trash2, X } from "lucide-react";
+import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, PackagePlus, Trash2, X } from "lucide-react";
 import { Badge, Panel, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
@@ -111,6 +111,10 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action: "edit", productId } }));
   };
 
+  const openProductAction = (action: "loss" | "registerIngredient") => {
+    window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action } }));
+  };
+
   const removeProduct = async (product: FoodProduct) => {
     const label = `${product.productName || product.name}${product.flavor ? ` · ${product.flavor}` : ""}`;
     if (!window.confirm(`Apagar ${label}? O item será desativado e não aparecerá mais no catálogo.`)) return;
@@ -177,7 +181,11 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   }
 
   return <div className="proto-stack">
-    {!pos && <p className="assistant-only-note">Use o Assistente da loja para cadastrar, editar produtos e lançar qualquer movimentação.</p>}
+    {!pos && <div className="proto-toolbar products-quick-actions">
+      <button type="button" className="proto-subtle" onClick={() => openProductAction("loss")}><Trash2 size={15} />Dar baixa como perda</button>
+      <button type="button" className="proto-subtle" onClick={() => openProductAction("registerIngredient")}><PackagePlus size={15} />Cadastrar insumo</button>
+      <small>Clique em um produto para editar.</small>
+    </div>}
     <Tabs items={categories} value={category} onChange={setCategory} />
     <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label></div>
     {!pos && search.trim() && familyEntries.some((group) => group.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{familyEntries.filter(group => group.length > 1).map(group => <span key={group[0].productName}><b>{group[0].productName}</b>: {group.map(product => product.flavor || "sem sabor").join(", ")}</span>)}</div>}

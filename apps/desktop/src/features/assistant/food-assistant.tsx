@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Boxes, Calculator, Check, ChefHat, MessageCircle, PackagePlus, Pencil, Play, Plus, ShoppingCart, Trash2, Wand2, X } from "lucide-react";
+import { ArrowLeft, Boxes, Calculator, Check, ChefHat, MessageCircle, PackagePlus, Pencil, Play, Plus, ShoppingCart, Trash2, X } from "lucide-react";
 import { assistantConfirmBatch, assistantPreview, createFoodOrder, createFoodProduct, createFoodProducts, getCreditLedger, getFoodCashToday, getFoodProducts, registerCounterSale, registerFoodStock, updateFoodProduct, type AssistantDraft, type AssistantRegistrationDraft, type AssistantRegistrationQuestion, type CreditCustomerRecord, type FoodCostBreakdown, type FoodProduct, type FoodProductVariant, type ProductInput, type SalePaymentMethod, PRICE_ADJUSTMENT_REASONS } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
 import { CostCalculator } from "@/features/prototype/cost-calculator";
@@ -23,7 +23,7 @@ const parseCents = (value: string) => {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
 };
 
-function GuidedAssistant({ editProductId, onEditHandled }: { editProductId: string | null; onEditHandled: () => void }) {
+function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActionHandled }: { editProductId: string | null; onEditHandled: () => void; requestedAction: GuidedAction | null; onActionHandled: () => void }) {
   const [step, setStep] = useState<GuidedStep>("menu");
   const [action, setAction] = useState<GuidedAction | null>(null);
   const [products, setProducts] = useState<FoodProduct[]>([]);
@@ -231,6 +231,12 @@ function GuidedAssistant({ editProductId, onEditHandled }: { editProductId: stri
     }).catch(() => { if (active) onEditHandled(); });
     return () => { active = false; };
   }, [editProductId]);
+
+  useEffect(() => {
+    if (!requestedAction) return;
+    chooseAction(requestedAction);
+    onActionHandled();
+  }, [requestedAction]);
 
   const toggleOrderProduct = (nextProduct: FoodProduct) => {
     setSelectedOrderProducts(current => current.some(item => item.id === nextProduct.id)
@@ -842,14 +848,9 @@ function GuidedAssistant({ editProductId, onEditHandled }: { editProductId: stri
     {step === "menu" && <>
       <div className="food-assistant-intro"><strong>O que você quer fazer agora?</strong><span>Eu vou conduzir você passo a passo. Nada é registrado sem sua confirmação.</span></div>
       <div className="food-assistant-guided-menu">
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("order")}><ShoppingCart size={22} /><span><strong>Criar um pedido</strong><small>Enviar para Recebido e acompanhar até a finalização.</small></span></button>
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("sale")}><ShoppingCart size={22} /><span><strong>Registrar uma venda</strong><small>Escolher o item, quantidade, preço e pagamento.</small></span></button>
         <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("stock")}><Boxes size={22} /><span><strong>Adicionar ao estoque</strong><small>Receber produtos congelados ou já prontos.</small></span></button>
         <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("prepare")}><ChefHat size={22} /><span><strong>Preparar</strong><small>Transformar itens separados em unidades prontas.</small></span></button>
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("loss")}><Trash2 size={22} /><span><strong>Dar baixa como perda</strong><small>Retirar produtos vencidos, estragados ou que não podem ficar para amanhã.</small></span></button>
         <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("register")}><PackagePlus size={22} /><span><strong>Cadastrar um produto</strong><small>Fazer o cadastro aqui, sem sair do assistente.</small></span></button>
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("registerIngredient")}><PackagePlus size={22} /><span><strong>Cadastrar um insumo</strong><small>Adicionar um ingrediente e sua quantidade inicial.</small></span></button>
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("edit")}><Pencil size={22} /><span><strong>Editar um produto</strong><small>Atualizar preço, estoque inicial e dados fiscais.</small></span></button>
       </div>
       {result && <p className="food-assistant-success" role="status"><Check size={17} /> {result}</p>}
     </>}
@@ -966,6 +967,7 @@ export function FoodAssistant() {
   const [open, setOpen] = useState(false);
   const [guided, setGuided] = useState(true);
   const [editProductId, setEditProductId] = useState<string | null>(null);
+  const [requestedAction, setRequestedAction] = useState<GuidedAction | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Escreva uma ou várias ações. Você confere tudo antes de registrar.");
@@ -985,7 +987,14 @@ export function FoodAssistant() {
       setOpen(true);
       setGuided(true);
       const detail = (event as CustomEvent<{ action?: string; productId?: string }>).detail;
-      setEditProductId(detail?.action === "edit" && detail.productId ? detail.productId : null);
+      if (detail?.action === "edit" && detail.productId) {
+        setEditProductId(detail.productId);
+        setRequestedAction(null);
+        return;
+      }
+      setEditProductId(null);
+      const actions: GuidedAction[] = ["order", "sale", "stock", "prepare", "loss", "register", "registerIngredient"];
+      setRequestedAction(actions.includes(detail?.action as GuidedAction) ? detail!.action as GuidedAction : null);
     };
     window.addEventListener("food-open-assistant", show);
     return () => {
@@ -1079,14 +1088,10 @@ export function FoodAssistant() {
     window.setTimeout(() => textArea.current?.focus(), 0);
   }
   const actionLabel = (action: AssistantDraft["action"]) => action === "order" ? "Pedido · Recebido" : action === "sale" ? "Venda" : action === "prepare" ? "Preparo / finalização" : action === "loss" ? "Perda / baixa" : action === "receive_unprepared" ? "Entrada para finalizar" : "Entrada pronta";
-  const toggleAssistant = () => {
-    setOpen(true);
-    setGuided(true);
-  };
   return <div className="food-assistant prototype">
     {open && <section className="proto-panel food-assistant-panel" aria-label="Assistente da loja">
       <header className="food-assistant-heading"><h2>Assistente da loja</h2><button type="button" className="proto-subtle" disabled={busy} aria-label="Fechar assistente" onClick={() => setOpen(false)}><X size={18} /></button></header>
-      {guided ? <GuidedAssistant editProductId={editProductId} onEditHandled={() => setEditProductId(null)} /> : <>
+      {guided ? <GuidedAssistant editProductId={editProductId} onEditHandled={() => setEditProductId(null)} requestedAction={requestedAction} onActionHandled={() => setRequestedAction(null)} /> : <>
       <button type="button" className="food-assistant-back proto-subtle" onClick={() => setGuided(true)} disabled={busy}><ArrowLeft size={16} /> Voltar às opções</button>
       <p role="status">{notice}</p>
       <form onSubmit={event => { event.preventDefault(); void interpret(); }}>
@@ -1098,6 +1103,5 @@ export function FoodAssistant() {
       {drafts.length > 0 && <section className="food-assistant-drafts" aria-label="Operações encontradas"><header><strong>Confira antes de registrar</strong><small>{drafts.length} item{drafts.length === 1 ? "" : "s"} na mesma mensagem</small></header>{drafts.map(draft => { const changedPrice = draft.action === "sale" && draft.baseUnitPriceCents !== undefined && Math.round(Number((totals[draft.id] ?? "").replace(",", ".")) * 100) !== draft.quantity * draft.baseUnitPriceCents; return <article className="proto-ticket" key={draft.id}><div><small>{actionLabel(draft.action)}</small><strong>{draft.quantity} × {draft.productName}</strong></div>{draft.action === "sale" && <><label>Total da venda (R$)<input disabled={busy} inputMode="decimal" value={totals[draft.id] ?? ""} onChange={event => setTotals(current => ({ ...current, [draft.id]: event.target.value }))} /></label>{changedPrice && <label>Justificativa do preço<select required disabled={busy} value={adjustmentNotes[draft.id] ?? ""} onChange={event => setAdjustmentNotes(current => ({ ...current, [draft.id]: event.target.value }))}><option value="">Escolha uma opção…</option>{PRICE_ADJUSTMENT_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}</select></label>}<label>Pagamento<select required disabled={busy} value={payments[draft.id] === "pending" ? "" : payments[draft.id] ?? ""} onChange={event => changeDraftPayment(draft.id, event.target.value || "pending")}><option value="">Escolha uma forma de pagamento…</option><option value="pix">Pix</option><option value="cash">Dinheiro</option><option value="card_credit">Cartão de crédito</option><option value="card_debit">Cartão de débito</option><option value="meal_voucher">Vale-alimentação</option><option value="crediario">Crediário</option><option value="brinde">Brinde (sem cobrança)</option></select></label>{payments[draft.id] === "crediario" && <CreditCustomerPicker customers={creditCustomers} value={creditCustomerIds[draft.id] ?? ""} onChange={customerId => setCreditCustomerIds(current => ({ ...current, [draft.id]: customerId }))} loading={creditLoading} />}</>}</article>; })}<div className="proto-toolbar"><button type="button" disabled={busy} onClick={() => void confirm()}>{busy ? "Registrando…" : `Registrar ${drafts.length} operação${drafts.length === 1 ? "" : "ões"}`}</button><button type="button" className="proto-subtle" disabled={busy} onClick={editTranscription}>Editar texto</button></div></section>}
       </>}
     </section>}
-    <button type="button" className="food-assistant-toggle" aria-expanded={open} aria-label="Abrir assistente" onClick={toggleAssistant}><Wand2 aria-hidden="true" size={27} /><span>Abrir assistente</span></button>
   </div>;
 }
