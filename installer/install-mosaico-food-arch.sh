@@ -197,8 +197,11 @@ find_payload_source() {
 APPIMAGE_SOURCE="$(find_payload_source "${1:-}")"
 [[ -f "$APPIMAGE_SOURCE" ]] || fail "não foi possível acessar o AppImage."
 
-say "Instalando dependências do Arch Linux..."
-run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"
+say "Verificando dependências do Arch Linux..."
+if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
+  say "Aviso: não foi possível atualizar as dependências automaticamente."
+  say "Se o aplicativo não abrir, rode 'sudo pacman -Syu' e execute o instalador novamente."
+fi
 
 say "Extraindo o aplicativo para $INSTALL_DIR..."
 install -d -m 0755 "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
