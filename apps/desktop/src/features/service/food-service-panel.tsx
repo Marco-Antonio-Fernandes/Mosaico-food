@@ -65,7 +65,7 @@ export function FoodServicePanel() {
     void window.mosaicoDesktop?.reloadWhatsApp?.();
   };
 
-  return <section className="service-wa-embed" aria-label="WhatsApp Web">
+  return <div className="service-wa-only-layout"><section className="service-wa-embed" aria-label="WhatsApp Web">
     <header>
       <div>
         <strong>WhatsApp Web</strong>
@@ -74,5 +74,5 @@ export function FoodServicePanel() {
       <button type="button" className="service-wa-reload" onClick={reload} aria-label="Recarregar WhatsApp Web"><RefreshCw size={15} /></button>
     </header>
     {isDesktop ? <div ref={hostRef} className="service-wa-native-host" aria-label="Área do WhatsApp Web" /> : <div className="service-wa-fallback"><MessageCircle size={28} /><strong>Abra o Mosaico no aplicativo desktop</strong><span>O WhatsApp Web usa uma sessão persistente separada para a conta ativa.</span></div>}
-  </section>;
+  </section></div>;
 }

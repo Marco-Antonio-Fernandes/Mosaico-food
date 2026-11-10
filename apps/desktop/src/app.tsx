@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Boxes, ClipboardList, FileText, Headset, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
+import { Bell, Boxes, ClipboardList, FileText, Headset, LayoutDashboard, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
 import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
 import { AccountSetupModal } from "@/components/shared/account-setup-modal";
 import { loadMosaicoAccount, normalizeCnpj, persistMosaicoAccount, type MosaicoAccount } from "@/components/shared/account-context";
@@ -8,6 +8,7 @@ import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNoti
 import { NotificationList, type NotificationEntry } from "@/components/shared/prototype-kit";
 import { FoodAssistant } from "@/features/assistant/food-assistant";
 import { OrderAlerts } from "@/features/assistant/order-alerts";
+import { FoodOverviewPage } from "@/components/shared/food-overview-page";
 import { ConnectionStatus, type DesktopConnectionStatus } from "@/components/shared/connection-status";
 import { FoodRelayAgent } from "@/features/service/food-relay-agent";
 import { FoodPrinterAgent } from "@/features/service/food-printer-agent";
@@ -115,6 +116,7 @@ function toLowStockEntry(product: FoodProduct): NotificationEntry | null {
 export function App() {
   const [activeView, setActiveView] = useState<ViewId>("orders");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [account, setAccount] = useState<MosaicoAccount | null>(() => loadMosaicoAccount());
   const [accountSetupOpen, setAccountSetupOpen] = useState(() => {
     const current = loadMosaicoAccount();
@@ -211,6 +213,7 @@ export function App() {
   const navigate = (view: ViewId) => {
     setActiveView(view);
     setNotificationsOpen(false);
+    setDashboardOpen(false);
   };
 
   const saveAccount = async (next: MosaicoAccount) => {
@@ -235,11 +238,11 @@ export function App() {
   };
 
   return <>
-    <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={navigate} account={account} onEditAccount={() => setAccountSetupOpen(true)} topAction={<button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-red-300/50 bg-red-50 text-red-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={17} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-4 animate-pulse items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button>} connectionStatus={<ConnectionStatus status={connectionStatus} compact />}>
+    <AppShell activeView={activeView} navigationItems={navigationItems} onNavigate={navigate} account={account} onEditAccount={() => setAccountSetupOpen(true)} topAction={<><button aria-pressed={dashboardOpen} aria-label="Abrir dashboard" title="Dashboard" className={`flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${dashboardOpen ? "border-brand-500/50 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => setDashboardOpen(current => !current)} type="button"><LayoutDashboard aria-hidden="true" size={17} /></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-red-300/50 bg-red-50 text-red-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={17} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-4 animate-pulse items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></>} connectionStatus={<ConnectionStatus status={connectionStatus} compact />}>
     <FoodRelayAgent />
     <FoodPrinterAgent />
     {connectionStatus.state === "offline" && <div className="mosaic-system-alert" role="alert">{connectionStatus.label}. Avise o suporte técnico.</div>}
-    <FoodPrototype key={`${account?.id ?? "sem-conta"}:${activeView}`} module={activeView} />
+    {dashboardOpen ? <FoodOverviewPage onOpenNotifications={() => { setDashboardOpen(false); openNotifications(); }} /> : <FoodPrototype key={`${account?.id ?? "sem-conta"}:${activeView}`} module={activeView} />}
     {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
     <FoodAssistant />
     <OrderAlerts onOpen={() => navigate("orders")} />
