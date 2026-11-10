@@ -1216,16 +1216,16 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .prototype .service-tabs button[aria-selected="true"] { border-bottom-color: var(--proto-accent); background: var(--proto-accent-soft); color: var(--proto-ink); }
 .service-web-layout, .service-history-layout { display: grid; grid-template-columns: minmax(210px, .3fr) minmax(0, 1fr); height: clamp(360px, calc(100dvh - 210px), 560px); min-height: 0; overflow: hidden; border: 1px solid var(--proto-line); border-radius: 16px; background: var(--proto-surface); }
 .service-live-layout { display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(340px, .72fr); min-height: min(680px, calc(100dvh - 180px)); overflow: hidden; border: 1px solid var(--proto-line); border-radius: 16px; background: var(--proto-surface); }
-.service-wa-only-layout { display: grid; min-height: min(720px, calc(100dvh - 180px)); overflow: hidden; border: 1px solid var(--proto-line); border-radius: 16px; background: #111b21; }
+.service-wa-only-layout { display: grid; height: calc(100dvh - 190px); min-height: 420px; overflow: hidden; border: 1px solid var(--proto-line); border-radius: 16px; background: #f0f2f5; }
 .service-wa-only-layout .service-wa-embed { border-right: 0; }
-.service-wa-embed { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--proto-line); background: #111b21; }
+.service-wa-embed { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; height: 100%; overflow: hidden; border-right: 1px solid var(--proto-line); background: #f0f2f5; }
 .service-wa-embed > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-bottom: 1px solid #2c3b42; background: #1b2a31; }
 .service-wa-embed > header > div { display: grid; gap: 3px; }
 .service-wa-embed > header strong { color: #edf5f6; font-size: .78rem; }
 .service-wa-embed > header small { color: #9eb2b8; font-size: .63rem; }
 .prototype .service-wa-reload { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-height: 30px; padding: 6px; border: 1px solid #42565d; border-radius: 8px; background: #263840; color: #d7e7e9; }
 .prototype .service-wa-reload:hover { filter: none; background: #31474f; }
-.service-wa-native-host { display: block; width: 100%; height: 100%; min-height: 0; background: #111b21; }
+.service-wa-native-host { display: block; width: 100%; height: 100%; min-height: 0; background: #f0f2f5; }
 .service-wa-fallback { display: grid; place-items: center; align-content: center; gap: 8px; min-height: 340px; padding: 30px; color: #a9bdc3; text-align: center; }
 .service-wa-fallback svg { color: #7dd3d0; }
 .service-wa-fallback strong { color: #edf5f6; font-size: .8rem; }
@@ -1326,7 +1326,7 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 @media (max-width: 720px) {
   .account-setup-grid { grid-template-columns: minmax(0, 1fr); }
   .service-live-layout { grid-template-columns: minmax(0, 1fr); min-height: calc(100dvh - 220px); }
-  .service-wa-only-layout { min-height: calc(100dvh - 220px); }
+  .service-wa-only-layout { height: calc(100dvh - 220px); }
   .service-wa-embed { min-height: 430px; border-right: 0; border-bottom: 1px solid var(--proto-line); }
   .service-history-column { min-height: 520px; }
   .service-web-layout, .service-history-layout { grid-template-columns: minmax(150px, .38fr) minmax(0, 1fr); min-height: calc(100dvh - 220px); }
@@ -1338,7 +1338,7 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
   .mosaic-header .mosaic-connection-compact { display: none; }
   .service-page-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
   .service-live-layout { grid-template-columns: minmax(0, 1fr); min-height: 0; }
-  .service-wa-only-layout { min-height: 0; }
+  .service-wa-only-layout { height: auto; min-height: 420px; }
   .service-wa-embed { min-height: 420px; }
   .service-history-column { min-height: 500px; }
   .service-web-layout, .service-history-layout { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }

@@ -69,7 +69,7 @@ async function createWhatsappBrowserView(accountId) {
   });
   whatsappBrowserView = view;
   whatsappBrowserAccountId = normalizedAccountId;
-  view.setBackgroundColor("#111b21");
+  view.setBackgroundColor("#f0f2f5");
   view.webContents.setUserAgent(WHATSAPP_USER_AGENT);
   view.webContents.session.setPermissionCheckHandler((_webContents, permission) => permission === "media");
   view.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
