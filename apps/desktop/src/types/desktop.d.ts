@@ -31,7 +31,6 @@ interface DesktopPrinterSettings {
 
 interface DesktopUpdateStatus {
   remoteUrl: string;
-  backendUrl: string;
   sourceDir: string | null;
   branch: string | null;
   currentCommit: string | null;

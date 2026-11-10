@@ -4,7 +4,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const APP_REPO_URL = process.env.MOSAICO_REPO_URL || "https://github.com/Marco-Antonio-Fernandes/Mosaico-food.git";
-const BACK_REPO_URL = process.env.MOSAICO_BACK_REPO_URL || "https://github.com/Marco-Antonio-Fernandes/mosaico-back.git";
 const BRANCH = process.env.MOSAICO_REPO_BRANCH || "main";
 
 function buildInfoPath() {
@@ -45,10 +44,6 @@ function sourceRoot() {
 
 function appRepository() {
   return path.join(sourceRoot(), "mosaico-food");
-}
-
-function backendRepository() {
-  return path.join(sourceRoot(), "mosaico-back");
 }
 
 function isRepository(directory) {
@@ -136,9 +131,8 @@ async function ensureClone(directory, url, label, onProgress) {
   return directory;
 }
 
-async function ensureRepositories(onProgress) {
+async function ensureRepository(onProgress) {
   await ensureClone(appRepository(), APP_REPO_URL, "repositório do app", onProgress);
-  await ensureClone(backendRepository(), BACK_REPO_URL, "repositório do backend", onProgress);
 }
 
 function extractedAppDirectory() {
@@ -173,7 +167,7 @@ function copyRuntimeAssets(appDir) {
 async function checkForUpdates(onProgress) {
   try {
     await verifyTools();
-    await ensureRepositories(onProgress);
+    await ensureRepository(onProgress);
     const repoPath = appRepository();
     await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
     const cloneHead = await git(["rev-parse", "HEAD"], repoPath, "git rev-parse");
@@ -193,7 +187,6 @@ async function checkForUpdates(onProgress) {
     }
     return {
       remoteUrl: APP_REPO_URL,
-      backendUrl: BACK_REPO_URL,
       sourceDir: repoPath,
       branch: BRANCH,
       currentCommit: installedCommit,
@@ -207,7 +200,6 @@ async function checkForUpdates(onProgress) {
   } catch (error) {
     return {
       remoteUrl: APP_REPO_URL,
-      backendUrl: BACK_REPO_URL,
       sourceDir: appRepository(),
       branch: BRANCH,
       currentCommit: null,
@@ -246,32 +238,47 @@ async function installUpdate(onProgress) {
     throw new Error("Atualização por Git + build disponível no momento apenas para Linux.");
   }
   await verifyTools();
-  await ensureRepositories(onProgress);
+  await ensureRepository(onProgress);
   const repoPath = appRepository();
-  const backendPath = backendRepository();
 
   onProgress?.({ phase: "git", message: "Baixando alterações do Git…" });
   await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
   await git(["reset", "--hard", `origin/${BRANCH}`], repoPath, "git reset");
   const targetCommit = await git(["rev-parse", `origin/${BRANCH}`], repoPath, "git rev-parse");
-  await git(["fetch", "--prune", "origin", BRANCH], backendPath, "git fetch (backend)");
-  await git(["reset", "--hard", `origin/${BRANCH}`], backendPath, "git reset (backend)");
 
   onProgress?.({ phase: "deps", message: "Instalando dependências…" });
   await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: repoPath, label: "npm install" });
-  await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: backendPath, label: "npm install (backend)" });
 
-  onProgress?.({ phase: "assets", message: "Preparando modelos locais…" });
+  onProgress?.({ phase: "assets", message: "Preparando modelos e backend local…" });
   copyRuntimeAssets(repoPath);
+  const resources = installedResourcesDirectory();
+  const installedBackend = resources ? path.join(resources, "backend") : null;
+  if (!installedBackend || !fs.existsSync(path.join(installedBackend, "dist"))) {
+    throw new Error("O backend local da instalação atual não foi encontrado.");
+  }
 
-  onProgress?.({ phase: "build", message: "Compilando aplicativo e backend…" });
+  onProgress?.({ phase: "build", message: "Compilando o aplicativo…" });
   await run(npmCommand(), ["run", "build"], { cwd: repoPath, label: "npm run build" });
-  await run(npmCommand(), ["run", "build:back"], { cwd: repoPath, label: "npm run build:back" });
 
   onProgress?.({ phase: "package", message: "Empacotando a nova versão…" });
   const desktopPath = path.join(repoPath, "apps", "desktop");
   await run(npmCommand(), ["run", "prepare:build-info"], { cwd: desktopPath, label: "build-info" });
-  await run(npxCommand(), ["--yes", "electron-builder", "--dir", "--config", "electron-builder.yml"], {
+  const updateConfigPath = path.join(app.getPath("temp"), `mosaico-update-config-${Date.now()}.json`);
+  const updateConfig = {
+    appId: "br.com.mosaico.food",
+    productName: "Mosaico Food",
+    executableName: "mosaico-food",
+    icon: "electron/assets/mosaico-food.png",
+    directories: { output: "release" },
+    files: ["dist/**", "electron/**", "package.json"],
+    extraResources: [
+      { from: installedBackend, to: "backend" },
+      { from: "electron/speech-runtime", to: "speech" },
+      { from: "electron/interpreter-runtime", to: "interpreter" },
+    ],
+  };
+  await fs.promises.writeFile(updateConfigPath, `${JSON.stringify(updateConfig, null, 2)}\n`, "utf8");
+  await run(npxCommand(), ["--yes", "electron-builder", "--dir", "--config", updateConfigPath], {
     cwd: desktopPath,
     label: "electron-builder",
   });

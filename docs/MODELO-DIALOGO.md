@@ -114,10 +114,13 @@ O painel **Configurações → Atualizações** conhece a URL do repositório e
 clona automaticamente em `~/.local/share/mosaico-food/source` quando necessário.
 O fluxo é:
 
-1. clonar app e backend se ainda não existirem;
+1. clonar o repositório do aplicativo se ainda não existir;
 2. `git fetch` para comparar com `origin/main`;
-3. `git reset --hard origin/main` no app e no backend;
-4. `npm install` nos dois projetos;
-5. copiar os modelos locais de dentro do aplicativo instalado;
-6. `npm run build` e `npm run build:back`;
+3. `git reset --hard origin/main`;
+4. `npm install` no aplicativo;
+5. copiar os modelos locais e o backend já instalado de dentro do aplicativo;
+6. `npm run build` (somente o desktop);
 7. empacotamento com `electron-builder` e reinício automático.
+
+O backend não é clonado nem recompilado no cliente; ele continua o que veio no
+instalador.
