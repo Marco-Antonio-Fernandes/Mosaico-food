@@ -1,13 +1,21 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Bot, Download, Image as ImageIcon, LoaderCircle, MessageCircle, RefreshCw, UserRound, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, Download, Image as ImageIcon, LoaderCircle, Power, UserRound, X } from "lucide-react";
 
 import {
+  getFoodAutomationStatus,
   getFoodConversations,
   getFoodMessageMedia,
   getFoodMessages,
+  getFoodOrders,
+  getFoodRemoteMessageMedia,
   exportFoodConversationLog,
+  foodRemoteMediaUrl,
   runFoodAutomation,
+  sendFoodRelayMessage,
+  setFoodAutomationEnabled,
   setFoodConversationMode,
+  setFoodCustomerAutomation,
+  updateFoodOrderPayment,
   type FoodConversation,
   type FoodMessage,
 } from "@/lib/food-api";
@@ -18,17 +26,18 @@ const formatDate = (value: string | null) => {
 };
 
 const displayName = (conversation: FoodConversation) => conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, "");
+const formatMoney = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function ConversationList({ conversations, selectedId, loading, testingId, onSelect, onTest }: { conversations: FoodConversation[]; selectedId: string | null; loading: boolean; testingId: string | null; onSelect: (id: string) => void; onTest: (conversation: FoodConversation) => void }) {
   if (loading && !conversations.length) return <p className="service-empty"><LoaderCircle className="animate-spin" size={18} />Carregando conversas…</p>;
-  if (!conversations.length) return <p className="service-empty">Nenhum atendimento recebido ainda.</p>;
+  if (!conversations.length) return <p className="service-empty">Nenhum atendimento encontrado.</p>;
   return <div className="service-inbox-list">{conversations.map(conversation => <div className={`service-contact-row${selectedId === conversation.id ? " is-selected" : ""}`} key={conversation.id}>
     <button type="button" className="service-contact-select" aria-pressed={selectedId === conversation.id} onClick={() => onSelect(conversation.id)}>
       <span className="service-contact-avatar"><UserRound size={15} aria-hidden="true" /></span>
       <span className="service-contact-copy"><strong>{displayName(conversation)}</strong><small>{conversation.lastMessage?.body || (conversation.lastMessage?.mediaType === "audio" ? "Áudio recebido" : "Conversa iniciada")}</small><small>{formatDate(conversation.lastMessageAt)}</small></span>
       {conversation.automationPaused && <span className="service-human-dot" title="Atendimento assumido por um operador" />}
     </button>
-    <button type="button" className="service-contact-test" disabled={testingId !== null} onClick={() => onTest(conversation)} title={conversation.automationPaused ? "Retomar o bot somente durante este teste" : "Executar o bot nesta conversa"}><Bot size={13} aria-hidden="true" />{testingId === conversation.id ? "Testando…" : conversation.automationPaused ? "Retomar e testar" : "Testar bot"}</button>
+    <button type="button" className={`service-contact-test${selectedId === conversation.id ? " is-selected" : ""}`} aria-pressed={selectedId === conversation.id} disabled={testingId !== null} onClick={() => onTest(conversation)} title={conversation.automationPaused ? "Retomar o bot somente durante este teste" : "Executar o bot nesta conversa"}>{testingId === conversation.id ? <LoaderCircle className="animate-spin" size={13} aria-hidden="true" /> : <Bot size={13} aria-hidden="true" />}{testingId === conversation.id ? "Testando…" : conversation.automationPaused ? "Retomar e testar" : "Testar bot"}</button>
   </div>)}</div>;
 }
 
@@ -39,11 +48,25 @@ function MessageMedia({ conversation, message, large = false }: { conversation: 
     if (message.mediaType !== "image") return undefined;
     let active = true;
     let objectUrl = "";
-    void getFoodMessageMedia(conversation.id, message.id).then(blob => {
-      if (!active) return;
-      objectUrl = URL.createObjectURL(blob);
-      setSource(objectUrl);
-    }).catch(() => { if (active) setError(true); });
+    const load = async () => {
+      const attach = (blob: Blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      };
+      try {
+        attach(await getFoodMessageMedia(conversation.id, message.id));
+        return;
+      } catch {
+        // No modo ponte a mídia fica no servidor remoto do WhatsApp.
+      }
+      try {
+        attach(await getFoodRemoteMessageMedia(message.providerMessageId));
+      } catch {
+        if (active) setError(true);
+      }
+    };
+    void load();
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -54,101 +77,41 @@ function MessageMedia({ conversation, message, large = false }: { conversation: 
   return <img className={`service-message-image${large ? " is-large" : ""}`} src={source} alt="Imagem enviada pelo cliente no WhatsApp" />;
 }
 
+function MessageAudio({ message }: { message: FoodMessage }) {
+  if (!message.providerMessageId) return <small className="service-audio-label">Áudio indisponível</small>;
+  return <audio className="service-audio-player" controls preload="metadata" src={foodRemoteMediaUrl(message.providerMessageId)} />;
+}
+
 function MessageList({ messages, conversation, history = false }: { messages: FoodMessage[]; conversation: FoodConversation; history?: boolean }) {
   if (!messages.length) return <p className="service-empty">Nenhuma mensagem nesta conversa.</p>;
   return <div className={`service-message-list${history ? " is-history" : ""}`}>{messages.map(message => <article className={`service-message${message.direction === "outbound" ? " is-outbound" : ""}`} key={message.id}>
     <div className="service-message-meta"><strong>{message.direction === "outbound" && message.source === "human" ? "Atendente" : message.direction === "outbound" ? "Mosaico Food" : displayName(conversation)}</strong><span>{message.direction === "outbound" ? message.source === "human" ? "Enviada pelo atendente" : "Enviada" : "Recebida"} · {formatDate(message.createdAt)}</span></div>
     {message.mediaType === "image" && <MessageMedia conversation={conversation} message={message} />}
+    {message.mediaType === "audio" && <MessageAudio message={message} />}
     {message.mediaType === "audio" && <small className="service-audio-label">{message.transcriptionStatus === "completed" ? "Áudio transcrito" : message.transcriptionStatus === "failed" ? "Áudio não transcrito" : "Áudio recebido"}</small>}
     {message.mediaType === "location" && message.locationLatitude != null && message.locationLongitude != null && <a className="service-location-card" href={`https://www.google.com/maps?q=${message.locationLatitude},${message.locationLongitude}`} target="_blank" rel="noreferrer"><span>Localização enviada pelo cliente</span><strong>Ver no mapa</strong><small>{message.locationAddress || `${message.locationLatitude.toFixed(6)}, ${message.locationLongitude.toFixed(6)}`}</small></a>}
-    <p>{message.body || (message.mediaType === "audio" ? "[áudio recebido]" : message.mediaType === "location" ? "[localização recebida]" : "[mensagem sem texto]")}</p>
+    {message.body && <p>{message.body}</p>}
+    {!message.body && !message.mediaType && <p>[mensagem sem texto]</p>}
   </article>)}</div>;
 }
 
-function HumanImagePrompt({ conversation, message, onClose, onOpenAssistant }: { conversation: FoodConversation; message: FoodMessage; onClose: () => void; onOpenAssistant: (product: string) => void }) {
+function HumanImagePrompt({ conversation, message, onClose, onOpenAssistant, onConfirmPayment, paymentBusy }: { conversation: FoodConversation; message: FoodMessage; onClose: () => void; onOpenAssistant: (product: string) => void; onConfirmPayment: () => void; paymentBusy: boolean }) {
   const [product, setProduct] = useState("");
   return <div className="service-human-modal-backdrop" role="presentation"><section className="service-human-modal" role="dialog" aria-modal="true" aria-labelledby="service-human-modal-title">
-    <header><div><span>Resposta humana necessária</span><h2 id="service-human-modal-title">O cliente apontou para uma imagem</h2></div><button type="button" className="proto-subtle" onClick={onClose} aria-label="Fechar alerta"><X size={18} /></button></header>
-    <p><strong>{displayName(conversation)}</strong> escreveu algo como “dois desses”. O bot não vai adivinhar o produto da imagem.</p>
+    <header><div><span>Imagem recebida</span><h2 id="service-human-modal-title">O que é esta imagem?</h2></div><button type="button" className="proto-subtle" onClick={onClose} aria-label="Fechar alerta"><X size={18} /></button></header>
+    <p><strong>{displayName(conversation)}</strong> enviou uma imagem. Ela pode ser um comprovante de pagamento ou a foto de um produto/pedido.</p>
     <MessageMedia conversation={conversation} message={message} large />
-    <label>Qual produto aparece na imagem?<input autoFocus value={product} onChange={event => setProduct(event.target.value)} placeholder="Ex.: Bauru" /></label>
-    <small>Identifique o item e registre o pedido manualmente no Assistente da loja.</small>
-    <div className="service-human-modal-actions"><button type="button" className="proto-subtle" onClick={onClose}>Ver depois</button><button type="button" disabled={!product.trim()} onClick={() => onOpenAssistant(product.trim())}>Abrir registro do pedido</button></div>
+    <div className="service-image-choice">
+      <button type="button" onClick={onConfirmPayment} disabled={paymentBusy}>{paymentBusy ? "Marcando…" : "É comprovante de pagamento (Pix)"}</button>
+      <small>O último pedido em aberto deste cliente será marcado como pago.</small>
+    </div>
+    <div className="service-image-product">
+      <label>É produto ou pedido? Qual produto aparece na imagem?<input value={product} onChange={event => setProduct(event.target.value)} placeholder="Ex.: Bauru" /></label>
+      <div className="service-human-modal-actions"><button type="button" className="proto-subtle" onClick={onClose}>Ver depois</button><button type="button" disabled={!product.trim()} onClick={() => onOpenAssistant(product.trim())}>Abrir registro do pedido</button></div>
+    </div>
   </section></div>;
 }
-
-function whatsappAccountId(): string {
-  try {
-    const raw = window.localStorage.getItem("mosaico-active-account");
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    const id = parsed && typeof parsed === "object" && typeof (parsed as { id?: unknown }).id === "string" ? (parsed as { id: string }).id : "default";
-    return id;
-  } catch {
-    return "default";
-  }
-}
-
-function WhatsAppWebEmbed() {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState<{ state: string; message: string }>({ state: "loading", message: "Carregando WhatsApp Web…" });
-  const isDesktop = Boolean(window.mosaicoDesktop?.showWhatsApp);
-  const accountId = whatsappAccountId();
-
-  useEffect(() => {
-    const bridge = window.mosaicoDesktop;
-    if (!isDesktop || !bridge?.showWhatsApp) return undefined;
-    let active = true;
-    const unsubscribe = bridge.onWhatsAppStatus?.(next => {
-      if (active) setStatus(next);
-    });
-    void bridge.showWhatsApp(accountId).catch(error => {
-      if (active) setStatus({ state: "error", message: error instanceof Error ? error.message : "Não foi possível abrir o WhatsApp Web." });
-    });
-    return () => {
-      active = false;
-      unsubscribe?.();
-      void bridge.hideWhatsApp?.();
-    };
-  }, [accountId, isDesktop]);
-
-  useLayoutEffect(() => {
-    const bridge = window.mosaicoDesktop;
-    const host = hostRef.current;
-    if (!isDesktop || !bridge?.setWhatsAppBounds || !host) return undefined;
-    let frame: number | null = null;
-    const reportBounds = () => {
-      frame = null;
-      const rect = host.getBoundingClientRect();
-      bridge.setWhatsAppBounds({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight });
-    };
-    const schedule = () => {
-      if (frame === null) frame = window.requestAnimationFrame(reportBounds);
-    };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
-    observer?.observe(host);
-    window.addEventListener("resize", schedule);
-    window.addEventListener("scroll", schedule, true);
-    reportBounds();
-    return () => {
-      observer?.disconnect();
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("scroll", schedule, true);
-    };
-  }, [accountId, isDesktop]);
-
-  const reload = () => {
-    void window.mosaicoDesktop?.reloadWhatsApp?.();
-  };
-
-  return <section className="service-wa-embed" aria-label="WhatsApp Web">
-    <header><div><strong>WhatsApp Web</strong><small>{isDesktop ? status.state === "error" ? status.message : "Sessão persistente da conta ativa" : "Disponível no aplicativo desktop"}</small></div><button type="button" className="service-wa-reload" onClick={reload} aria-label="Recarregar WhatsApp Web"><RefreshCw size={15} /></button></header>
-    {isDesktop ? <div ref={hostRef} className="service-wa-native-host" aria-label="Área do WhatsApp Web" /> : <div className="service-wa-fallback"><MessageCircle size={28} /><strong>Abra o Mosaico no aplicativo desktop</strong><span>O WhatsApp Web usa uma sessão persistente separada para a conta ativa.</span></div>}
-  </section>;
-}
-
 export function FoodServicePanel() {
-  const [view, setView] = useState<"whatsapp" | "history">("whatsapp");
   const [conversations, setConversations] = useState<FoodConversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<FoodMessage[]>([]);
@@ -156,6 +119,12 @@ export function FoodServicePanel() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [automation, setAutomation] = useState<{ enabled: boolean } | null>(null);
+  const [automationBusy, setAutomationBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(10);
+  const [contactBusy, setContactBusy] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [dismissedImageMessages, setDismissedImageMessages] = useState<string[]>([]);
 
@@ -175,7 +144,10 @@ export function FoodServicePanel() {
         const next = await getFoodConversations();
         if (disposed) return;
         setConversations(next);
-        setSelectedId(current => current && next.some(conversation => conversation.id === current) ? current : next[0]?.id ?? null);
+        setSelectedId(current => {
+          if (current && (next.length === 0 || next.some(conversation => conversation.id === current))) return current;
+          return next[0]?.id ?? null;
+        });
         setError("");
       } catch (loadError) {
         if (!disposed) setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar os atendimentos.");
@@ -185,6 +157,33 @@ export function FoodServicePanel() {
     };
     void load();
     const timer = window.setInterval(() => void load(), 5000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
+  const searchedConversations = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    if (!query) return conversations;
+    return conversations.filter(conversation => {
+      const haystack = `${displayName(conversation)} ${conversation.remoteJid} ${conversation.lastMessage?.body ?? ""}`.toLocaleLowerCase("pt-BR");
+      return haystack.includes(query);
+    });
+  }, [conversations, search]);
+  const visibleConversations = searchedConversations.slice(0, visibleCount);
+
+  useEffect(() => { setVisibleCount(10); }, [search]);
+
+  useEffect(() => {
+    let disposed = false;
+    const load = async () => {
+      try {
+        const next = await getFoodAutomationStatus();
+        if (!disposed) setAutomation({ enabled: next.enabled });
+      } catch {
+        // O status do bot é complementar; a tela segue funcionando sem ele.
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 10_000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, []);
 
@@ -226,21 +225,60 @@ export function FoodServicePanel() {
     window.dispatchEvent(new Event("food-open-assistant"));
   };
 
+  const toggleAutomation = async () => {
+    if (!automation || automationBusy) return;
+    setAutomationBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await setFoodAutomationEnabled(!automation.enabled);
+      setAutomation({ enabled: next.enabled });
+      setNotice(next.enabled ? "Atendimento automático ativado." : "Atendimento automático pausado.");
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Não foi possível alterar o atendimento automático.");
+    } finally {
+      setAutomationBusy(false);
+    }
+  };
+
   const testConversation = async (conversation: FoodConversation) => {
     if (testingId) return;
     setSelectedId(conversation.id);
-    setTestingId(conversation.id);
     setError("");
     setNotice("");
+    if (!conversation.customer?.automationEnabled) {
+      setNotice(`O bot está desligado para ${displayName(conversation)}. Ative em "Ativar bot neste contato" antes de testar.`);
+      return;
+    }
+    setTestingId(conversation.id);
     const wasPaused = conversation.automationPaused;
     try {
+      if (!automation?.enabled) {
+        const nextStatus = await setFoodAutomationEnabled(true);
+        setAutomation({ enabled: nextStatus.enabled });
+      }
       if (wasPaused) await setFoodConversationMode(conversation.id, false);
-      const result = await runFoodAutomation(conversation.id);
+      const result = await runFoodAutomation(conversation.id, "relay", true, true);
       if (result.errors.length) throw new Error(result.errors.join(" "));
-      if (!result.processedMessages && !result.repliesSent) {
+      const replies = result.replies ?? [];
+      if (!result.processedMessages && !replies.length) {
         setNotice("O teste foi executado, mas não havia mensagem pendente para o bot responder.");
       } else {
-        setNotice(`Teste concluído: ${result.processedMessages} mensagem(ns) processada(s) e ${result.repliesSent} resposta(s) enviada(s).`);
+        let sentCount = 0;
+        const failures: string[] = [];
+        for (const reply of replies) {
+          try {
+            await sendFoodRelayMessage(reply.remoteJid, reply.body);
+            sentCount += 1;
+          } catch (sendError) {
+            failures.push(sendError instanceof Error ? sendError.message : "Falha ao enviar a resposta.");
+          }
+        }
+        if (failures.length) {
+          setError(`O bot gerou ${replies.length} resposta(s), mas ${failures.length} não foram enviadas: ${failures[0]}`);
+        } else {
+          setNotice(`Teste concluído: ${result.processedMessages} mensagem(ns) processada(s) e ${sentCount} resposta(s) enviada(s).`);
+        }
       }
       const [nextConversations, nextMessages] = await Promise.all([getFoodConversations(), getFoodMessages(conversation.id)]);
       setConversations(nextConversations);
@@ -257,6 +295,45 @@ export function FoodServicePanel() {
         }
       }
       setTestingId(null);
+    }
+  };
+
+  const toggleContactAutomation = async () => {
+    const customer = selectedConversation?.customer;
+    if (!customer || contactBusy) return;
+    setContactBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await setFoodCustomerAutomation(customer.id, !customer.automationEnabled);
+      setConversations(current => current.map(conversation => conversation.id === selectedConversation.id ? { ...conversation, customer: next.customer } : conversation));
+      setNotice(next.customer.automationEnabled ? `Bot ativado para ${displayName(selectedConversation)}.` : `Bot pausado para ${displayName(selectedConversation)}.`);
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Não foi possível alterar o bot deste contato.");
+    } finally {
+      setContactBusy(false);
+    }
+  };
+
+  const confirmImagePayment = async () => {
+    const customer = selectedConversation?.customer;
+    if (!customer || paymentBusy) return;
+    setPaymentBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const orders = await getFoodOrders();
+      const pending = orders
+        .filter(order => (order.customerId ?? order.customer?.id) === customer.id && order.status !== "cancelled" && order.paymentStatus !== "paid" && order.paymentStatus !== "cancelled")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      if (!pending) throw new Error("Nenhum pedido em aberto para este cliente. Marque o pagamento manualmente no Caixa.");
+      const paid = await updateFoodOrderPayment(pending.id, "pix");
+      setNotice(`Pedido de ${paid.customerName || displayName(selectedConversation)} marcado como pago via Pix (${formatMoney(paid.totalCents)}).`);
+      dismissImagePrompt();
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : "Não foi possível marcar o pedido como pago.");
+    } finally {
+      setPaymentBusy(false);
     }
   };
 
@@ -284,19 +361,15 @@ export function FoodServicePanel() {
   };
 
   return <div className="service-page" aria-live="polite">
-    <header className="service-page-heading"><div><span>Atendimento</span><h2>WhatsApp</h2></div><div className="service-heading-actions"><div className="service-sync-status"><span />Conversas sincronizadas</div><button type="button" className="service-export-button" onClick={() => void exportConversationLog()} disabled={exporting}><Download size={14} />{exporting ? "Preparando…" : "Baixar conversas do dia"}</button></div></header>
-    <div className="service-tabs" role="tablist" aria-label="Visualização do atendimento">
-      <button type="button" role="tab" aria-selected={view === "whatsapp"} onClick={() => setView("whatsapp")}><MessageCircle size={16} />WhatsApp Web</button>
-      <button type="button" role="tab" aria-selected={view === "history"} onClick={() => setView("history")}><Bot size={16} />Histórico do atendimento</button>
+    <header className="service-page-heading"><div><span>Atendimento</span><h2>WhatsApp</h2></div><div className="service-heading-actions"><div className="service-sync-status"><span />Conversas sincronizadas</div><button type="button" className={`service-automation-toggle${automation?.enabled ? " is-on" : ""}`} onClick={() => void toggleAutomation()} disabled={automationBusy || !automation}><Power size={14} />{automation ? automation.enabled ? "Bot ativo" : "Bot pausado" : "Bot…"}</button><button type="button" className="service-export-button" onClick={() => void exportConversationLog()} disabled={exporting}><Download size={14} />{exporting ? "Preparando…" : "Baixar conversas do dia"}</button></div></header>
+    <div className="service-history-layout">
+      <aside className="service-history-sidebar"><header><strong>Atendimentos</strong><small>{testingId ? "Teste do bot em andamento…" : "Teste o bot direto em cada contato"}</small></header><div className="service-search"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Pesquisar nome, telefone ou mensagem…" aria-label="Pesquisar conversas" /></div><ConversationList conversations={visibleConversations} selectedId={selectedId} loading={loading} testingId={testingId} onSelect={selectConversation} onTest={conversation => void testConversation(conversation)} />{searchedConversations.length > visibleCount && <button type="button" className="service-load-more" onClick={() => setVisibleCount(current => current + 10)}>Mostrar mais ({searchedConversations.length - visibleCount})</button>}<p className="service-result-count">{searchedConversations.length} conversa{searchedConversations.length === 1 ? "" : "s"}{search ? " encontrada(s)" : ""}</p></aside>
+      <section className="service-history-panel"><header><div><span>Registro completo</span><h2>{selectedConversation ? displayName(selectedConversation) : "Histórico"}</h2></div><div className="service-history-actions">{selectedConversation?.customer && <button type="button" className={`service-contact-bot${selectedConversation.customer.automationEnabled ? " is-on" : ""}`} onClick={() => void toggleContactAutomation()} disabled={contactBusy}><Power size={13} />{selectedConversation.customer.automationEnabled ? "Bot neste contato ativo" : "Ativar bot neste contato"}</button>}{selectedConversation && <small>{messages.length} mensagem{messages.length === 1 ? "" : "ns"}</small>}</div></header>{selectedConversation ? <MessageList messages={messages} conversation={selectedConversation} history /> : <div className="service-no-selection"><Bot size={28} /><strong>Nenhum atendimento selecionado</strong><span>Escolha uma conversa para ver o que o cliente recebeu e o que foi enviado pelo bot.</span></div>}</section>
     </div>
 
-    {view === "whatsapp" ? <div className="service-wa-only-layout"><WhatsAppWebEmbed /></div> : <div className="service-history-layout">
-      <aside className="service-history-sidebar"><header><strong>Atendimentos</strong><small>Teste o bot direto em cada contato</small></header><ConversationList conversations={conversations} selectedId={selectedId} loading={loading} testingId={testingId} onSelect={selectConversation} onTest={conversation => void testConversation(conversation)} /></aside>
-      <section className="service-history-panel"><header><div><span>Registro completo</span><h2>{selectedConversation ? displayName(selectedConversation) : "Histórico"}</h2></div>{selectedConversation && <small>{messages.length} mensagem{messages.length === 1 ? "" : "ns"}</small>}</header>{selectedConversation ? <MessageList messages={messages} conversation={selectedConversation} history /> : <div className="service-no-selection"><Bot size={28} /><strong>Nenhum atendimento selecionado</strong><span>Escolha uma conversa para ver o que o cliente recebeu e o que foi enviado pelo bot.</span></div>}</section>
-    </div>}
-
+    {testingId && <div className="service-testing-banner" role="status"><LoaderCircle className="animate-spin" size={16} />Teste do bot em andamento. Aguarde a resposta…</div>}
     {notice && <div className="service-feedback is-success" role="status">{notice}</div>}
     {error && <div className="service-feedback is-error" role="alert">{error}</div>}
-    {humanImageMessage && selectedConversation && <HumanImagePrompt conversation={selectedConversation} message={humanImageMessage} onClose={dismissImagePrompt} onOpenAssistant={openAssistantForImage} />}
+    {humanImageMessage && selectedConversation && <HumanImagePrompt conversation={selectedConversation} message={humanImageMessage} onClose={dismissImagePrompt} onOpenAssistant={openAssistantForImage} onConfirmPayment={() => void confirmImagePayment()} paymentBusy={paymentBusy} />}
   </div>;
 }

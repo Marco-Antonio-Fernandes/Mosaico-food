@@ -440,7 +440,8 @@ Não considerar como implementados neste pacote:
 - login, usuários e permissões completos;
 - sincronização/merge entre SQLite local e banco remoto;
 - emissão fiscal real e homologação NFC-e;
-- atualização automática do desktop;
+- publicação das atualizações exige gerar o AppImage, rodar
+  `installer/publish-update.sh` e enviar os arquivos para o servidor;
 - operação de produção sem os testes de aceite acima.
 
 O fluxo funcional atual é WA-AKG + backend remoto de relay + processamento

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, X } from "lucide-react";
-import { Badge, Editor, Metrics, OfflinePreview, Panel, Preferences, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
+import { Badge, Panel, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { CreditPage } from "@/features/credit/credit-page";
 import { FinancePage } from "@/features/finance/finance-page";
-import { FoodBackupPanel } from "@/features/system/food-backup-panel";
-import { FoodPrinterPanel } from "@/features/system/food-printer-panel";
+import { FoodSettingsPanel } from "@/features/system/food-settings-panel";
 import { FiscalPage } from "@/features/fiscal/fiscal-page";
 import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, deleteFoodOrderSchedule, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type SalePaymentMethod } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
@@ -22,8 +21,7 @@ export const foodModules = {
   customers: ["Clientes", "Cadastre os contatos e os dados de entrega dos seus clientes."],
   finance: ["Caixa", "Abra o caixa do dia, acompanhe os recebimentos e confira o histórico."],
   fiscal: ["Fiscal", "Emissão opcional: escolha uma venda e emita a nota quando precisar."],
-  backup: ["Backup", "Backup automático, restauração e proteção dos dados da loja."],
-  settings: ["Configurações", "Loja, equipe, permissões e preferências da operação."],
+  settings: ["Configurações", "Loja, backup, impressão e atualizações."],
 } as const;
 export type FoodModule = keyof typeof foodModules;
 const money = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -61,8 +59,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "customers" && <CustomersPage />}
     {module === "finance" && <FinancePage />}
     {module === "fiscal" && <FiscalPage />}
-    {module === "backup" && <div className="proto-stack"><FoodBackupPanel /><OfflinePreview /></div>}
-    {module === "settings" && <div className="proto-stack"><Editor title="Identidade da loja" tabs={["Dados da loja", "Entrega", "Impressão"]} labels={["Nome da loja", "Endereço", "Telefone público"]} /><FoodPrinterPanel /><Preferences groups={[{ title: "Equipe e acesso", labels: ["Operador de caixa", "Gerente", "Responsável fiscal"] }, { title: "Notificações", labels: ["Som de novo pedido", "Aviso de WhatsApp", "Alertas de estoque"] }]} /><Panel title="Integrações"><dl className="proto-facts"><div><dt>WhatsApp Cloud API</dt><dd>Não conectado</dd></div><div><dt>Fiscal</dt><dd>Configuração pendente</dd></div></dl></Panel></div>}
+    {module === "settings" && <FoodSettingsPanel />}
   </div>;
 }
 function Catalog({ pos = false }: { pos?: boolean }) {

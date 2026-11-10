@@ -29,27 +29,42 @@ interface DesktopPrinterSettings {
   printerMessage: string;
 }
 
+interface DesktopUpdateStatus {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  downloading: boolean;
+  notes: string | null;
+  publishedAt: string | null;
+  manifestUrl: string;
+}
+
+interface DesktopUpdateProgress {
+  received?: number;
+  total?: number;
+  percent: number | null;
+  phase?: "downloading" | "verifying" | "extracting" | "installing";
+}
+
 interface MosaicoDesktopBridge {
   getConnectionStatus: () => Promise<DesktopConnectionStatus>;
   getBackendUrl: () => Promise<string>;
   getBackendDiagnostic: () => Promise<DesktopBackendDiagnostic>;
-  showWhatsApp: (accountId: string) => Promise<{ ready: boolean }>;
-  setWhatsAppBounds: (bounds: { left: number; top: number; width: number; height: number; viewportWidth?: number; viewportHeight?: number }) => void;
-  hideWhatsApp: () => Promise<void>;
-  reloadWhatsApp: () => Promise<void>;
-  onWhatsAppStatus?: (listener: (payload: { state: string; message: string }) => void) => (() => void) | void;
   createNewDatabase: () => Promise<{ archivePath: string | null }>;
   transcribeAudio: (audio: ArrayBuffer, mimeType: string, prompt?: string) => Promise<{ available: boolean; text: string | null; understood: boolean }>;
   interpretText: (text: string, products: { name: string; aliases: string[] }[]) => Promise<{ available: boolean; text: string | null; understood: boolean }>;
   getPlatform: () => string;
-  chooseBackupFolder: () => Promise<{ folder: string | null; lastBackupAt: string | null } | null>;
-  getBackupSettings: () => Promise<{ folder: string | null; lastBackupAt: string | null }>;
-  writeBackupFile: (input: { folder: string; content: string }) => Promise<{ path: string; createdAt: string }>;
+  getBackupSettings: () => Promise<{ lastBackupAt: string | null }>;
+  saveBackupFile: (input: { content: string }) => Promise<{ path: string; createdAt: string } | null>;
   readBackupFile: () => Promise<{ path: string; content: string } | null>;
   getPrinterSettings: () => Promise<DesktopPrinterSettings>;
   savePrinterSettings: (input: { enabled: boolean; autoPrint: boolean; printerName: string | null }) => Promise<DesktopPrinterSettings>;
   testPrinter: () => Promise<{ jobId: string | null; printerName: string }>;
   printFoodOrder: (order: unknown) => Promise<{ jobId: string | null; printerName: string }>;
+  getAppVersion: () => Promise<string>;
+  checkForUpdates: () => Promise<DesktopUpdateStatus>;
+  installUpdate: () => Promise<{ restarting: boolean }>;
+  onUpdateProgress: (listener: (progress: DesktopUpdateProgress) => void) => () => void;
 }
 
 declare global {

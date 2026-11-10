@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Boxes, ClipboardList, Cloud, FileText, Headset, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
+import { Bell, Boxes, ClipboardList, FileText, Headset, Package, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
 import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
 import { AccountSetupModal } from "@/components/shared/account-setup-modal";
 import { loadMosaicoAccount, normalizeCnpj, persistMosaicoAccount, type MosaicoAccount } from "@/components/shared/account-context";
@@ -22,7 +22,6 @@ const navigationItems: NavigationItem<ViewId>[] = [
   { id: "customers", label: "Clientes", group: "Gestão", icon: UsersRound },
   { id: "finance", label: "Caixa", group: "Gestão", icon: WalletCards },
   { id: "fiscal", label: "Fiscal", group: "Gestão", icon: FileText },
-  { id: "backup", label: "Backup", group: "Sistema", icon: Cloud },
   { id: "settings", label: "Configurações", group: "Sistema", icon: Settings },
 ];
 

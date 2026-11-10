@@ -329,6 +329,7 @@ export type FoodOrder = {
   createdAt: string;
   updatedAt: string;
   customer: FoodCustomer | null;
+  customerId?: string | null;
   items: FoodOrderItem[];
 };
 
@@ -774,6 +775,23 @@ export async function getFoodRelayAudio(messageId: string) {
   return response.blob();
 }
 
+export function foodRemoteMediaUrl(providerMessageId: string) {
+  return `${remoteApiBaseUrl}/api/v1/whatsapp/relay/media/${encodeURIComponent(providerMessageId)}`;
+}
+
+export async function getFoodRemoteMessageMedia(providerMessageId: string) {
+  const headers = new Headers({ Accept: "image/*" });
+  if (apiKey) headers.set("X-API-Key", apiKey);
+  let response: Response;
+  try {
+    response = await fetch(`${remoteApiBaseUrl}/api/v1/whatsapp/relay/media/${encodeURIComponent(providerMessageId)}`, { headers });
+  } catch {
+    throw new Error("Servidor remoto do WhatsApp indisponível para carregar a imagem.");
+  }
+  if (!response.ok) throw new Error(`Não foi possível baixar a imagem (HTTP ${response.status}).`);
+  return response.blob();
+}
+
 export async function acknowledgeFoodRelayMessage(messageId: string) {
   return remoteFoodApi<{ ok: boolean }>(`/api/v1/whatsapp/relay/messages/${encodeURIComponent(messageId)}/ack`, { method: "POST" });
 }
@@ -969,10 +987,36 @@ export type FoodAutomationRunResult = {
   lastRunAt: string;
 };
 
-export async function runFoodAutomation(conversationId?: string) {
+export type FoodAutomationStatus = {
+  enabled: boolean;
+  configured: boolean;
+  webhookConfigured: boolean;
+  sessionId: string | null;
+  baseUrl: string;
+  lastRunAt: string | null;
+  lastError: string | null;
+};
+
+export async function getFoodAutomationStatus() {
+  return foodApi<FoodAutomationStatus>("/api/v1/food-automation/status");
+}
+
+export async function setFoodAutomationEnabled(enabled: boolean) {
+  return foodApi<FoodAutomationStatus>("/api/v1/food-automation/config", {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function runFoodAutomation(conversationId?: string, transport?: "relay", force?: boolean, latestOnly?: boolean) {
   return foodApi<FoodAutomationRunResult>("/api/v1/food-automation/run", {
     method: "POST",
-    body: JSON.stringify(conversationId ? { conversationId } : {}),
+    body: JSON.stringify({
+      ...(conversationId ? { conversationId } : {}),
+      ...(transport ? { transport } : {}),
+      ...(force ? { force: true } : {}),
+      ...(latestOnly ? { latestOnly: true } : {}),
+    }),
   });
 }
 
@@ -1087,6 +1131,14 @@ export async function updateFoodOrderStatus(id: string, status: string) {
     body: JSON.stringify({ status }),
   });
   return data;
+}
+
+export async function updateFoodOrderPayment(id: string, paymentMethod: SalePaymentMethod, cashReceivedCents?: number | null) {
+  const data = await foodApi<{ order: FoodOrder }>(`/api/v1/food/orders/${encodeURIComponent(id)}/payment`, {
+    method: "PATCH",
+    body: JSON.stringify({ paymentMethod, ...(cashReceivedCents !== undefined ? { cashReceivedCents } : {}) }),
+  });
+  return data.order;
 }
 
 export async function finalizeFoodOrder(id: string, paymentMethod: SalePaymentMethod, creditCustomerId?: string | null, adjustmentCents = 0, adjustmentNote?: string | null, cashReceivedCents?: number | null) {

@@ -2,10 +2,7 @@ const { app, dialog } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const BACKUP_INTERVAL_MS = 3 * 60 * 60 * 1000;
 const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
-let backupTimer = null;
-let backupRunning = false;
 
 function settingsPath() {
   return path.join(app.getPath("userData"), "backup-settings.json");
@@ -16,11 +13,10 @@ async function getBackupSettings() {
     const raw = await fs.readFile(settingsPath(), "utf8");
     const value = JSON.parse(raw);
     return {
-      folder: typeof value?.folder === "string" ? value.folder : null,
       lastBackupAt: typeof value?.lastBackupAt === "string" ? value.lastBackupAt : null,
     };
   } catch {
-    return { folder: null, lastBackupAt: null };
+    return { lastBackupAt: null };
   }
 }
 
@@ -30,31 +26,29 @@ async function saveBackupSettings(next) {
   return next;
 }
 
-async function chooseBackupFolder() {
-  const result = await dialog.showOpenDialog({
-    title: "Escolha a pasta dos backups do Mosaico Food",
-    properties: ["openDirectory", "createDirectory"],
-  });
-  if (result.canceled || !result.filePaths[0]) return null;
-  const settings = await getBackupSettings();
-  return saveBackupSettings({ ...settings, folder: path.resolve(result.filePaths[0]) });
-}
-
-function backupFileName() {
+function defaultBackupName() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   return `mosaico-food-backup-${stamp}.json`;
 }
 
-async function writeBackupFile({ folder, content, markCompleted = true }) {
-  if (typeof folder !== "string" || !folder.trim()) throw new Error("Escolha uma pasta para salvar o backup.");
-  if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_BACKUP_BYTES) throw new Error("O backup excede o limite permitido.");
-  const targetFolder = path.resolve(folder);
-  await fs.mkdir(targetFolder, { recursive: true });
-  const targetPath = path.join(targetFolder, backupFileName());
-  await fs.writeFile(targetPath, content, { encoding: "utf8", flag: "wx" });
+async function saveBackupFile({ content }) {
+  if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_BACKUP_BYTES) {
+    throw new Error("O backup excede o limite permitido.");
+  }
+  const result = await dialog.showSaveDialog({
+    title: "Salvar backup do Mosaico Food",
+    defaultPath: path.join(app.getPath("downloads"), defaultBackupName()),
+    buttonLabel: "Salvar backup",
+    filters: [{ name: "Backup do Mosaico Food", extensions: ["json"] }],
+    properties: ["createDirectory", "showOverwriteConfirmation"],
+  });
+  if (result.canceled || !result.filePath) return null;
+  const targetPath = path.resolve(result.filePath);
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, content, { encoding: "utf8" });
   const settings = await getBackupSettings();
-  await saveBackupSettings({ ...settings, folder: targetFolder, ...(markCompleted ? { lastBackupAt: new Date().toISOString() } : {}) });
-  return { path: targetPath, createdAt: new Date().toISOString() };
+  const saved = await saveBackupSettings({ ...settings, lastBackupAt: new Date().toISOString() });
+  return { path: targetPath, createdAt: saved.lastBackupAt };
 }
 
 async function readBackupFile() {
@@ -70,44 +64,8 @@ async function readBackupFile() {
   return { path: filePath, content: await fs.readFile(filePath, "utf8") };
 }
 
-async function runAutomaticBackup(getBackendUrl) {
-  if (backupRunning) return;
-  backupRunning = true;
-  try {
-    const settings = await getBackupSettings();
-    if (!settings.folder) return;
-    const lastBackupTime = settings.lastBackupAt ? Date.parse(settings.lastBackupAt) : 0;
-    if (lastBackupTime && Date.now() - lastBackupTime < BACKUP_INTERVAL_MS) return;
-    const backendUrl = getBackendUrl();
-    if (!backendUrl) return;
-    const response = await fetch(`${backendUrl}/api/v1/food/backups/export`);
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.data?.backup) throw new Error("Não foi possível gerar o backup automático.");
-    await writeBackupFile({ folder: settings.folder, content: `${JSON.stringify(payload.data.backup, null, 2)}\n` });
-    console.log("[Mosaico Food] Backup automático concluído.");
-  } catch (error) {
-    console.error(`[Mosaico Food] Falha no backup automático: ${error instanceof Error ? error.message : String(error)}`);
-  } finally {
-    backupRunning = false;
-  }
-}
-
-function startBackupScheduler(getBackendUrl) {
-  stopBackupScheduler();
-  void runAutomaticBackup(getBackendUrl);
-  backupTimer = setInterval(() => void runAutomaticBackup(getBackendUrl), BACKUP_INTERVAL_MS);
-}
-
-function stopBackupScheduler() {
-  if (backupTimer) clearInterval(backupTimer);
-  backupTimer = null;
-}
-
 module.exports = {
-  chooseBackupFolder,
   getBackupSettings,
   readBackupFile,
-  startBackupScheduler,
-  stopBackupScheduler,
-  writeBackupFile,
+  saveBackupFile,
 };

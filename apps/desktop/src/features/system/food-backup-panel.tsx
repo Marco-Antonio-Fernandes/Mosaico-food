@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Database, Download, FolderOpen, HardDrive, LoaderCircle, RefreshCw, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Database, Download, LoaderCircle, RefreshCw, ShieldCheck, Upload } from "lucide-react";
 
 import { exportFoodBackup, importFoodBackup, type FoodBackup } from "@/lib/food-api";
-
-type BackupSettings = { folder: string | null; lastBackupAt: string | null };
 
 const formatDate = (value: string | null) => value
   ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
@@ -31,43 +29,19 @@ function downloadBackup(content: string) {
 
 export function FoodBackupPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [settings, setSettings] = useState<BackupSettings>({ folder: null, lastBackupAt: null });
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const refresh = async () => {
     const next = await window.mosaicoDesktop?.getBackupSettings().catch(() => undefined);
-    if (next) setSettings(next);
+    if (next) setLastBackupAt(next.lastBackupAt);
   };
 
   useEffect(() => {
     void refresh();
-    const onBackup = () => void refresh();
-    window.addEventListener("food-backup-updated", onBackup);
-    const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => {
-      window.removeEventListener("food-backup-updated", onBackup);
-      window.clearInterval(timer);
-    };
   }, []);
-
-  const chooseFolder = async () => {
-    if (!window.mosaicoDesktop) {
-      setError("A escolha automática de pasta está disponível no aplicativo instalado.");
-      return;
-    }
-    try {
-      setError("");
-      const next = await window.mosaicoDesktop.chooseBackupFolder();
-      if (next) {
-        setSettings(next);
-        setNotice("Pasta definida. O próximo backup automático será salvo nela.");
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível escolher a pasta.");
-    }
-  };
 
   const exportNow = async () => {
     setBusy(true);
@@ -77,16 +51,13 @@ export function FoodBackupPanel() {
       const backup = await exportFoodBackup();
       const content = `${JSON.stringify(backup, null, 2)}\n`;
       if (window.mosaicoDesktop) {
-        let folder = settings.folder;
-        if (!folder) {
-          const next = await window.mosaicoDesktop.chooseBackupFolder();
-          if (!next?.folder) throw new Error("Escolha uma pasta para salvar o backup.");
-          folder = next.folder;
-          setSettings(next);
+        const saved = await window.mosaicoDesktop.saveBackupFile({ content });
+        if (!saved) {
+          setNotice("Backup cancelado.");
+          return;
         }
-        const saved = await window.mosaicoDesktop.writeBackupFile({ folder, content });
+        setLastBackupAt(saved.createdAt);
         setNotice(`Backup salvo em ${saved.path}`);
-        await refresh();
       } else {
         downloadBackup(content);
         setNotice("Backup exportado pelo navegador.");
@@ -152,19 +123,28 @@ export function FoodBackupPanel() {
     }
   };
 
-  const statusLabel = settings.folder ? settings.folder : "Nenhuma pasta escolhida";
-
   return <section className="food-backup-panel" aria-live="polite">
     <div className="food-backup-hero">
       <div className="food-backup-hero-icon"><ShieldCheck size={25} /></div>
-      <div><p className="food-backup-eyebrow">Proteção dos dados</p><h2>Backup e restauração</h2><p>Produtos, sabores, estoque, vendas, pedidos, clientes e configurações ficam protegidos em um arquivo completo.</p></div>
+      <div><p className="food-backup-eyebrow">Proteção dos dados</p><h2>Backup e restauração</h2><p>Clique em fazer backup e escolha onde salvar o arquivo. Produtos, estoque, vendas, pedidos, clientes e configurações vão juntos.</p></div>
     </div>
-    <div className="food-backup-grid">
-      <article className="food-backup-card"><div className="food-backup-card-title"><FolderOpen size={18} /><strong>Pasta automática</strong></div><p>Enquanto o sistema estiver aberto, um backup será criado a cada 3 horas na pasta escolhida.</p><code title={statusLabel}>{statusLabel}</code><button type="button" className="proto-subtle" disabled={busy} onClick={() => void chooseFolder()}><FolderOpen size={15} />{settings.folder ? "Alterar pasta" : "Escolher pasta"}</button></article>
-      <article className="food-backup-card"><div className="food-backup-card-title"><HardDrive size={18} /><strong>Último backup</strong></div><p>O arquivo mais recente é salvo sem substituir os anteriores, para você manter histórico.</p><strong className="food-backup-date">{formatDate(settings.lastBackupAt)}</strong><button type="button" disabled={busy} onClick={() => void exportNow()}><Download size={15} />{busy ? "Processando…" : "Exportar agora"}</button></article>
-      <article className="food-backup-card food-new-database-card"><div className="food-backup-card-title"><Database size={18} /><strong>Novo banco</strong></div><p>Começa uma loja vazia para novos testes. O banco atual é arquivado antes de ser trocado.</p><button type="button" className="food-danger-button" disabled={busy} onClick={() => void createNewDatabase()}><Database size={15} />{busy ? "Criando…" : "Criar novo banco"}</button></article>
+    <div className="food-backup-grid food-backup-grid-simple">
+      <article className="food-backup-card">
+        <div className="food-backup-card-title"><Download size={18} /><strong>Fazer backup</strong></div>
+        <p>Você escolhe a pasta e o nome do arquivo a cada backup.</p>
+        <button type="button" disabled={busy} onClick={() => void exportNow()}>{busy ? <LoaderCircle className="food-spin" size={15} /> : <Download size={15} />}{busy ? "Gerando…" : "Fazer backup"}</button>
+      </article>
+      <article className="food-backup-card">
+        <div className="food-backup-card-title"><Upload size={18} /><strong>Restaurar</strong></div>
+        <p>Os registros são reconciliados por ID, então importar o mesmo arquivo não duplica os dados.</p>
+        <button type="button" className="proto-subtle" disabled={busy} onClick={() => void importBackup()}>{busy ? <LoaderCircle className="food-spin" size={15} /> : <Upload size={15} />}{busy ? "Importando…" : "Restaurar backup"}</button>
+      </article>
     </div>
-    <div className="food-backup-actions"><div><strong>Restaurar um arquivo</strong><small>Os registros são reconciliados por ID e identificadores únicos. Importar o mesmo arquivo novamente não duplica os dados.</small></div><button type="button" className="proto-subtle" disabled={busy} onClick={() => void importBackup()}><Upload size={15} />{busy ? "Importando…" : "Importar backup"}</button><input ref={fileInputRef} hidden type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void file.text().then(importContent); }} /></div>
+    <div className="food-backup-footer">
+      <span>Último backup: <strong>{formatDate(lastBackupAt)}</strong></span>
+      <button type="button" className="food-backup-danger" disabled={busy} onClick={() => void createNewDatabase()}><Database size={14} />Criar banco novo</button>
+    </div>
+    <input ref={fileInputRef} hidden type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void file.text().then(importContent); }} />
     {notice && <p className="food-backup-notice"><CheckCircle2 size={16} />{notice}</p>}
     {error && <p className="food-backup-error"><RefreshCw size={16} />{error}</p>}
   </section>;

@@ -11,6 +11,12 @@ PAYLOAD_MARKER="__MOSAICO_FOOD_APPIMAGE_PAYLOAD__"
 TEMP_DIR=""
 EXTRACT_DIR=""
 
+# Usa o disco do usuário, e não /tmp (que em muitos sistemas é tmpfs pequeno),
+# para copiar o payload e extrair o AppImage (~4,5 GB).
+MOSAICO_TMP_DIR="${MOSAICO_TMP_DIR:-${HOME}/.cache/mosaico-food-installer-tmp}"
+mkdir -p -- "$MOSAICO_TMP_DIR"
+export TMPDIR="$MOSAICO_TMP_DIR"
+
 cleanup() {
   if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
     rm -rf -- "$TEMP_DIR"
@@ -63,9 +69,11 @@ extract_appimage_with_progress() {
   local extracted_bytes extracted_files elapsed
 
   say "Extraindo o aplicativo. Isso pode levar alguns minutos..."
+  local offset
+  offset="$("$source" --appimage-offset 2>/dev/null || true)"
+  [[ "$offset" =~ ^[0-9]+$ ]] || fail "não foi possível determinar o deslocamento do AppImage."
   (
-    cd -- "$destination"
-    "$source" --appimage-extract >/dev/null
+    unsquashfs -no-progress -o "$offset" -d "$destination/squashfs-root" "$source" >/dev/null
   ) &
   local extract_pid=$!
   local started_at="$(date +%s)"
@@ -149,6 +157,7 @@ PACMAN_PACKAGES=(
   freetype2
   xdg-utils
   ffmpeg
+  squashfs-tools
 )
 
 run_pacman() {
@@ -205,6 +214,12 @@ LAUNCHER="$BIN_DIR/mosaico-food"
 printf '%s\n' '#!/usr/bin/env bash' "exec \"$INSTALL_DIR/app/mosaico-food\" \"\$@\"" > "$LAUNCHER"
 chmod 0755 "$LAUNCHER"
 
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+install -d -m 0755 "$ICON_DIR"
+if [[ -f "$INSTALL_DIR/app/mosaico-food.png" ]]; then
+  cp -- "$INSTALL_DIR/app/mosaico-food.png" "$ICON_DIR/mosaico-food.png"
+fi
+
 DESKTOP_FILE="$APPLICATIONS_DIR/mosaico-food.desktop"
 printf '%s\n' \
   '[Desktop Entry]' \
@@ -212,6 +227,7 @@ printf '%s\n' \
   'Name=Mosaico Food' \
   'Comment=Operação da loja, caixa, estoque e atendimento' \
   "Exec=\"$LAUNCHER\" %U" \
+  'Icon=mosaico-food' \
   'Terminal=false' \
   'Categories=Office;Utility;' \
   'StartupNotify=true' > "$DESKTOP_FILE"
@@ -219,6 +235,9 @@ chmod 0644 "$DESKTOP_FILE"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
 fi
 
 say "Instalação concluída."
