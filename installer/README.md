@@ -19,42 +19,18 @@ Para gerar o arquivo depois de alterar o sistema:
 
 Esse arquivo pode ficar grande porque inclui os modelos locais de inteligência artificial. Copie o `.run` inteiro para o pendrive.
 
-## Atualizações sem pendrive
+## Atualizações pelo Git
 
-O aplicativo instalado tem o botão **Configurações → Atualizações → Verificar
-atualizações**. Ele consulta um manifesto no servidor e instala a versão nova
-sozinho, sem precisar levar um pendrive até a loja.
+O aplicativo instalado tem o botão **Configurações → Atualizações**. O fluxo é:
 
-O endereço padrão do manifesto é:
+1. escolher a pasta do repositório do Mosaico Food (uma única vez);
+2. **Verificar atualizações** faz `git fetch` e compara com `origin`;
+3. **Atualizar agora** faz `git pull`, instala dependências, compila o aplicativo
+   e o backend, empacota e reinicia sozinho.
 
-```text
-https://mosaico.rotatix.com.br/updates/mosaico-food/latest.json
-```
+O computador precisa ter `git`, Node.js e acesso ao repositório. As alterações
+locais do repositório precisam estar commitadas ou descartadas antes de
+atualizar.
 
-Antes de gerar o AppImage, aumente `version` em `apps/desktop/package.json`
-(por exemplo `0.2.0`). Depois rode:
-
-```bash
-./installer/publish-update.sh \
-  "apps/desktop/release/Mosaico Food-0.2.0.AppImage" \
-  0.2.0 \
-  "Melhorias na tela de configurações e backup."
-```
-
-Os arquivos `Mosaico-Food-0.2.0.AppImage` e `latest.json` são gravados em
-`apps/desktop/release/updates`. Envie os dois para o servidor, no diretório
-`/var/www/mosaico-updates/mosaico-food/`.
-
-No nginx do servidor, sirva esse diretório:
-
-```nginx
-location /updates/ {
-    alias /var/www/mosaico-updates/;
-    autoindex off;
-    add_header Cache-Control "no-store";
-}
-```
-
-A versão do manifesto precisa ser maior que a versão instalada. Para trocar o
-endereço do manifesto sem recompilar, defina `MOSAICO_UPDATE_MANIFEST_URL` antes
-de abrir o aplicativo.
+O caminho do repositório pode ser definido pela variável `MOSAICO_SOURCE_DIR`
+ou escolhido no próprio painel de atualizações.

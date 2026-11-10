@@ -6,7 +6,7 @@ app.setPath("userData", stableUserDataPath);
 if (defaultUserDataPath !== stableUserDataPath) process.env.MOSAICO_LEGACY_USER_DATA_DIR = defaultUserDataPath;
 const { createNewLocalDatabase, getBackendDiagnostic, getBackendUrl, startLocalBackend, stopLocalBackend } = require("./local-backend.cjs");
 const { getBackupSettings, readBackupFile, saveBackupFile } = require("./backup-manager.cjs");
-const { checkForUpdates, installUpdate } = require("./update-manager.cjs");
+const { checkForUpdates, chooseUpdateRepository, installUpdate } = require("./update-manager.cjs");
 const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
 const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
 const { getPrinterSettings, printFoodOrder, printTestOrder, savePrinterSettings } = require("./printer.cjs");
@@ -143,6 +143,7 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
   ipcMain.handle("mosaico:save-backup-file", (_event, input) => saveBackupFile(input));
   ipcMain.handle("mosaico:read-backup-file", () => readBackupFile());
   ipcMain.handle("mosaico:app-version", () => app.getVersion());
+  ipcMain.handle("mosaico:choose-update-repo", () => chooseUpdateRepository());
   ipcMain.handle("mosaico:check-for-updates", () => checkForUpdates());
   ipcMain.handle("mosaico:install-update", () => installUpdate((progress) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mosaico:update-progress", progress);

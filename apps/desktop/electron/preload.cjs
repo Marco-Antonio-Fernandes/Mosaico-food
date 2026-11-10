@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld("mosaicoDesktop", {
   testPrinter: () => ipcRenderer.invoke("mosaico:test-printer"),
   printFoodOrder: (order) => ipcRenderer.invoke("mosaico:print-food-order", order),
   getAppVersion: () => ipcRenderer.invoke("mosaico:app-version"),
+  chooseUpdateRepository: () => ipcRenderer.invoke("mosaico:choose-update-repo"),
   checkForUpdates: () => ipcRenderer.invoke("mosaico:check-for-updates"),
   installUpdate: () => ipcRenderer.invoke("mosaico:install-update"),
   onUpdateProgress: (listener) => {

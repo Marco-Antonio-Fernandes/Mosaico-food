@@ -407,6 +407,15 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .food-update-progress-track { overflow: hidden; height: 8px; border-radius: 999px; background: #0d2029; }
 .food-update-progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4ed5ac, #7dd3d0); transition: width .25s ease; }
 .food-update-notes { margin: 0; color: var(--proto-muted); font-size: .78rem; line-height: 1.5; }
+.food-update-repo { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--proto-line); border-radius: 12px; background: #0d2029aa; }
+.food-update-repo > div { display: inline-flex; align-items: center; gap: 6px; color: var(--proto-muted); font-size: .72rem; }
+.food-update-repo code { overflow: hidden; color: #c5e8e4; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.food-update-repo button { display: inline-flex; align-items: center; gap: 6px; }
+.food-update-commits { display: flex; flex-wrap: wrap; gap: 12px; color: var(--proto-muted); font-size: .72rem; }
+.food-update-commits strong { color: #b6f0df; }
+.food-update-dirty { color: #ffc0c8; }
+.food-update-progress-track.is-indeterminate span { width: 35%; animation: food-update-slide 1.1s ease-in-out infinite; }
+@keyframes food-update-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 @media(max-width:700px) { .food-settings-account { flex-wrap: wrap; } .food-settings-hint { margin-left: 0; max-width: none; text-align: left; } }
 .proto-notification { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border: 1px solid var(--proto-line); border-radius: 16px; padding: 16px; }
 .proto-notification.is-high { border-color: #ffb26980; background: #ffb2690c; }

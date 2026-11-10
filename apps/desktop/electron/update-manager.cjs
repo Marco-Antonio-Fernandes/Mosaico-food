@@ -1,144 +1,137 @@
-const { app } = require("electron");
+const { app, dialog } = require("electron");
 const { spawn } = require("node:child_process");
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
-const { Readable } = require("node:stream");
 const path = require("node:path");
-const { z } = require("zod");
 
-const DEFAULT_MANIFEST_URL = "https://mosaico.rotatix.com.br/updates/mosaico-food/latest.json";
-const FETCH_TIMEOUT_MS = 20_000;
-const manifestSchema = z.object({
-  version: z.string().min(1),
-  url: z.string().url(),
-  sha256: z.string().optional(),
-  notes: z.string().optional(),
-  publishedAt: z.string().optional(),
-});
-let pendingUpdate = null;
-
-function manifestUrl() {
-  return process.env.MOSAICO_UPDATE_MANIFEST_URL || DEFAULT_MANIFEST_URL;
+function settingsPath() {
+  return path.join(app.getPath("userData"), "update-settings.json");
 }
 
-function parseVersion(value) {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/i.exec(String(value || "").trim());
-  if (!match) return null;
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function isNewer(current, latest) {
-  const a = parseVersion(current);
-  const b = parseVersion(latest);
-  if (!a || !b) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (b[index] > a[index]) return true;
-    if (b[index] < a[index]) return false;
+async function readSettings() {
+  try {
+    const value = JSON.parse(await fsp.readFile(settingsPath(), "utf8"));
+    return { repoPath: typeof value?.repoPath === "string" ? value.repoPath : null };
+  } catch {
+    return { repoPath: null };
   }
-  return false;
 }
 
-function emptyStatus(extra = {}) {
-  return {
-    currentVersion: app.getVersion(),
-    latestVersion: null,
-    updateAvailable: false,
-    downloading: false,
-    notes: null,
-    publishedAt: null,
-    manifestUrl: manifestUrl(),
-    ...extra,
-  };
+async function writeSettings(next) {
+  await fsp.mkdir(path.dirname(settingsPath()), { recursive: true });
+  await fsp.writeFile(settingsPath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return next;
+}
+
+function isRepository(directory) {
+  if (!directory) return false;
+  return fs.existsSync(path.join(directory, ".git")) && fs.existsSync(path.join(directory, "package.json"));
+}
+
+function candidateRepositories() {
+  const home = app.getPath("home");
+  return [
+    process.env.MOSAICO_SOURCE_DIR,
+    path.join(home, "Documentos", "Mosaico Food"),
+    path.join(home, "Documents", "Mosaico Food"),
+    path.resolve(__dirname, "../../.."),
+  ].filter((candidate) => typeof candidate === "string" && candidate);
+}
+
+async function resolveRepository() {
+  const settings = await readSettings();
+  if (isRepository(settings.repoPath)) return settings.repoPath;
+  const found = candidateRepositories().find(isRepository);
+  if (found) {
+    await writeSettings({ repoPath: found });
+    return found;
+  }
+  return null;
+}
+
+async function chooseUpdateRepository() {
+  const current = await resolveRepository();
+  const result = await dialog.showOpenDialog({
+    title: "Escolha a pasta do código-fonte do Mosaico Food",
+    defaultPath: current || app.getPath("home"),
+    properties: ["openDirectory"],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const repoPath = path.resolve(result.filePaths[0]);
+  if (!isRepository(repoPath)) {
+    throw new Error("A pasta escolhida não é um clone do repositório do Mosaico Food.");
+  }
+  await writeSettings({ repoPath });
+  return { repoPath };
+}
+
+function npmCommand() {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function npxCommand() {
+  return process.platform === "win32" ? "npx.cmd" : "npx";
+}
+
+function run(command, args, { cwd, label } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let output = "";
+    const collect = (chunk) => {
+      output += chunk.toString();
+      if (output.length > 12_000) output = output.slice(-12_000);
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    child.once("error", (error) => reject(new Error(`${label || command}: ${error.message}`)));
+    child.once("close", (code) => {
+      if (code === 0) resolve(output);
+      else reject(new Error(`${label || command} falhou (código ${code}).\n${output.slice(-800)}`));
+    });
+  });
+}
+
+async function git(args, cwd, label) {
+  return (await run("git", args, { cwd, label })).trim();
 }
 
 async function checkForUpdates() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(manifestUrl(), {
-      signal: controller.signal,
-      headers: { "cache-control": "no-cache" },
-    });
-    if (!response.ok) throw new Error(`O servidor de atualizações respondeu ${response.status}.`);
-    const parsed = manifestSchema.safeParse(await response.json());
-    if (!parsed.success) throw new Error("O servidor de atualizações enviou um manifesto inválido.");
-    const manifest = parsed.data;
-    pendingUpdate = manifest;
-    return emptyStatus({
-      latestVersion: manifest.version,
-      updateAvailable: isNewer(app.getVersion(), manifest.version),
-      notes: typeof manifest.notes === "string" ? manifest.notes : null,
-      publishedAt: typeof manifest.publishedAt === "string" ? manifest.publishedAt : null,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("O servidor de atualizações demorou demais para responder.");
-    }
-    if (error instanceof TypeError) {
-      throw new Error("Não foi possível conectar ao servidor de atualizações.");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
+  const repoPath = await resolveRepository();
+  if (!repoPath) {
+    return {
+      repoPath: null,
+      branch: null,
+      currentCommit: null,
+      latestCommit: null,
+      latestSubject: null,
+      updateAvailable: false,
+      dirty: false,
+      message: "Escolha a pasta do repositório do Mosaico Food.",
+    };
   }
-}
-
-function updateDirectory() {
-  return path.join(app.getPath("userData"), "updates");
-}
-
-async function downloadFile(url, destination, onProgress) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30 * 60 * 1000);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok || !response.body) throw new Error(`Não foi possível baixar a atualização (${response.status}).`);
-    const total = Number(response.headers.get("content-length") || 0);
-    let received = 0;
-    let lastEmit = 0;
-    const handle = await fsp.open(destination, "w");
-    try {
-      for await (const chunk of Readable.fromWeb(response.body)) {
-        await handle.write(chunk);
-        received += chunk.length;
-        const now = Date.now();
-        if (onProgress && (now - lastEmit > 250 || received === total)) {
-          lastEmit = now;
-          onProgress({ received, total, percent: total ? Math.min(100, Math.round((received / total) * 100)) : null });
-        }
-      }
-    } finally {
-      await handle.close();
-    }
-    return { received, total };
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") throw new Error("O download da atualização demorou demais.");
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function sha256Of(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash("sha256");
-    const stream = fs.createReadStream(filePath);
-    stream.on("error", reject);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex")));
-  });
-}
-
-function run(command, args, options) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "ignore", ...options });
-    child.once("error", reject);
-    child.once("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`O comando de atualização terminou com código ${code}.`));
-    });
-  });
+  const dirty = Boolean((await git(["status", "--porcelain"], repoPath, "git status")).trim());
+  const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"], repoPath, "git branch");
+  await git(["fetch", "--prune", "origin", branch], repoPath, "git fetch");
+  const currentCommit = await git(["rev-parse", "HEAD"], repoPath, "git rev-parse");
+  const latestCommit = await git(["rev-parse", `origin/${branch}`], repoPath, "git rev-parse");
+  const behind = Number(await git(["rev-list", "--count", `HEAD..origin/${branch}`], repoPath, "git rev-list"));
+  const latestSubject = await git(["log", "-1", "--format=%s", `origin/${branch}`], repoPath, "git log");
+  return {
+    repoPath,
+    branch,
+    currentCommit,
+    latestCommit,
+    latestSubject,
+    updateAvailable: behind > 0,
+    commitsBehind: behind,
+    dirty,
+    message: behind > 0 ? `${behind} commit(s) novo(s) em ${branch}.` : "Você já está na versão mais recente do repositório.",
+  };
 }
 
 function extractedAppDirectory() {
@@ -149,92 +142,73 @@ function extractedAppDirectory() {
   return fs.existsSync(path.join(directory, "mosaico-food")) ? directory : null;
 }
 
-async function runUnixReplacer({ targetDir, extractedDir, appImagePath, pid }) {
-  const scriptPath = path.join(updateDirectory(), "apply-update.sh");
+async function replaceInstalledApp(targetDir, sourceDir, pid) {
+  const parent = path.dirname(targetDir);
+  const previous = path.join(parent, "app.previous");
+  const scriptPath = path.join(app.getPath("temp"), `mosaico-food-update-${Date.now()}.sh`);
   const lines = [
     "#!/bin/bash",
     "set -e",
     `while kill -0 ${pid} 2>/dev/null; do sleep 1; done`,
+    `rm -rf ${JSON.stringify(previous)}`,
+    `mv ${JSON.stringify(targetDir)} ${JSON.stringify(previous)}`,
+    `mkdir -p ${JSON.stringify(targetDir)}`,
+    `cp -a ${JSON.stringify(sourceDir)}/. ${JSON.stringify(targetDir)}/`,
+    `chmod +x ${JSON.stringify(path.join(targetDir, "mosaico-food"))}`,
+    `setsid ${JSON.stringify(path.join(targetDir, "mosaico-food"))} >/dev/null 2>&1 &`,
   ];
-  if (targetDir) {
-    const parent = path.dirname(targetDir);
-    const previous = path.join(parent, "app.previous");
-    lines.push(`rm -rf ${JSON.stringify(previous)}`);
-    lines.push(`mv ${JSON.stringify(targetDir)} ${JSON.stringify(previous)}`);
-    lines.push(`mv ${JSON.stringify(extractedDir)} ${JSON.stringify(targetDir)}`);
-    lines.push(`chmod +x ${JSON.stringify(path.join(targetDir, "mosaico-food"))}`);
-    lines.push(`rm -rf ${JSON.stringify(previous)}`);
-    lines.push(`setsid ${JSON.stringify(path.join(targetDir, "mosaico-food"))} >/dev/null 2>&1 &`);
-  } else {
-    lines.push(`mv ${JSON.stringify(appImagePath)} ${JSON.stringify(process.env.APPIMAGE)}`);
-    lines.push(`chmod +x ${JSON.stringify(process.env.APPIMAGE)}`);
-    lines.push(`setsid ${JSON.stringify(process.env.APPIMAGE)} >/dev/null 2>&1 &`);
-  }
   await fsp.writeFile(scriptPath, `${lines.join("\n")}\n`, { mode: 0o755 });
   const child = spawn("setsid", ["bash", scriptPath], { detached: true, stdio: "ignore" });
   child.unref();
 }
 
 async function installUpdate(onProgress) {
-  if (!pendingUpdate) throw new Error("Consulte as atualizações antes de instalar.");
-  if (!isNewer(app.getVersion(), pendingUpdate.version)) throw new Error("Você já está na versão mais recente.");
-  const directory = updateDirectory();
-  await fsp.mkdir(directory, { recursive: true });
-  const isWindows = process.platform === "win32";
-  const fileName = isWindows ? "mosaico-food-update.exe" : "mosaico-food-update.AppImage";
-  const downloadPath = path.join(directory, fileName);
-  await fsp.rm(downloadPath, { force: true });
+  if (process.platform !== "linux") {
+    throw new Error("Atualização por git + build disponível no momento apenas para Linux.");
+  }
+  const status = await checkForUpdates();
+  if (!status.repoPath) throw new Error("Escolha a pasta do repositório do Mosaico Food.");
+  if (status.dirty) throw new Error("O repositório tem alterações locais. Faça commit ou descarte antes de atualizar.");
+  if (!status.updateAvailable) throw new Error("Você já está na versão mais recente do repositório.");
+  const repoPath = status.repoPath;
 
-  await downloadFile(pendingUpdate.url, downloadPath, onProgress);
-  onProgress?.({ phase: "verifying", percent: null });
+  onProgress?.({ phase: "git", message: "Baixando alterações do Git…" });
+  await git(["pull", "--ff-only", "origin", status.branch], repoPath, "git pull");
 
-  if (typeof pendingUpdate.sha256 === "string" && pendingUpdate.sha256.trim()) {
-    const digest = await sha256Of(downloadPath);
-    if (digest.toLowerCase() !== pendingUpdate.sha256.trim().toLowerCase()) {
-      await fsp.rm(downloadPath, { force: true });
-      throw new Error("A verificação de integridade da atualização falhou.");
-    }
+  onProgress?.({ phase: "deps", message: "Instalando dependências…" });
+  await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: repoPath, label: "npm install" });
+  const backendPath = path.join(repoPath, "..", "mosaico-back");
+  if (fs.existsSync(path.join(backendPath, "package.json"))) {
+    await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: backendPath, label: "npm install (backend)" });
   }
 
-  if (isWindows) {
-    onProgress?.({ phase: "installing", percent: null });
-    const child = spawn(downloadPath, ["/S"], { detached: true, stdio: "ignore" });
-    child.unref();
-    setTimeout(() => app.quit(), 400);
-    return { restarting: true };
-  }
+  onProgress?.({ phase: "build", message: "Compilando aplicativo e backend…" });
+  await run(npmCommand(), ["run", "build"], { cwd: repoPath, label: "npm run build" });
+  await run(npmCommand(), ["run", "build:back"], { cwd: repoPath, label: "npm run build:back" });
 
-  if (process.platform !== "linux") throw new Error("Atualização automática disponível apenas para Linux e Windows.");
-
-  await fsp.chmod(downloadPath, 0o755);
-  const targetDirectory = extractedAppDirectory();
-  let extractedDir = null;
-  if (targetDirectory) {
-    onProgress?.({ phase: "extracting", percent: null });
-    const extractRoot = path.join(directory, "extract");
-    await fsp.rm(extractRoot, { recursive: true, force: true });
-    await fsp.mkdir(extractRoot, { recursive: true });
-    await run(downloadPath, ["--appimage-extract"], { cwd: extractRoot });
-    extractedDir = path.join(extractRoot, "squashfs-root");
-    if (!fs.existsSync(path.join(extractedDir, "mosaico-food"))) {
-      throw new Error("O pacote de atualização não contém o aplicativo.");
-    }
-  } else if (!process.env.APPIMAGE) {
-    throw new Error("Não foi possível localizar a instalação para aplicar a atualização.");
-  }
-
-  onProgress?.({ phase: "installing", percent: null });
-  await runUnixReplacer({
-    targetDir: targetDirectory,
-    extractedDir,
-    appImagePath: downloadPath,
-    pid: process.pid,
+  onProgress?.({ phase: "package", message: "Empacotando a nova versão…" });
+  const desktopPath = path.join(repoPath, "apps", "desktop");
+  await run(npxCommand(), ["--yes", "electron-builder", "--dir", "--config", "electron-builder.yml"], {
+    cwd: desktopPath,
+    label: "electron-builder",
   });
-  setTimeout(() => app.quit(), 400);
+
+  onProgress?.({ phase: "install", message: "Instalando e reiniciando…" });
+  const sourceDir = path.join(desktopPath, "release", "linux-unpacked");
+  if (!fs.existsSync(path.join(sourceDir, "mosaico-food"))) {
+    throw new Error("O empacotamento não gerou o aplicativo esperado.");
+  }
+  const targetDir = extractedAppDirectory();
+  if (!targetDir) {
+    throw new Error("Não foi possível localizar a instalação do Mosaico Food para substituir.");
+  }
+  await replaceInstalledApp(targetDir, sourceDir, process.pid);
+  setTimeout(() => app.quit(), 500);
   return { restarting: true };
 }
 
 module.exports = {
   checkForUpdates,
+  chooseUpdateRepository,
   installUpdate,
 };
