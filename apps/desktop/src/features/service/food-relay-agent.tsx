@@ -96,11 +96,14 @@ export function FoodRelayAgent() {
       }
     };
 
+    const requestSync = () => { void drainRelay(); };
     void drainRelay();
     const timer = window.setInterval(() => void drainRelay(), 3000);
+    window.addEventListener("food-relay-sync", requestSync);
     return () => {
       disposed = true;
       window.clearInterval(timer);
+      window.removeEventListener("food-relay-sync", requestSync);
     };
   }, []);
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Download, Image as ImageIcon, LoaderCircle, Power, UserRound, X } from "lucide-react";
+import { Bot, Download, Image as ImageIcon, LoaderCircle, Power, RefreshCw, UserRound, X } from "lucide-react";
 
 import {
   getFoodAutomationStatus,
@@ -8,7 +8,6 @@ import {
   getFoodMessages,
   getFoodOrders,
   getFoodRemoteMessageMedia,
-  exportFoodConversationLog,
   foodRemoteMediaUrl,
   runFoodAutomation,
   sendFoodRelayMessage,
@@ -125,6 +124,7 @@ export function FoodServicePanel() {
   const [visibleCount, setVisibleCount] = useState(10);
   const [contactBusy, setContactBusy] = useState(false);
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [dismissedImageMessages, setDismissedImageMessages] = useState<string[]>([]);
 
@@ -337,31 +337,93 @@ export function FoodServicePanel() {
     }
   };
 
-  const exportConversationLog = async () => {
+  const syncNow = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setNotice("Buscando mensagens novas…");
+    setError("");
+    window.dispatchEvent(new Event("food-relay-sync"));
+    try {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      const [nextConversations, nextMessages] = await Promise.all([
+        getFoodConversations(),
+        selectedId ? getFoodMessages(selectedId) : Promise.resolve<FoodMessage[]>([]),
+      ]);
+      setConversations(nextConversations);
+      if (selectedId) setMessages(nextMessages);
+      setNotice("Mensagens atualizadas.");
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Não foi possível sincronizar as mensagens.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const exportConversations = async () => {
     if (exporting) return;
     setExporting(true);
     setError("");
+    setNotice("Preparando exportação das conversas…");
     try {
-      const data = await exportFoodConversationLog();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+      const all = await getFoodConversations();
+      const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
+      const sections: string[] = [];
+      for (let index = 0; index < all.length; index += 1) {
+        const conversation = all[index];
+        setNotice(`Exportando conversa ${index + 1} de ${all.length}…`);
+        const messages = await getFoodMessages(conversation.id);
+        const messageHtml = messages.map(message => {
+          const outbound = message.direction === "outbound";
+          const author = outbound && message.source === "human" ? "Atendente" : outbound ? "Mosaico Food" : displayName(conversation);
+          const mediaUrl = message.providerMessageId ? foodRemoteMediaUrl(message.providerMessageId) : null;
+          const media = message.mediaType === "image" && mediaUrl
+            ? `<a href="${mediaUrl}" target="_blank" rel="noreferrer"><img src="${mediaUrl}" alt="Imagem da conversa" loading="lazy"></a>`
+            : message.mediaType === "audio" && mediaUrl
+              ? `<audio controls preload="none" src="${mediaUrl}"></audio>`
+              : "";
+          const body = message.body ? `<p>${escapeHtml(message.body).replace(/\n/g, "<br>")}</p>` : "";
+          return `<article class="message ${outbound ? "outbound" : "inbound"}"><header><strong>${escapeHtml(author)}</strong><span>${escapeHtml(formatDate(message.createdAt))}${message.mediaType ? ` · ${escapeHtml(message.mediaType)}` : ""}</span></header>${media}${body}</article>`;
+        }).join("\n");
+        sections.push(`<section class="conversation"><h2>${escapeHtml(displayName(conversation))}</h2><p class="meta">${escapeHtml(conversation.remoteJid)} · ${messages.length} mensagem(ns)</p>${messageHtml || "<p class=\"empty\">Sem mensagens.</p>"}</section>`);
+      }
+      const html = `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Conversas do Mosaico Food</title>
+<style>
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:24px;background:#f6f8f9;color:#14232d}
+h1{font-size:22px;margin:0 0 4px}.sub{color:#5b6b74;margin:0 0 24px;font-size:13px}
+.conversation{background:#fff;border:1px solid #dbe3e7;border-radius:12px;padding:16px;margin:0 0 18px;break-inside:avoid}
+.conversation h2{margin:0;font-size:16px}.meta{margin:2px 0 12px;color:#5b6b74;font-size:12px}
+.message{border-radius:10px;padding:8px 10px;margin:8px 0;max-width:80%}
+.message.inbound{background:#eef3f5}.message.outbound{background:#dff3ec;margin-left:auto}
+.message header{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:#5b6b74;margin-bottom:4px}
+.message p{margin:0;white-space:normal;font-size:13px;line-height:1.45}
+.message img{max-width:320px;border-radius:8px;display:block;margin:6px 0}
+.empty{color:#7a8a92;font-size:12px}
+@media print{body{background:#fff;margin:0}.conversation{border:0;page-break-inside:avoid}}
+</style></head><body>
+<h1>Conversas do Mosaico Food</h1><p class="sub">Exportado em ${escapeHtml(new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date()))} · ${all.length} conversa(s)</p>
+${sections.join("\n")}
+</body></html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `mosaico-atendimento-${data.period.from}${data.period.to !== data.period.from ? `_${data.period.to}` : ""}.json`;
+      link.download = `mosaico-conversas-${new Date().toISOString().slice(0, 10)}.html`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setNotice(`Arquivo do atendimento salvo: ${data.period.from}${data.period.to !== data.period.from ? ` até ${data.period.to}` : ""}.`);
+      setNotice(`Exportação concluída: ${all.length} conversa(s) em um arquivo HTML.`);
     } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "Não foi possível exportar o atendimento.");
+      setError(exportError instanceof Error ? exportError.message : "Não foi possível exportar as conversas.");
     } finally {
       setExporting(false);
     }
   };
 
+
   return <div className="service-page" aria-live="polite">
-    <header className="service-page-heading"><div><span>Atendimento</span><h2>WhatsApp</h2></div><div className="service-heading-actions"><div className="service-sync-status"><span />Conversas sincronizadas</div><button type="button" className={`service-automation-toggle${automation?.enabled ? " is-on" : ""}`} onClick={() => void toggleAutomation()} disabled={automationBusy || !automation}><Power size={14} />{automation ? automation.enabled ? "Bot ativo" : "Bot pausado" : "Bot…"}</button><button type="button" className="service-export-button" onClick={() => void exportConversationLog()} disabled={exporting}><Download size={14} />{exporting ? "Preparando…" : "Baixar conversas do dia"}</button></div></header>
+    <header className="service-page-heading"><div><span>Atendimento</span><h2>WhatsApp</h2></div><div className="service-heading-actions"><div className="service-sync-status"><span />Conversas sincronizadas</div><button type="button" className={`service-automation-toggle${automation?.enabled ? " is-on" : ""}`} onClick={() => void toggleAutomation()} disabled={automationBusy || !automation}><Power size={14} />{automation ? automation.enabled ? "Bot ativo" : "Bot pausado" : "Bot…"}</button><button type="button" className="service-export-button" onClick={() => void syncNow()} disabled={syncing}><RefreshCw className={syncing ? "animate-spin" : ""} size={14} />{syncing ? "Sincronizando…" : "Sincronizar"}</button><button type="button" className="service-export-button" onClick={() => void exportConversations()} disabled={exporting}><Download size={14} />{exporting ? "Exportando…" : "Exportar conversas"}</button></div></header>
     <div className="service-history-layout">
       <aside className="service-history-sidebar"><header><strong>Atendimentos</strong><small>{testingId ? "Teste do bot em andamento…" : "Teste o bot direto em cada contato"}</small></header><div className="service-search"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Pesquisar nome, telefone ou mensagem…" aria-label="Pesquisar conversas" /></div><ConversationList conversations={visibleConversations} selectedId={selectedId} loading={loading} testingId={testingId} onSelect={selectConversation} onTest={conversation => void testConversation(conversation)} />{searchedConversations.length > visibleCount && <button type="button" className="service-load-more" onClick={() => setVisibleCount(current => current + 10)}>Mostrar mais ({searchedConversations.length - visibleCount})</button>}<p className="service-result-count">{searchedConversations.length} conversa{searchedConversations.length === 1 ? "" : "s"}{search ? " encontrada(s)" : ""}</p></aside>
       <section className="service-history-panel"><header><div><span>Registro completo</span><h2>{selectedConversation ? displayName(selectedConversation) : "Histórico"}</h2></div><div className="service-history-actions">{selectedConversation?.customer && <button type="button" className={`service-contact-bot${selectedConversation.customer.automationEnabled ? " is-on" : ""}`} onClick={() => void toggleContactAutomation()} disabled={contactBusy}><Power size={13} />{selectedConversation.customer.automationEnabled ? "Bot neste contato ativo" : "Ativar bot neste contato"}</button>}{selectedConversation && <small>{messages.length} mensagem{messages.length === 1 ? "" : "ns"}</small>}</div></header>{selectedConversation ? <MessageList messages={messages} conversation={selectedConversation} history /> : <div className="service-no-selection"><Bot size={28} /><strong>Nenhum atendimento selecionado</strong><span>Escolha uma conversa para ver o que o cliente recebeu e o que foi enviado pelo bot.</span></div>}</section>
