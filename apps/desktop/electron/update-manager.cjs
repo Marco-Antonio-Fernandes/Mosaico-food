@@ -121,10 +121,18 @@ async function ensureClone(directory, url, label, onProgress) {
   await fs.promises.mkdir(path.dirname(directory), { recursive: true });
   if (fs.existsSync(directory)) await fs.promises.rm(directory, { recursive: true, force: true });
   onProgress?.({ phase: "clone", message: `Clonando ${label}…` });
-  await run("git", ["clone", "--depth", "1", "--branch", BRANCH, cloneUrl(url), directory], {
-    cwd: path.dirname(directory),
-    label: `git clone (${label})`,
-  });
+  try {
+    await run("git", ["clone", "--depth", "1", "--branch", BRANCH, cloneUrl(url), directory], {
+      cwd: path.dirname(directory),
+      label: `git clone (${label})`,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/could not read Username|terminal prompts disabled|authentication failed|repository not found|permission denied|403|404/i.test(message)) {
+      throw new Error(`Não foi possível clonar ${label}. Deixe o repositório público ou configure credenciais de acesso ao Git.`);
+    }
+    throw error;
+  }
   return directory;
 }
 

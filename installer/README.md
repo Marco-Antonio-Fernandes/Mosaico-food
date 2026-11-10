@@ -29,9 +29,10 @@ O aplicativo já conhece a URL do repositório e faz tudo sozinho:
 3. **Atualizar agora** faz `git reset` para `origin/main`, instala dependências,
    copia os modelos locais, compila app e backend, empacota e reinicia.
 
-O computador precisa ter `git`, Node.js e acesso aos repositórios. Para
-repositórios privados, configure o credential helper do Git ou defina
-`MOSAICO_GIT_TOKEN` com um token de leitura antes de abrir o aplicativo.
+O instalador já marca `git` e `nodejs` como dependências do Arch Linux. O
+computador precisa de internet e acesso aos repositórios. Os dois repositórios
+precisam estar **públicos** (app e backend). Se continuarem privados, configure
+o credential helper do Git ou defina `MOSAICO_GIT_TOKEN` com um token de leitura.
 
 Os endereços padrão são:
 
