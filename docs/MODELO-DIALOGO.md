@@ -107,3 +107,16 @@ Para o bot avançar sozinho, é necessário:
   regras não reconhecem, mantendo valores e estoque vindos do backend.
 - Registrar as escolhas do operador no popup de imagem para melhorar as
   heurísticas de classificação (produto ou comprovante).
+
+## Atualização do aplicativo pelo Git
+
+O painel **Configurações → Atualizações** usa o repositório local escolhido
+pelo operador. O fluxo é:
+
+1. `git fetch` para comparar com `origin`;
+2. `git pull --ff-only` quando há novidade;
+3. `npm install` no aplicativo e no backend;
+4. `npm run build` e `npm run build:back`;
+5. empacotamento com `electron-builder` e reinício automático.
+
+O repositório precisa estar sem alterações locais no momento de atualizar.
