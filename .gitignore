@@ -19,3 +19,6 @@ apps/desktop/electron/interpreter-runtime/models/*.gguf.part
 
 # Gerado no empacotamento com o commit instalado
 apps/desktop/electron/build-info.json
+
+# Bundle antigo que não deve ir para o repositório
+apps/desktop/index-*.js
