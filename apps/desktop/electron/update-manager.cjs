@@ -103,6 +103,19 @@ async function git(args, cwd, label) {
   return (await run("git", args, { cwd, label })).trim();
 }
 
+async function verifyTools() {
+  try {
+    await run("git", ["--version"], { label: "git" });
+  } catch {
+    throw new Error("Git não encontrado neste computador. Instale o Git (ex.: sudo pacman -S git) e tente novamente.");
+  }
+  try {
+    await run(npmCommand(), ["--version"], { label: "npm" });
+  } catch {
+    throw new Error("Node.js/npm não encontrado neste computador. Instale o Node.js e tente novamente.");
+  }
+}
+
 async function ensureClone(directory, url, label, onProgress) {
   if (isRepository(directory)) return directory;
   await fs.promises.mkdir(path.dirname(directory), { recursive: true });
@@ -151,6 +164,7 @@ function copyRuntimeAssets(appDir) {
 
 async function checkForUpdates(onProgress) {
   try {
+    await verifyTools();
     await ensureRepositories(onProgress);
     const repoPath = appRepository();
     await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
@@ -223,6 +237,7 @@ async function installUpdate(onProgress) {
   if (process.platform !== "linux") {
     throw new Error("Atualização por Git + build disponível no momento apenas para Linux.");
   }
+  await verifyTools();
   await ensureRepositories(onProgress);
   const repoPath = appRepository();
   const backendPath = backendRepository();

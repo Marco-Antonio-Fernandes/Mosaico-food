@@ -125,6 +125,7 @@ fi
 
 PACMAN_PACKAGES=(
   nodejs
+  git
   fuse2
   gtk3
   nss
