@@ -1,68 +1,42 @@
-const { app, dialog } = require("electron");
+const { app } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
-const fsp = require("node:fs/promises");
 const path = require("node:path");
 
-function settingsPath() {
-  return path.join(app.getPath("userData"), "update-settings.json");
-}
+const APP_REPO_URL = process.env.MOSAICO_REPO_URL || "https://github.com/Marco-Antonio-Fernandes/Mosaico-food.git";
+const BACK_REPO_URL = process.env.MOSAICO_BACK_REPO_URL || "https://github.com/Marco-Antonio-Fernandes/mosaico-back.git";
+const BRANCH = process.env.MOSAICO_REPO_BRANCH || "main";
 
-async function readSettings() {
-  try {
-    const value = JSON.parse(await fsp.readFile(settingsPath(), "utf8"));
-    return { repoPath: typeof value?.repoPath === "string" ? value.repoPath : null };
-  } catch {
-    return { repoPath: null };
+function sourceRoot() {
+  if (process.platform === "linux") {
+    return path.join(app.getPath("home"), ".local", "share", "mosaico-food", "source");
   }
+  return path.join(app.getPath("userData"), "source");
 }
 
-async function writeSettings(next) {
-  await fsp.mkdir(path.dirname(settingsPath()), { recursive: true });
-  await fsp.writeFile(settingsPath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  return next;
+function appRepository() {
+  return path.join(sourceRoot(), "mosaico-food");
+}
+
+function backendRepository() {
+  return path.join(sourceRoot(), "mosaico-back");
 }
 
 function isRepository(directory) {
-  if (!directory) return false;
   return fs.existsSync(path.join(directory, ".git")) && fs.existsSync(path.join(directory, "package.json"));
 }
 
-function candidateRepositories() {
-  const home = app.getPath("home");
-  return [
-    process.env.MOSAICO_SOURCE_DIR,
-    path.join(home, "Documentos", "Mosaico Food"),
-    path.join(home, "Documents", "Mosaico Food"),
-    path.resolve(__dirname, "../../.."),
-  ].filter((candidate) => typeof candidate === "string" && candidate);
-}
-
-async function resolveRepository() {
-  const settings = await readSettings();
-  if (isRepository(settings.repoPath)) return settings.repoPath;
-  const found = candidateRepositories().find(isRepository);
-  if (found) {
-    await writeSettings({ repoPath: found });
-    return found;
+function cloneUrl(url) {
+  const token = process.env.MOSAICO_GIT_TOKEN;
+  if (!token) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.username = "x-access-token";
+    parsed.password = token;
+    return parsed.toString();
+  } catch {
+    return url;
   }
-  return null;
-}
-
-async function chooseUpdateRepository() {
-  const current = await resolveRepository();
-  const result = await dialog.showOpenDialog({
-    title: "Escolha a pasta do código-fonte do Mosaico Food",
-    defaultPath: current || app.getPath("home"),
-    properties: ["openDirectory"],
-  });
-  if (result.canceled || !result.filePaths[0]) return null;
-  const repoPath = path.resolve(result.filePaths[0]);
-  if (!isRepository(repoPath)) {
-    throw new Error("A pasta escolhida não é um clone do repositório do Mosaico Food.");
-  }
-  await writeSettings({ repoPath });
-  return { repoPath };
 }
 
 function npmCommand() {
@@ -100,38 +74,21 @@ async function git(args, cwd, label) {
   return (await run("git", args, { cwd, label })).trim();
 }
 
-async function checkForUpdates() {
-  const repoPath = await resolveRepository();
-  if (!repoPath) {
-    return {
-      repoPath: null,
-      branch: null,
-      currentCommit: null,
-      latestCommit: null,
-      latestSubject: null,
-      updateAvailable: false,
-      dirty: false,
-      message: "Escolha a pasta do repositório do Mosaico Food.",
-    };
-  }
-  const dirty = Boolean((await git(["status", "--porcelain"], repoPath, "git status")).trim());
-  const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"], repoPath, "git branch");
-  await git(["fetch", "--prune", "origin", branch], repoPath, "git fetch");
-  const currentCommit = await git(["rev-parse", "HEAD"], repoPath, "git rev-parse");
-  const latestCommit = await git(["rev-parse", `origin/${branch}`], repoPath, "git rev-parse");
-  const behind = Number(await git(["rev-list", "--count", `HEAD..origin/${branch}`], repoPath, "git rev-list"));
-  const latestSubject = await git(["log", "-1", "--format=%s", `origin/${branch}`], repoPath, "git log");
-  return {
-    repoPath,
-    branch,
-    currentCommit,
-    latestCommit,
-    latestSubject,
-    updateAvailable: behind > 0,
-    commitsBehind: behind,
-    dirty,
-    message: behind > 0 ? `${behind} commit(s) novo(s) em ${branch}.` : "Você já está na versão mais recente do repositório.",
-  };
+async function ensureClone(directory, url, label, onProgress) {
+  if (isRepository(directory)) return directory;
+  await fs.promises.mkdir(path.dirname(directory), { recursive: true });
+  if (fs.existsSync(directory)) await fs.promises.rm(directory, { recursive: true, force: true });
+  onProgress?.({ phase: "clone", message: `Clonando ${label}…` });
+  await run("git", ["clone", "--depth", "1", "--branch", BRANCH, cloneUrl(url), directory], {
+    cwd: path.dirname(directory),
+    label: `git clone (${label})`,
+  });
+  return directory;
+}
+
+async function ensureRepositories(onProgress) {
+  await ensureClone(appRepository(), APP_REPO_URL, "repositório do app", onProgress);
+  await ensureClone(backendRepository(), BACK_REPO_URL, "repositório do backend", onProgress);
 }
 
 function extractedAppDirectory() {
@@ -140,6 +97,67 @@ function extractedAppDirectory() {
   if (resources.startsWith("/tmp/.mount_") || resources.includes("/.mount_")) return null;
   const directory = path.dirname(resources);
   return fs.existsSync(path.join(directory, "mosaico-food")) ? directory : null;
+}
+
+function installedResourcesDirectory() {
+  const target = extractedAppDirectory();
+  if (target) return path.join(target, "resources");
+  return process.resourcesPath || null;
+}
+
+function copyRuntimeAssets(appDir) {
+  const resources = installedResourcesDirectory();
+  if (!resources) return;
+  const desktop = path.join(appDir, "apps", "desktop");
+  const pairs = [
+    ["speech", path.join(desktop, "electron", "speech-runtime")],
+    ["interpreter", path.join(desktop, "electron", "interpreter-runtime")],
+  ];
+  for (const [name, destination] of pairs) {
+    const source = path.join(resources, name);
+    if (!fs.existsSync(source)) continue;
+    fs.cpSync(source, destination, { recursive: true, force: true });
+  }
+}
+
+async function checkForUpdates(onProgress) {
+  try {
+    await ensureRepositories(onProgress);
+    const repoPath = appRepository();
+    await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
+    const currentCommit = await git(["rev-parse", "HEAD"], repoPath, "git rev-parse");
+    const latestCommit = await git(["rev-parse", `origin/${BRANCH}`], repoPath, "git rev-parse");
+    const behind = Number(await git(["rev-list", "--count", `HEAD..origin/${BRANCH}`], repoPath, "git rev-list"));
+    const latestSubject = await git(["log", "-1", "--format=%s", `origin/${BRANCH}`], repoPath, "git log");
+    const dirty = Boolean((await git(["status", "--porcelain"], repoPath, "git status")).trim());
+    return {
+      remoteUrl: APP_REPO_URL,
+      backendUrl: BACK_REPO_URL,
+      sourceDir: repoPath,
+      branch: BRANCH,
+      currentCommit,
+      latestCommit,
+      latestSubject,
+      updateAvailable: behind > 0,
+      commitsBehind: behind,
+      dirty,
+      message: behind > 0 ? `${behind} commit(s) novo(s) em ${BRANCH}.` : "Você já está na versão mais recente do repositório.",
+    };
+  } catch (error) {
+    return {
+      remoteUrl: APP_REPO_URL,
+      backendUrl: BACK_REPO_URL,
+      sourceDir: appRepository(),
+      branch: BRANCH,
+      currentCommit: null,
+      latestCommit: null,
+      latestSubject: null,
+      updateAvailable: false,
+      commitsBehind: 0,
+      dirty: false,
+      message: error instanceof Error ? error.message : "Não foi possível consultar o repositório.",
+    };
+  }
 }
 
 async function replaceInstalledApp(targetDir, sourceDir, pid) {
@@ -157,30 +175,31 @@ async function replaceInstalledApp(targetDir, sourceDir, pid) {
     `chmod +x ${JSON.stringify(path.join(targetDir, "mosaico-food"))}`,
     `setsid ${JSON.stringify(path.join(targetDir, "mosaico-food"))} >/dev/null 2>&1 &`,
   ];
-  await fsp.writeFile(scriptPath, `${lines.join("\n")}\n`, { mode: 0o755 });
+  await fs.promises.writeFile(scriptPath, `${lines.join("\n")}\n`, { mode: 0o755 });
   const child = spawn("setsid", ["bash", scriptPath], { detached: true, stdio: "ignore" });
   child.unref();
 }
 
 async function installUpdate(onProgress) {
   if (process.platform !== "linux") {
-    throw new Error("Atualização por git + build disponível no momento apenas para Linux.");
+    throw new Error("Atualização por Git + build disponível no momento apenas para Linux.");
   }
-  const status = await checkForUpdates();
-  if (!status.repoPath) throw new Error("Escolha a pasta do repositório do Mosaico Food.");
-  if (status.dirty) throw new Error("O repositório tem alterações locais. Faça commit ou descarte antes de atualizar.");
-  if (!status.updateAvailable) throw new Error("Você já está na versão mais recente do repositório.");
-  const repoPath = status.repoPath;
+  await ensureRepositories(onProgress);
+  const repoPath = appRepository();
+  const backendPath = backendRepository();
 
   onProgress?.({ phase: "git", message: "Baixando alterações do Git…" });
-  await git(["pull", "--ff-only", "origin", status.branch], repoPath, "git pull");
+  await git(["fetch", "--prune", "origin", BRANCH], repoPath, "git fetch");
+  await git(["reset", "--hard", `origin/${BRANCH}`], repoPath, "git reset");
+  await git(["fetch", "--prune", "origin", BRANCH], backendPath, "git fetch (backend)");
+  await git(["reset", "--hard", `origin/${BRANCH}`], backendPath, "git reset (backend)");
 
   onProgress?.({ phase: "deps", message: "Instalando dependências…" });
   await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: repoPath, label: "npm install" });
-  const backendPath = path.join(repoPath, "..", "mosaico-back");
-  if (fs.existsSync(path.join(backendPath, "package.json"))) {
-    await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: backendPath, label: "npm install (backend)" });
-  }
+  await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: backendPath, label: "npm install (backend)" });
+
+  onProgress?.({ phase: "assets", message: "Preparando modelos locais…" });
+  copyRuntimeAssets(repoPath);
 
   onProgress?.({ phase: "build", message: "Compilando aplicativo e backend…" });
   await run(npmCommand(), ["run", "build"], { cwd: repoPath, label: "npm run build" });
@@ -209,6 +228,5 @@ async function installUpdate(onProgress) {
 
 module.exports = {
   checkForUpdates,
-  chooseUpdateRepository,
   installUpdate,
 };

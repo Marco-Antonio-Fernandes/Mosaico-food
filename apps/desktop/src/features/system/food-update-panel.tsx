@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, GitBranch, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 
 type UpdateStatus = Awaited<ReturnType<NonNullable<Window["mosaicoDesktop"]>["checkForUpdates"]>>;
 
 const phaseLabel: Record<string, string> = {
+  clone: "Clonando o repositório",
   git: "Baixando alterações do Git",
   deps: "Instalando dependências",
+  assets: "Preparando modelos locais",
   build: "Compilando aplicativo e backend",
   package: "Empacotando a nova versão",
   install: "Instalando e reiniciando",
@@ -18,7 +20,6 @@ export function FoodUpdatePanel() {
   const [currentVersion, setCurrentVersion] = useState("");
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const [choosing, setChoosing] = useState(false);
   const [progress, setProgress] = useState<{ phase?: string; message?: string } | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -43,30 +44,12 @@ export function FoodUpdatePanel() {
     try {
       const next = await bridge.checkForUpdates();
       setStatus(next);
-      setNotice(next.message);
+      if (next.currentCommit) setNotice(next.message);
+      else setError(next.message);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível consultar as atualizações.");
     } finally {
       setChecking(false);
-    }
-  };
-
-  const choose = async () => {
-    const bridge = window.mosaicoDesktop;
-    if (!bridge?.chooseUpdateRepository) return;
-    setChoosing(true);
-    setError("");
-    setNotice("");
-    try {
-      const result = await bridge.chooseUpdateRepository();
-      if (result) {
-        setNotice(`Repositório selecionado: ${result.repoPath}`);
-        await check();
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível escolher a pasta do repositório.");
-    } finally {
-      setChoosing(false);
     }
   };
 
@@ -95,7 +78,7 @@ export function FoodUpdatePanel() {
       <div>
         <p className="food-backup-eyebrow">Sistema</p>
         <h2>Atualizações</h2>
-        <p>O sistema busca as mudanças no Git, instala as dependências, compila e reinicia com a versão nova.</p>
+        <p>O sistema baixa o repositório, instala dependências, compila, empacota e reinicia sozinho.</p>
       </div>
     </div>
 
@@ -106,14 +89,14 @@ export function FoodUpdatePanel() {
 
     <div className="food-update-repo">
       <div><GitBranch size={15} /><span>Repositório</span></div>
-      <code title={status?.repoPath ?? undefined}>{status?.repoPath ?? "Nenhum repositório selecionado"}</code>
-      <button type="button" className="proto-subtle" onClick={() => void choose()} disabled={choosing || installing}>{choosing ? <LoaderCircle className="food-spin" size={14} /> : <FolderOpen size={14} />}Escolher pasta</button>
+      <code title={status?.remoteUrl}>{status?.remoteUrl ?? "https://github.com/Marco-Antonio-Fernandes/Mosaico-food.git"}</code>
     </div>
+    {status?.sourceDir && <p className="food-update-source">Pasta local: <code>{status.sourceDir}</code></p>}
 
-    {status?.repoPath && <div className="food-update-commits">
+    {status?.currentCommit && <div className="food-update-commits">
       <span>Instalado: <strong>{shortCommit(status.currentCommit)}</strong></span>
       <span>Repositório: <strong>{shortCommit(status.latestCommit)}</strong>{status.branch ? ` · ${status.branch}` : ""}</span>
-      {status.dirty && <span className="food-update-dirty">Há alterações locais no repositório.</span>}
+      {status.dirty && <span className="food-update-dirty">Há alterações locais na pasta do repositório.</span>}
     </div>}
     {status?.latestSubject && <p className="food-update-notes">Último commit: {status.latestSubject}</p>}
 

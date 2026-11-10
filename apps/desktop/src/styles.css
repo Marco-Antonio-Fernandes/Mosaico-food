@@ -412,6 +412,8 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .food-update-repo code { overflow: hidden; color: #c5e8e4; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
 .food-update-repo button { display: inline-flex; align-items: center; gap: 6px; }
 .food-update-commits { display: flex; flex-wrap: wrap; gap: 12px; color: var(--proto-muted); font-size: .72rem; }
+.food-update-source { margin: 0; color: var(--proto-muted); font-size: .68rem; overflow-wrap: anywhere; }
+.food-update-source code { color: #c5e8e4; }
 .food-update-commits strong { color: #b6f0df; }
 .food-update-dirty { color: #ffc0c8; }
 .food-update-progress-track.is-indeterminate span { width: 35%; animation: food-update-slide 1.1s ease-in-out infinite; }

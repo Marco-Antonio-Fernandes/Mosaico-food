@@ -30,7 +30,9 @@ interface DesktopPrinterSettings {
 }
 
 interface DesktopUpdateStatus {
-  repoPath: string | null;
+  remoteUrl: string;
+  backendUrl: string;
+  sourceDir: string | null;
   branch: string | null;
   currentCommit: string | null;
   latestCommit: string | null;
@@ -42,7 +44,7 @@ interface DesktopUpdateStatus {
 }
 
 interface DesktopUpdateProgress {
-  phase?: "git" | "deps" | "build" | "package" | "install";
+  phase?: "clone" | "git" | "deps" | "assets" | "build" | "package" | "install";
   message?: string;
   percent?: number | null;
 }
@@ -63,7 +65,6 @@ interface MosaicoDesktopBridge {
   testPrinter: () => Promise<{ jobId: string | null; printerName: string }>;
   printFoodOrder: (order: unknown) => Promise<{ jobId: string | null; printerName: string }>;
   getAppVersion: () => Promise<string>;
-  chooseUpdateRepository: () => Promise<{ repoPath: string } | null>;
   checkForUpdates: () => Promise<DesktopUpdateStatus>;
   installUpdate: () => Promise<{ restarting: boolean }>;
   onUpdateProgress: (listener: (progress: DesktopUpdateProgress) => void) => () => void;

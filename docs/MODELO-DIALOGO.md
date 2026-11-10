@@ -110,13 +110,14 @@ Para o bot avançar sozinho, é necessário:
 
 ## Atualização do aplicativo pelo Git
 
-O painel **Configurações → Atualizações** usa o repositório local escolhido
-pelo operador. O fluxo é:
+O painel **Configurações → Atualizações** conhece a URL do repositório e
+clona automaticamente em `~/.local/share/mosaico-food/source` quando necessário.
+O fluxo é:
 
-1. `git fetch` para comparar com `origin`;
-2. `git pull --ff-only` quando há novidade;
-3. `npm install` no aplicativo e no backend;
-4. `npm run build` e `npm run build:back`;
-5. empacotamento com `electron-builder` e reinício automático.
-
-O repositório precisa estar sem alterações locais no momento de atualizar.
+1. clonar app e backend se ainda não existirem;
+2. `git fetch` para comparar com `origin/main`;
+3. `git reset --hard origin/main` no app e no backend;
+4. `npm install` nos dois projetos;
+5. copiar os modelos locais de dentro do aplicativo instalado;
+6. `npm run build` e `npm run build:back`;
+7. empacotamento com `electron-builder` e reinício automático.
