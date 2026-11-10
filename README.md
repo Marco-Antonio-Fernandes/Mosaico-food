@@ -6,7 +6,7 @@ WhatsApp.
 
 ## Status
 
-O desktop Electron/React, o backend unificado `../mosaico-back/`, catálogo,
+O desktop Electron/React, o backend local `local-backend/`, catálogo,
 estoque, receitas, produção, venda de balcão, assistente universal, pedidos e
 atendimento WA-AKG já estão implementados. O desktop empacotado pode iniciar o
 backend NestJS e o SQLite localmente. A transcrição local usa whisper.cpp; o
@@ -23,8 +23,8 @@ Na raiz do projeto:
 
 ```bash
 npm install
-npm --prefix ../mosaico-back install
-cp ../mosaico-back/.env.example ../mosaico-back/.env
+npm --prefix local-backend install
+cp local-backend/.env.example local-backend/.env
 npm run db:migrate:deploy
 npm run dev
 ```

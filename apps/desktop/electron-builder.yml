@@ -9,13 +9,13 @@ files:
   - electron/**
   - package.json
 extraResources:
-  - from: ../../../mosaico-back/dist
+  - from: ../../local-backend/dist
     to: backend/dist
-  - from: ../../../mosaico-back/package.json
+  - from: ../../local-backend/package.json
     to: backend/package.json
-  - from: ../../../mosaico-back/node_modules
+  - from: ../../local-backend/node_modules
     to: backend/node_modules
-  - from: ../../../mosaico-back/prisma
+  - from: ../../local-backend/prisma
     to: backend/prisma
   - from: electron/speech-runtime
     to: speech

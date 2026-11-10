@@ -1,0 +1,32 @@
+{
+  "name": "mosaico-local-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "prisma generate && nest start --watch",
+    "build": "prisma generate && nest build",
+    "start": "node dist/main.js",
+    "start:prod": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.11",
+    "@nestjs/core": "^11.0.11",
+    "@nestjs/platform-express": "^11.0.11",
+    "@prisma/client": "^6.5.0",
+    "dotenv": "^16.6.1",
+    "reflect-metadata": "^0.2.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.6",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.4",
+    "prisma": "^6.5.0",
+    "typescript": "^5.7.3"
+  }
+}

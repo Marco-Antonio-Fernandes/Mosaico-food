@@ -246,39 +246,26 @@ async function installUpdate(onProgress) {
   await git(["reset", "--hard", `origin/${BRANCH}`], repoPath, "git reset");
   const targetCommit = await git(["rev-parse", `origin/${BRANCH}`], repoPath, "git rev-parse");
 
-  onProgress?.({ phase: "deps", message: "Instalando dependências…" });
+  onProgress?.({ phase: "deps", message: "Instalando dependências do aplicativo…" });
   await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: repoPath, label: "npm install" });
-
-  onProgress?.({ phase: "assets", message: "Preparando modelos e backend local…" });
-  copyRuntimeAssets(repoPath);
-  const resources = installedResourcesDirectory();
-  const installedBackend = resources ? path.join(resources, "backend") : null;
-  if (!installedBackend || !fs.existsSync(path.join(installedBackend, "dist"))) {
-    throw new Error("O backend local da instalação atual não foi encontrado.");
+  const localBackendPath = path.join(repoPath, "local-backend");
+  if (!fs.existsSync(path.join(localBackendPath, "package.json"))) {
+    throw new Error("O backend local não foi encontrado no repositório.");
   }
+  onProgress?.({ phase: "deps", message: "Instalando dependências do backend local…" });
+  await run(npmCommand(), ["install", "--include=dev", "--no-audit", "--no-fund"], { cwd: localBackendPath, label: "npm install (backend local)" });
 
-  onProgress?.({ phase: "build", message: "Compilando o aplicativo…" });
+  onProgress?.({ phase: "assets", message: "Preparando modelos locais…" });
+  copyRuntimeAssets(repoPath);
+
+  onProgress?.({ phase: "build", message: "Compilando aplicativo e backend local…" });
   await run(npmCommand(), ["run", "build"], { cwd: repoPath, label: "npm run build" });
+  await run(npmCommand(), ["run", "build:back"], { cwd: repoPath, label: "npm run build:back" });
 
   onProgress?.({ phase: "package", message: "Empacotando a nova versão…" });
   const desktopPath = path.join(repoPath, "apps", "desktop");
   await run(npmCommand(), ["run", "prepare:build-info"], { cwd: desktopPath, label: "build-info" });
-  const updateConfigPath = path.join(app.getPath("temp"), `mosaico-update-config-${Date.now()}.json`);
-  const updateConfig = {
-    appId: "br.com.mosaico.food",
-    productName: "Mosaico Food",
-    executableName: "mosaico-food",
-    icon: "electron/assets/mosaico-food.png",
-    directories: { output: "release" },
-    files: ["dist/**", "electron/**", "package.json"],
-    extraResources: [
-      { from: installedBackend, to: "backend" },
-      { from: "electron/speech-runtime", to: "speech" },
-      { from: "electron/interpreter-runtime", to: "interpreter" },
-    ],
-  };
-  await fs.promises.writeFile(updateConfigPath, `${JSON.stringify(updateConfig, null, 2)}\n`, "utf8");
-  await run(npxCommand(), ["--yes", "electron-builder", "--dir", "--config", updateConfigPath], {
+  await run(npxCommand(), ["--yes", "electron-builder", "--dir", "--config", "electron-builder.yml"], {
     cwd: desktopPath,
     label: "electron-builder",
   });

@@ -1,0 +1,514 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id              String         @id @default(uuid())
+  name            String
+  normalizedPhone String?
+  phone           String?
+  status          String         @default("active")
+  version         Int            @default(1)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+  creditAccount   CreditAccount?
+
+  @@index([updatedAt])
+  @@index([normalizedPhone])
+}
+
+model CreditAccount {
+  id               String         @id @default(uuid())
+  customerId       String         @unique
+  creditLimitCents Int?
+  balanceCents     Int            @default(0)
+  version          Int            @default(1)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  entries          CreditEntry[]
+  foodCustomers    FoodCustomer[]
+
+  @@index([updatedAt])
+}
+
+model CreditEntry {
+  id              String        @id @default(uuid())
+  creditAccountId String
+  type            String
+  amountCents     Int
+  paymentMethod   String?
+  note            String?
+  occurredAt      DateTime
+  operationId     String        @unique
+  referenceType   String?
+  referenceId     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  creditAccount   CreditAccount @relation(fields: [creditAccountId], references: [id])
+
+  @@index([creditAccountId, occurredAt])
+  @@index([updatedAt])
+  @@index([referenceType, referenceId])
+}
+
+model SyncOperation {
+  id          String   @id @default(uuid())
+  operationId String   @unique
+  entity      String
+  entityId    String
+  action      String
+  baseVersion Int?
+  occurredAt  DateTime
+  payload     String
+  status      String
+  errorCode   String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model FoodAccount {
+  id                    String   @id
+  name                  String
+  cnpj                  String   @unique
+  city                  String   @default("")
+  notasemtupeCompanyId  String?
+  notasemtupeToken      String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([name])
+}
+
+model FoodAutomationConfig {
+  id        String    @id @default("default")
+  enabled   Boolean   @default(true)
+  lastRunAt DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model FoodAutomationConversation {
+  id                     String                  @id @default(uuid())
+  providerConversationId Int                     @unique
+  state                  String                  @default("idle")
+  pendingItemsJson       String                  @default("[]")
+  pendingFulfillment     String?
+  pendingAddress         String?
+  orderId                String?
+  lastOrderMessageId     String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  processedMessages      FoodAutomationMessage[]
+}
+
+model FoodAutomationMessage {
+  id             String                     @id @default(uuid())
+  conversationId String
+  providerId     String
+  processedAt    DateTime                   @default(now())
+  conversation   FoodAutomationConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, providerId])
+  @@index([processedAt])
+}
+
+// Domínio próprio do Mosaico Food. Não depende do Fix.io.
+model FoodProduct {
+  id                    String          @id @default(uuid())
+  name                  String
+  normalizedName        String          @unique
+  /// Nome do produto-base, separado do sabor. Registros antigos deixam este
+  /// campo vazio e continuam usando `name` como fallback.
+  productName           String          @default("")
+  flavor                String?
+  normalizedProductName String          @default("")
+  normalizedFlavor      String?
+  category              String          @default("Geral")
+  aliasesJson           String          @default("[]")
+  variantsJson          String          @default("[]")
+  customizationJson     String          @default("null")
+  costPriceCents        Int             @default(0)
+  costBreakdownJson     String          @default("null")
+  salePriceCents        Int
+  stockQuantity         Int             @default(0)
+  unpreparedQuantity    Int             @default(0)
+  productionMode        String          @default("resale")
+  stockUnit             String          @default("un")
+  unitWeightGrams       Int?
+  unitVolumeMl          Int?
+  fiscalNcm             String?
+  fiscalCest            String?
+  fiscalGtin            String?
+  fiscalUnit            String?
+  fiscalCfop            String?
+  fiscalOrigin          Int?
+  fiscalCst             String?
+  fiscalCsosn            String?
+  fiscalPisCst          String?
+  fiscalCofinsCst       String?
+  fiscalBenefitCode     String?
+  recipeJson            String          @default("[]")
+  recipeProgressJson    String          @default("{}")
+  salesProgressJson     String          @default("{}")
+  allowOnDemand         Boolean         @default(false)
+  fryToOrder            Boolean         @default(false)
+  active                Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  orderItems            FoodOrderItem[]
+  scheduleItems         FoodOrderScheduleItem[]
+  fiscalDocuments       FoodFiscalDocument[]
+
+  @@index([active])
+  @@index([name])
+}
+
+model FoodStockOperation {
+  id        String   @id
+  productId String
+  action    String
+  quantity  Int
+  createdAt DateTime @default(now())
+}
+
+model FoodAssistantDraft {
+  id             String   @id @default(uuid())
+  productId      String
+  action         String
+  quantity       Int
+  totalCents     Int
+  paymentMethod  String?
+  unitPriceCents Int
+  completed      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
+
+model FoodAssistantRegistrationDraft {
+  id              String   @id @default(uuid())
+  name            String
+  quantity        Int
+  stockUnit       String
+  unitWeightGrams Int?
+  unitVolumeMl    Int?
+  completed       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+}
+
+model FoodCounterSale {
+  id                 String   @id
+  productId          String
+  productName        String
+  quantity           Int
+  baseUnitPriceCents Int      @default(0)
+  customizationJson  String   @default("null")
+  adjustmentCents    Int      @default(0)
+  adjustmentNote     String?
+  isGift             Boolean  @default(false)
+  totalCents         Int
+  paymentMethod      String?
+  paymentStatus      String   @default("pending")
+  financialOperationId String?
+  source             String?
+  createdAt          DateTime @default(now())
+}
+
+model FoodCounterBatch {
+  id          String   @id
+  fingerprint String
+  createdAt   DateTime @default(now())
+}
+
+model FoodStockPrompt {
+  id             String    @id
+  productId      String
+  productName    String
+  ingredientId   String
+  ingredientName String
+  quantity       Int
+  yieldQuantity  Int
+  status         String    @default("pending")
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  @@index([status, createdAt])
+  @@index([productId, ingredientId, status])
+}
+
+model FoodCustomer {
+  id                String             @id @default(uuid())
+  name              String
+  normalizedPhone   String             @unique
+  phone             String
+  automationEnabled Boolean            @default(true)
+  address           String?
+  email             String?
+  notes             String?
+  creditCustomerId  String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  conversations     FoodConversation[]
+  orders            FoodOrder[]
+  creditAccount     CreditAccount?     @relation(fields: [creditCustomerId], references: [customerId])
+
+  @@index([name])
+  @@index([creditCustomerId])
+}
+
+model FoodConversation {
+  id                 String        @id @default(uuid())
+  sessionId          String
+  remoteJid          String
+  customerId         String?
+  state              String        @default("idle")
+  greetingSent       Boolean       @default(false)
+  automationPaused   Boolean       @default(false)
+  pendingItemsJson   String        @default("[]")
+  pendingFulfillment String?
+  pendingAddress     String?
+  pendingPaymentMethod String?
+  pendingCashReceivedCents Int?
+  lastOrderId        String?
+  lastOrderMessageId String?
+  lastMessageAt      DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  customer           FoodCustomer? @relation(fields: [customerId], references: [id])
+  messages           FoodMessage[]
+  orders             FoodOrder[]
+
+  @@unique([sessionId, remoteJid])
+  @@index([customerId])
+  @@index([lastMessageAt])
+}
+
+model FoodMessage {
+  id                  String           @id @default(uuid())
+  conversationId      String
+  sessionId           String
+  providerMessageId   String
+  direction           String
+  source              String           @default("unknown")
+  body                String?
+  mediaType           String?
+  mediaUrl            String?
+  locationLatitude    Float?
+  locationLongitude   Float?
+  locationAddress     String?
+  transcriptionStatus String?
+  createdAt           DateTime         @default(now())
+  processedAt         DateTime?
+  needsHuman          Boolean          @default(false)
+  conversation        FoodConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, providerMessageId])
+  @@index([conversationId, processedAt])
+  @@index([needsHuman, createdAt])
+  @@index([createdAt])
+}
+
+model FoodOrder {
+  id              String            @id @default(uuid())
+  customerName    String?
+  customerId      String?
+  conversationId  String?
+  status          String            @default("confirmed")
+  fulfillment     String
+  deliveryAddress String?
+  totalCents      Int
+  cashReceivedCents Int?
+  cashChangeCents   Int?
+  source          String            @default("whatsapp")
+  paymentMethod   String?
+  paymentStatus   String            @default("pending")
+  stockReserved   Boolean           @default(false)
+  saleOperationId String?           @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  customer        FoodCustomer?     @relation(fields: [customerId], references: [id])
+  conversation    FoodConversation? @relation(fields: [conversationId], references: [id])
+  items           FoodOrderItem[]
+
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+}
+
+model FoodOrderItem {
+  id              String       @id @default(uuid())
+  orderId         String
+  productId       String?
+  productName     String
+  variantName     String?
+  quantity        Int
+  unitPriceCents  Int
+  totalCents      Int
+  fryNow          Boolean      @default(false)
+  stockReservationJson String?
+  adjustmentCents Int          @default(0)
+  adjustmentNote  String?
+  isGift          Boolean      @default(false)
+  order           FoodOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         FoodProduct? @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model FoodOrderSchedule {
+  id              String                   @id @default(uuid())
+  name            String
+  active          Boolean                  @default(true)
+  frequency       String                   @default("daily")
+  weekdaysJson    String                   @default("[]")
+  timeLocal       String                   @default("09:00")
+  fulfillment     String                   @default("pickup")
+  deliveryAddress String?
+  nextRunAt       DateTime
+  lastRunAt       DateTime?
+  lastError       String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  items           FoodOrderScheduleItem[]
+
+  @@index([active, nextRunAt])
+}
+
+model FoodOrderScheduleItem {
+  id         String            @id @default(uuid())
+  scheduleId String
+  productId  String?
+  productName String
+  flavor     String?
+  quantity   Int
+  schedule   FoodOrderSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  product    FoodProduct?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([scheduleId])
+  @@index([productId])
+}
+
+model FoodCashSession {
+  id                String    @id @default(uuid())
+  businessDate      String    @unique
+  status            String    @default("open")
+  activeKey         String?   @unique
+  openingCashCents  Int
+  expectedCashCents Int?
+  countedCashCents  Int?
+  differenceCents   Int?
+  openedAt          DateTime  @default(now())
+  closedAt          DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  movements         FoodFinancialMovement[]
+}
+
+model FoodFinancialMovement {
+  id              String   @id @default(uuid())
+  operationId     String   @unique
+  referenceType   String
+  referenceId     String
+  source          String
+  kind            String
+  paymentMethod   String
+  amountCents     Int
+  note            String?
+  occurredAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  cashSessionId   String?
+  saleType        String?
+  saleId          String?
+  originalMovementId String?
+  accountId       String?
+  account         FoodFinanceAccount? @relation(fields: [accountId], references: [id])
+  cashSession     FoodCashSession? @relation(fields: [cashSessionId], references: [id])
+
+  @@index([saleType, saleId])
+  @@index([originalMovementId])
+  @@index([accountId, occurredAt])
+  @@index([cashSessionId, createdAt])
+  @@index([referenceType, referenceId])
+  @@unique([referenceType, referenceId, kind])
+  @@index([occurredAt])
+}
+
+model FoodFinanceAccount {
+  id String @id @default(uuid())
+  name String
+  openingBalanceCents Int @default(0)
+  createdAt DateTime @default(now())
+  movements FoodFinancialMovement[]
+}
+
+model FoodFinanceTitle {
+  id String @id
+  kind String
+  description String
+  category String
+  amountCents Int
+  settledCents Int @default(0)
+  dueDate String
+  status String @default("open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FoodSaleCancellation {
+  id String @id
+  saleType String
+  saleId String
+  note String
+  createdAt DateTime @default(now())
+  @@unique([saleType, saleId])
+}
+
+model FoodFiscalDocument {
+  id                 String      @id @default(uuid())
+  sourceType         String
+  sourceId           String
+  productId          String
+  productName        String
+  quantity           Int
+  unitPriceCents     Int
+  totalCents         Int
+  model              Int         @default(65)
+  environment        String
+  status             String      @default("pending")
+  provider           String      @default("notaas")
+  providerInvoiceId  String?
+  accessKey          String?
+  protocol           String?
+  number             Int?
+  series             Int?
+  qrCode             String?
+  publicUrl          String?
+  pdfUrl             String?
+  xmlUrl             String?
+  errorCode          String?
+  errorMessage       String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  issuedAt           DateTime?
+  product            FoodProduct @relation(fields: [productId], references: [id])
+
+  @@unique([sourceType, sourceId])
+  @@index([status, createdAt])
+  @@index([productId, createdAt])
+}
+
+model FoodCardSchedule {
+  id String @id
+  dueDate String
+  updatedAt DateTime @updatedAt
+}

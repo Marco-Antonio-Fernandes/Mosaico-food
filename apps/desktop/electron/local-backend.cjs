@@ -13,7 +13,7 @@ let localBackendError = null;
 
 function backendRoot() {
   if (!app.isPackaged) {
-    return process.env.MOSAICO_LOCAL_BACKEND_ROOT || path.resolve(__dirname, "../../../../mosaico-back");
+    return process.env.MOSAICO_LOCAL_BACKEND_ROOT || path.resolve(__dirname, "../../../local-backend");
   }
   return path.join(process.resourcesPath, "backend");
 }
@@ -36,6 +36,8 @@ function backendEnv(root) {
   const candidates = [
     process.env.MOSAICO_BACKEND_ENV_FILE,
     path.join(root, ".env"),
+    path.join(home, "Documentos", "Mosaico Food", "local-backend", ".env"),
+    path.join(home, "Documents", "Mosaico Food", "local-backend", ".env"),
     path.join(home, "Documentos", "mosaico-back", ".env"),
     path.join(home, "Documents", "mosaico-back", ".env"),
   ].filter(Boolean);

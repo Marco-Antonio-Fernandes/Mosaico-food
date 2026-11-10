@@ -117,10 +117,11 @@ O fluxo é:
 1. clonar o repositório do aplicativo se ainda não existir;
 2. `git fetch` para comparar com `origin/main`;
 3. `git reset --hard origin/main`;
-4. `npm install` no aplicativo;
-5. copiar os modelos locais e o backend já instalado de dentro do aplicativo;
-6. `npm run build` (somente o desktop);
+4. `npm install` no aplicativo e em `local-backend/`;
+5. copiar os modelos locais de dentro do aplicativo instalado;
+6. `npm run build` (desktop) e `npm run build:back` (backend local);
 7. empacotamento com `electron-builder` e reinício automático.
 
-O backend não é clonado nem recompilado no cliente; ele continua o que veio no
-instalador.
+O backend local fica em `local-backend/` no repositório público do Mosaico
+Food. O backend do servidor/WhatsApp permanece no repositório privado
+`mosaico-back` e não é usado no computador da loja.
