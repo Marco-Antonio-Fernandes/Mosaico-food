@@ -1,6 +1,7 @@
 const { app } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const APP_REPO_URL = process.env.MOSAICO_REPO_URL || "https://github.com/Marco-Antonio-Fernandes/Mosaico-food.git";
@@ -63,6 +64,38 @@ function cloneUrl(url) {
   }
 }
 
+function toolPath() {
+  const home = os.homedir();
+  const candidates = [
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+    path.join(home, ".local", "bin"),
+    path.join(home, "bin"),
+    "/opt/node/bin",
+  ];
+  const nvmDirectory = path.join(home, ".nvm", "versions", "node");
+  try {
+    for (const version of fs.readdirSync(nvmDirectory)) {
+      candidates.push(path.join(nvmDirectory, version, "bin"));
+    }
+  } catch {
+    // Sem nvm instalado.
+  }
+  const existing = (process.env.PATH || "").split(":").filter(Boolean);
+  const directories = [...new Set([...candidates, ...existing])].filter((directory) => {
+    try { return fs.statSync(directory).isDirectory(); } catch { return false; }
+  });
+  return directories.join(":");
+}
+
+function commandEnvironment() {
+  return { ...process.env, PATH: toolPath() };
+}
+
 function npmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
@@ -75,7 +108,7 @@ function run(command, args, { cwd, label } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: process.env,
+      env: commandEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -105,9 +138,14 @@ async function verifyTools() {
     throw new Error("Git não encontrado neste computador. Instale o Git (ex.: sudo pacman -S git) e tente novamente.");
   }
   try {
+    await run("node", ["--version"], { label: "node" });
+  } catch {
+    throw new Error("Node.js não encontrado neste computador. Instale o Node.js (ex.: sudo pacman -S nodejs npm) e tente novamente.");
+  }
+  try {
     await run(npmCommand(), ["--version"], { label: "npm" });
   } catch {
-    throw new Error("Node.js/npm não encontrado neste computador. Instale o Node.js e tente novamente.");
+    throw new Error("npm não encontrado neste computador. Instale o npm (ex.: sudo pacman -S npm) e tente novamente.");
   }
 }
 
