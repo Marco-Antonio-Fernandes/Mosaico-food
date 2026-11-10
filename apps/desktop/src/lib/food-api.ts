@@ -1118,6 +1118,35 @@ export type FoodOrderItemInput = {
   isGift?: boolean;
 };
 
+export type FoodOrderSuggestionItem = {
+  productId: string;
+  name: string;
+  variantId: string | null;
+  variantName: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
+};
+
+export type FoodOrderSuggestion = {
+  id: string;
+  conversationId: string;
+  customerName: string;
+  remoteJid: string;
+  messageIds: string[];
+  answeredAt: string;
+  text: string;
+  items: FoodOrderSuggestionItem[];
+  fulfillment: "pickup" | "delivery" | null;
+  paymentMethod: string | null;
+  totalCents: number;
+};
+
+export async function getFoodOrderSuggestions() {
+  const data = await foodApi<{ suggestions: FoodOrderSuggestion[] }>("/api/v1/food/order-suggestions");
+  return Array.isArray(data.suggestions) ? data.suggestions : [];
+}
+
 export function createFoodOrder(input: { source?: string; customerName?: string | null; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; paymentMethod?: SalePaymentMethod | null; cashReceivedCents?: number | null; items: FoodOrderItemInput[] }) {
   return foodApi<{ order: FoodOrder }>("/api/v1/food/orders", {
     method: "POST",

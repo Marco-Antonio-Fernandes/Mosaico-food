@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
-import { recordHumanMessageContext, runFoodAutomation } from "../features/food-automation/food-automation";
+import { recordHumanMessageContext } from "../features/food-automation/food-automation";
 import { databaseUnavailable, jsonData, jsonError, rejectUnauthorized } from "../lib/http";
 import { env } from "../lib/env";
 import { PrismaService } from "../lib/prisma.service";
@@ -112,35 +112,7 @@ export class FoodRelayController {
     }
 
     if (existing) {
-      if (!existing.processedAt) {
-        const result = await runFoodAutomation(this.database, {
-          conversationId: conversation.id,
-          sessionId: input.sessionId,
-          sendText: async () => ({ providerMessageId: null }),
-        });
-        const processed = await this.database.foodMessage.findUnique({ where: { id: existing.id } });
-        if (!result.enabled || result.errors.length || !processed?.processedAt) {
-          await this.database.foodMessage.update({ where: { id: existing.id }, data: { needsHuman: true } });
-        }
-        return response.json(jsonData({ conversationId: conversation.id, message: existing, replies: result.replies, errors: result.errors }));
-      }
-      // Se o app caiu depois de gerar a resposta local e antes de conseguir
-      // enviá-la pelo WhatsApp, devolva somente a resposta desta mensagem.
-      const replies = existing.processedAt
-        ? await this.database.foodMessage.findMany({
-            where: {
-              conversationId: conversation.id,
-              direction: "outbound",
-              providerMessageId: { startsWith: `outbound:${existing.id}:` },
-            },
-            orderBy: { createdAt: "asc" },
-          })
-        : [];
-      return response.json(jsonData({
-        conversationId: conversation.id,
-        message: existing,
-        replies: replies.map(reply => ({ conversationId: conversation.id, remoteJid, body: reply.body || "" })).filter(reply => reply.body),
-      }));
+      return response.json(jsonData({ conversationId: conversation.id, message: existing, replies: [] }));
     }
 
     const message = await this.database.foodMessage.create({
@@ -160,29 +132,6 @@ export class FoodRelayController {
       },
     });
 
-    // O teste automático começa desativado. O operador precisa ativá-lo
-    // explicitamente para este contato pelo painel de atendimento.
-    await this.database.foodAutomationConfig.upsert({
-      where: { id: "default" },
-      create: { id: "default", enabled: true },
-      update: {},
-    });
-
-    const result = await runFoodAutomation(this.database, {
-      conversationId: conversation.id,
-      sessionId: input.sessionId,
-      sendText: async () => ({ providerMessageId: null }),
-    });
-    const processedMessage = await this.database.foodMessage.findUnique({ where: { id: message.id } });
-    if (!result.enabled || result.errors.length || !processedMessage?.processedAt) {
-      await this.database.foodMessage.update({ where: { id: message.id }, data: { needsHuman: true } });
-    }
-
-    return response.json(jsonData({
-      conversationId: conversation.id,
-      message: processedMessage ?? message,
-      replies: result.replies,
-      errors: result.errors,
-    }));
+    return response.json(jsonData({ conversationId: conversation.id, message, replies: [] }));
   }
 }

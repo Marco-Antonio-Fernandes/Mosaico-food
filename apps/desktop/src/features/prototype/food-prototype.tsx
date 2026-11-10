@@ -3,6 +3,7 @@ import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, Trash2, 
 import { Badge, Panel, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
+import { FoodOrderSuggestions } from "@/features/orders/food-order-suggestions";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { CreditPage } from "@/features/credit/credit-page";
 import { FinancePage } from "@/features/finance/finance-page";
@@ -14,7 +15,7 @@ import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker
 export const foodModules = {
   pos: ["PDV", "Monte a venda, confira os itens e escolha o pagamento."],
   orders: ["Pedidos", "Do recebimento à entrega, acompanhe cada etapa da operação."],
-  service: ["Atendimento", "Conversas, carrinho e acompanhamento do WhatsApp."],
+  service: ["WhatsApp", "Atendimento manual pelo WhatsApp Web."],
   credit: ["Crediário", "Consulte saldos e registre recebimentos."],
   products: ["Produtos", "Consulte o catálogo. Cadastros e alterações são feitos pelo assistente."],
   inventory: ["Estoque", "Consulte quantidades. Entradas, preparo e perdas são feitos pelo assistente."],
@@ -52,7 +53,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "pos" && <header className="proto-heading proto-heading-compact"><h1>{foodModules[module][0]}</h1><p>{foodModules[module][1]}</p></header>}
     {module === "pos" && <Catalog pos />}
     {module === "products" && <Catalog />}
-    {module === "orders" && <Orders />}
+    {module === "orders" && <div className="proto-stack"><FoodOrderSuggestions /><Orders /></div>}
     {module === "service" && <FoodServicePanel />}
     {module === "credit" && <CreditPage />}
     {module === "inventory" && <Inventory />}

@@ -63,6 +63,11 @@ interface MosaicoDesktopBridge {
   savePrinterSettings: (input: { enabled: boolean; autoPrint: boolean; printerName: string | null }) => Promise<DesktopPrinterSettings>;
   testPrinter: () => Promise<{ jobId: string | null; printerName: string }>;
   printFoodOrder: (order: unknown) => Promise<{ jobId: string | null; printerName: string }>;
+  showWhatsApp: (accountId: string) => Promise<{ ready: boolean }>;
+  setWhatsAppBounds: (bounds: { left: number; top: number; width: number; height: number; viewportWidth?: number; viewportHeight?: number }) => void;
+  hideWhatsApp: () => Promise<void>;
+  reloadWhatsApp: () => Promise<void>;
+  onWhatsAppStatus?: (listener: (payload: { state: string; message: string }) => void) => (() => void) | void;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<DesktopUpdateStatus>;
   installUpdate: () => Promise<{ restarting: boolean }>;

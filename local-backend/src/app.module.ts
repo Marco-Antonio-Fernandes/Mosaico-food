@@ -5,11 +5,11 @@ import { Module } from "@nestjs/common";
 
 import { CreditEntriesController } from "./controllers/credit-entries.controller";
 import { CustomersController } from "./controllers/customers.controller";
-import { FoodAutomationController } from "./controllers/food-automation.controller";
 import { FoodCustomersController } from "./controllers/food-customers.controller";
 import { FoodConversationsController } from "./controllers/food-conversations.controller";
 import { FoodOrdersController } from "./controllers/food-orders.controller";
 import { FoodOrderSchedulesController } from "./controllers/food-order-schedules.controller";
+import { FoodOrderSuggestionsController } from "./controllers/food-order-suggestions.controller";
 import { FoodProductsController } from "./controllers/food-products.controller";
 import { FoodSpeechController } from "./controllers/food-speech.controller";
 import { FoodAssistantController } from "./controllers/food-assistant.controller";
@@ -17,7 +17,6 @@ import { FoodSalesController } from "./controllers/food-sales.controller";
 import { FoodStockNotificationsController } from "./controllers/food-stock-notifications.controller";
 import { FoodBackupController } from "./controllers/food-backup.controller";
 import { FoodCashController } from "./controllers/food-cash.controller";
-import { FoodAutomationWorker } from "./lib/food-automation-worker";
 import {
   HealthController,
   SaudeHealthController,
@@ -30,7 +29,6 @@ import { WaAkgClient } from "./lib/wa-akg";
 import { env } from "./lib/env";
 
 const foodBusinessControllers = [
-  FoodAutomationController,
   FoodCustomersController,
   FoodConversationsController,
   FoodProductsController,
@@ -39,6 +37,7 @@ const foodBusinessControllers = [
   FoodSalesController,
   FoodStockNotificationsController,
   FoodOrdersController,
+  FoodOrderSuggestionsController,
   FoodOrderSchedulesController,
   FoodBackupController,
   FoodCashController,
@@ -60,6 +59,6 @@ const foodBusinessControllers = [
     // mas o desktop precisa consultar o status e emitir notas por este backend.
     FoodFiscalController,
   ],
-  providers: [PrismaService, WaAkgClient, FoodAutomationWorker],
+  providers: [PrismaService, WaAkgClient],
 })
 export class AppModule {}

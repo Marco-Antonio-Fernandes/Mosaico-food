@@ -1366,3 +1366,126 @@ async function runFoodAutomationInternal(
   });
   return result;
 }
+
+export type OrderSuggestionDraft = {
+  items: Array<{
+    productId: string;
+    name: string;
+    variantId: string | null;
+    variantName: string | null;
+    quantity: number;
+    unitPriceCents: number;
+    totalCents: number;
+  }>;
+  fulfillment: "pickup" | "delivery" | null;
+  paymentMethod: string | null;
+  totalCents: number;
+};
+
+/**
+ * Interpreta um texto de conversa e devolve apenas uma sugestão de pedido.
+ * Não envia mensagens, não altera o estado do diálogo e não cria pedidos.
+ */
+export async function suggestOrderFromText(database: PrismaClient, text: string): Promise<OrderSuggestionDraft> {
+  const normalizedText = normalizeText(text);
+  const hasQuantity = /\b\d+\b/.test(normalizedText);
+  const hasOrderIntent = /\b(quero|queria|vou querer|me ve|me manda|manda|mandar|pedir|pedido|separa|separe|traz|trazer|vou de|coloca|quero dois|quero duas|quero um|quero uma)\b/.test(normalizedText);
+  if (!hasQuantity) {
+    return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0 };
+  }
+  const catalog = await database.foodProduct.findMany({ where: { active: true } });
+  const products = catalog.filter(product => product.productionMode !== "ingredient").map((product) => ({
+    id: product.id,
+    name: product.name,
+    aliases: parseAliases(product.aliasesJson),
+    salePriceCents: product.salePriceCents,
+    stockQuantity: product.stockQuantity,
+    preparationCapacity: preparationCapacity(product, catalog),
+    allowOnDemand: product.allowOnDemand,
+    fryToOrder: product.fryToOrder,
+    productionMode: product.productionMode,
+    category: product.category,
+    customizationJson: product.customizationJson,
+    variants: parseVariants(product.variantsJson),
+    active: product.active,
+  } satisfies Product));
+
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches: Array<{ product: Product; start: number; end: number; quantity: number; explicit: boolean }> = [];
+  for (const product of products) {
+    const firstWord = normalizeText(product.name).split(" ")[0];
+    const aliases = [...new Set([
+      normalizeText(product.name),
+      ...product.aliases.map(normalizeText),
+      ...(firstWord && firstWord.length >= 4 ? [firstWord] : []),
+    ])].filter(Boolean).sort((left, right) => right.length - left.length);
+    for (const alias of aliases) {
+      const regex = new RegExp(`(^|[^a-z0-9])(${escape(alias)})(?=$|[^a-z0-9])`, "g");
+      let result: RegExpExecArray | null;
+      while ((result = regex.exec(normalizedText))) {
+        const start = result.index + result[1].length;
+        const end = start + alias.length;
+        const before = normalizedText.slice(0, start);
+        const quantityMatch = before.match(/(\d+)\s*(?:x|un|unidades?|und)?\s*$/);
+        matches.push({
+          product,
+          start,
+          end,
+          quantity: quantityMatch ? Math.max(1, Number(quantityMatch[1])) : 1,
+          explicit: Boolean(quantityMatch),
+        });
+      }
+    }
+  }
+  matches.sort((left, right) => left.start - right.start || (right.end - right.start) - (left.end - left.start));
+  const selected: typeof matches = [];
+  let lastEnd = -1;
+  for (const match of matches) {
+    if (match.start < lastEnd) continue;
+    selected.push(match);
+    lastEnd = match.end;
+  }
+  if (!hasOrderIntent && !selected.some(match => match.explicit)) {
+    return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0 };
+  }
+
+  const grouped = new Map<string, { productId: string; name: string; variantId: string | null; variantName: string | null; quantity: number; unitPriceCents: number; totalCents: number }>();
+  for (const match of selected) {
+    let unitPriceCents = match.product.salePriceCents;
+    let variantId: string | null = null;
+    let variantName: string | null = null;
+    const near = normalizedText.slice(match.start, Math.min(normalizedText.length, match.end + 40));
+    const variant = match.product.variants.length === 1
+      ? match.product.variants[0]
+      : match.product.variants.find(candidate => [candidate.name, ...candidate.aliases].some(alias => near.includes(normalizeText(alias))));
+    if (variant) {
+      variantId = variant.id;
+      variantName = variant.name;
+      unitPriceCents += variant.priceDeltaCents;
+    }
+    const key = `${match.product.id}:${variantId ?? ""}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.quantity += match.quantity;
+      existing.totalCents = existing.quantity * existing.unitPriceCents;
+    } else {
+      grouped.set(key, {
+        productId: match.product.id,
+        name: match.product.name,
+        variantId,
+        variantName,
+        quantity: match.quantity,
+        unitPriceCents,
+        totalCents: unitPriceCents * match.quantity,
+      });
+    }
+  }
+  const items = [...grouped.values()];
+  const payment = paymentMethodFromText(text);
+  return {
+    items,
+    fulfillment: requestsDelivery(text) ? "delivery" : requestsPickup(text) ? "pickup" : null,
+    paymentMethod: payment === "card" ? null : payment,
+    totalCents: items.reduce((sum, item) => sum + item.totalCents, 0),
+  };
+}
