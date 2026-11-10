@@ -18,6 +18,7 @@ let mainWindow = null;
 let whatsappBrowserView = null;
 let whatsappBrowserAccountId = null;
 let whatsappBrowserBounds = null;
+let whatsappBrowserVisible = false;
 
 const WHATSAPP_URL = "https://web.whatsapp.com/";
 const WHATSAPP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -33,6 +34,7 @@ function notifyWhatsappStatus(payload) {
 }
 
 function removeWhatsappBrowserView() {
+  whatsappBrowserVisible = false;
   if (!mainWindow || mainWindow.isDestroyed() || !whatsappBrowserView) return;
   if (mainWindow.getBrowserViews().includes(whatsappBrowserView)) {
     mainWindow.removeBrowserView(whatsappBrowserView);
@@ -40,6 +42,7 @@ function removeWhatsappBrowserView() {
 }
 
 function destroyWhatsappBrowserView() {
+  whatsappBrowserVisible = false;
   removeWhatsappBrowserView();
   if (whatsappBrowserView && !whatsappBrowserView.webContents.isDestroyed()) {
     whatsappBrowserView.webContents.destroy();
@@ -109,6 +112,7 @@ function setWhatsappBrowserBounds(input) {
   const [left, top, width, height] = values;
   whatsappBrowserBounds = { left, top, width, height };
   if (!mainWindow || mainWindow.isDestroyed() || !whatsappBrowserView) return;
+  if (!whatsappBrowserVisible) return;
   if (width < 2 || height < 2) {
     removeWhatsappBrowserView();
     return;
@@ -246,11 +250,12 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
   ipcMain.handle("mosaico:backend-diagnostic", () => getBackendDiagnostic());
   ipcMain.handle("mosaico:whatsapp-show", async (_event, accountId) => {
     await createWhatsappBrowserView(accountId);
+    whatsappBrowserVisible = true;
     if (whatsappBrowserBounds) setWhatsappBrowserBounds(whatsappBrowserBounds);
     return { ready: true };
   });
   ipcMain.on("mosaico:whatsapp-bounds", (_event, bounds) => setWhatsappBrowserBounds(bounds));
-  ipcMain.handle("mosaico:whatsapp-hide", () => removeWhatsappBrowserView());
+  ipcMain.handle("mosaico:whatsapp-hide", () => destroyWhatsappBrowserView());
   ipcMain.handle("mosaico:whatsapp-reload", () => whatsappBrowserView?.webContents.reload());
 
   ipcMain.handle("mosaico:create-new-database", () => createNewLocalDatabase());
