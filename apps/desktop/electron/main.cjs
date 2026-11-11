@@ -74,10 +74,14 @@ async function createWhatsappBrowserView(accountId) {
   whatsappBrowserAccountId = normalizedAccountId;
   view.setBackgroundColor("#f0f2f5");
   view.webContents.setUserAgent(WHATSAPP_USER_AGENT);
+  // Mantém o WhatsApp vivo entre as telas. O processo continua em segundo
+  // plano para não recarregar a página a cada navegação em PCs mais fracos.
+  view.webContents.setBackgroundThrottling(true);
   view.webContents.session.setPermissionCheckHandler((_webContents, permission) => permission === "media");
   view.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "media");
   });
+  view.webContents.session.setSpellCheckerEnabled(false);
   view.webContents.on("did-start-loading", () => {
     notifyWhatsappStatus({ state: "loading", message: "Carregando WhatsApp Web…" });
   });
@@ -255,7 +259,7 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
     return { ready: true };
   });
   ipcMain.on("mosaico:whatsapp-bounds", (_event, bounds) => setWhatsappBrowserBounds(bounds));
-  ipcMain.handle("mosaico:whatsapp-hide", () => destroyWhatsappBrowserView());
+  ipcMain.handle("mosaico:whatsapp-hide", () => removeWhatsappBrowserView());
   ipcMain.handle("mosaico:whatsapp-reload", () => whatsappBrowserView?.webContents.reload());
 
   ipcMain.handle("mosaico:create-new-database", () => createNewLocalDatabase());

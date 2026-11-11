@@ -104,9 +104,33 @@ function npxCommand() {
   return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
+function findExecutable(command) {
+  if (path.isAbsolute(command) || command.includes(path.sep)) return command;
+  const names = command === "node" ? ["node", "nodejs"] : [command];
+  const extensions = process.platform === "win32" ? [".cmd", ".exe", ".bat", ""] : [""];
+  for (const directory of toolPath().split(path.delimiter)) {
+    if (!directory) continue;
+    for (const name of names) {
+      for (const extension of extensions) {
+        const candidate = path.join(directory, `${name}${extension}`);
+        try {
+          if (fs.statSync(candidate).isFile()) {
+            fs.accessSync(candidate, fs.constants.X_OK);
+            return candidate;
+          }
+        } catch {
+          // Continua procurando.
+        }
+      }
+    }
+  }
+  return command;
+}
+
 function run(command, args, { cwd, label } = {}) {
+  const executable = findExecutable(command);
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(executable, args, {
       cwd,
       env: commandEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
@@ -140,12 +164,12 @@ async function verifyTools() {
   try {
     await run("node", ["--version"], { label: "node" });
   } catch {
-    throw new Error("Node.js não encontrado neste computador. Instale o Node.js (ex.: sudo pacman -S nodejs npm) e tente novamente.");
+    throw new Error(`Node.js não encontrado neste computador. Instale o Node.js (ex.: sudo pacman -S nodejs npm) e tente novamente. Pastas verificadas: ${toolPath()}`);
   }
   try {
     await run(npmCommand(), ["--version"], { label: "npm" });
   } catch {
-    throw new Error("npm não encontrado neste computador. Instale o npm (ex.: sudo pacman -S npm) e tente novamente.");
+    throw new Error(`npm não encontrado neste computador. Instale o npm (ex.: sudo pacman -S npm) e tente novamente. Pastas verificadas: ${toolPath()}`);
   }
 }
 
