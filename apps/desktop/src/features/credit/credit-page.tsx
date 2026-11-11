@@ -48,8 +48,15 @@ export function CreditPage() {
     .filter(customer => (customer.creditAccount?.balanceCents ?? 0) > 0)
     .sort((left, right) => left.name.localeCompare(right.name, "pt-BR", { sensitivity: "base" })), [accounts]);
   const delinquentAccounts = useMemo(() => openAccounts
-    .filter(customer => customer.creditStatus === "late" && (customer.lateDays ?? 0) > 0)
+    .filter(customer => customer.creditStatus !== "on_time" && (customer.lateDays ?? 0) > 0)
     .sort((left, right) => (right.lateDays ?? 0) - (left.lateDays ?? 0) || left.name.localeCompare(right.name, "pt-BR", { sensitivity: "base" })), [openAccounts]);
+  const statusText = (customer: CreditCustomerRecord) => {
+    const status = customer.creditStatus ?? "on_time";
+    const days = customer.lateDays ?? 0;
+    if (status === "late") return `${days} dias em atraso`;
+    if (status === "warning") return days === 1 ? "1 dia em atraso" : `${days} dias em atraso`;
+    return "Em dia";
+  };
   const totalOpen = openAccounts.reduce((sum, customer) => sum + (customer.creditAccount?.balanceCents ?? 0), 0);
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
   const matchesSearch = (customer: CreditCustomerRecord) => !normalizedSearch || `${customer.name} ${customer.phone ?? ""}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch);
@@ -102,7 +109,7 @@ export function CreditPage() {
 
     <div className="credit-toolbar">
       <label className="credit-search"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar cliente</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar por nome ou telefone" /></label>
-      <span className="credit-filter-hint">Lista principal em ordem alfabética · inadimplência acima de 30 dias</span>
+      <span className="credit-filter-hint">Amarelo: atraso recente · Vermelho: 7 dias ou mais em atraso</span>
     </div>
 
     <div className="credit-workspace">
@@ -113,9 +120,10 @@ export function CreditPage() {
             : filteredAccounts.length ? filteredAccounts.map(customer => {
               const account = customer.creditAccount!;
               const active = selected === customer.id;
-              return <button type="button" key={customer.id} className={`credit-account-row${active ? " is-selected" : ""}`} aria-pressed={active} disabled={saving} onClick={() => chooseCustomer(customer)}>
-                <span className="credit-avatar" aria-hidden="true">{customer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span>
-                <span className="credit-account-name"><strong>{customer.name}</strong><small>{customer.phone || "Telefone não informado"}</small></span>
+              const status = customer.creditStatus ?? "on_time";
+              return <button type="button" key={customer.id} className={`credit-account-row is-${status}${active ? " is-selected" : ""}`} aria-pressed={active} disabled={saving} onClick={() => chooseCustomer(customer)}>
+                <span className={`credit-avatar${status === "late" ? " credit-avatar-danger" : ""}`} aria-hidden="true">{customer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span>
+                <span className="credit-account-name"><strong>{customer.name}</strong><small>{customer.phone || "Telefone não informado"} · <b className={`credit-status-label is-${status}`}>{statusText(customer)}</b></small></span>
                 <span className="credit-account-balance"><strong>{money(account.balanceCents)}</strong><small>Saldo pendente</small></span>
               </button>;
             }) : <div className="credit-state"><span className="credit-state-icon"><Check size={20} /></span><strong>{search ? "Nenhum cliente encontrado" : "Tudo em dia"}</strong><span>{search ? "Tente outro nome ou telefone." : "Não há saldos pendentes para receber."}</span></div>}
@@ -123,14 +131,14 @@ export function CreditPage() {
       </section>
 
       <section className="credit-card credit-delinquent-panel" aria-labelledby="credit-delinquent-title">
-        <header className="credit-card-header"><div><h2 id="credit-delinquent-title">Inadimplência</h2><p>Clientes com saldo pendente há mais de um mês.</p></div><span className="credit-count credit-count-danger">{loading ? "…" : delinquentAccounts.length}</span></header>
+        <header className="credit-card-header"><div><h2 id="credit-delinquent-title">Atrasos e inadimplência</h2><p>Clientes com saldo em aberto e dias de atraso.</p></div><span className="credit-count credit-count-danger">{loading ? "…" : delinquentAccounts.length}</span></header>
         <div className="credit-delinquent-list" aria-live="polite">
           {loading ? <div className="credit-state"><span className="credit-loader" />Analisando atrasos…</div>
-            : filteredDelinquentAccounts.length ? filteredDelinquentAccounts.map(customer => <button type="button" key={customer.id} className={`credit-delinquent-row${selected === customer.id ? " is-selected" : ""}`} aria-pressed={selected === customer.id} disabled={saving} onClick={() => chooseCustomer(customer)}>
-              <span className="credit-avatar credit-avatar-danger" aria-hidden="true">{customer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span>
-              <span className="credit-account-name"><strong>{customer.name}</strong><small>{customer.phone || "Telefone não informado"}</small><small className="credit-late-label">{customer.lateDays ?? 0} dias em atraso{customer.lastPaymentAt ? ` · último pagamento ${formatShortDate(customer.lastPaymentAt)}` : " · sem pagamento registrado"}</small></span>
+            : filteredDelinquentAccounts.length ? filteredDelinquentAccounts.map(customer => { const status = customer.creditStatus ?? "on_time"; return <button type="button" key={customer.id} className={`credit-delinquent-row is-${status}${selected === customer.id ? " is-selected" : ""}`} aria-pressed={selected === customer.id} disabled={saving} onClick={() => chooseCustomer(customer)}>
+              <span className={`credit-avatar${status === "late" ? " credit-avatar-danger" : " credit-avatar-warning"}`} aria-hidden="true">{customer.name.trim().slice(0, 1).toLocaleUpperCase("pt-BR")}</span>
+              <span className="credit-account-name"><strong>{customer.name}</strong><small>{customer.phone || "Telefone não informado"}</small><small className={`credit-late-label is-${status}`}>{statusText(customer)}{customer.lastPaymentAt ? ` · último pagamento ${formatShortDate(customer.lastPaymentAt)}` : " · sem pagamento registrado"}</small></span>
               <span className="credit-account-balance"><strong>{money(customer.creditAccount?.balanceCents ?? 0)}</strong><small>Em aberto</small></span>
-            </button>) : <div className="credit-state"><span className="credit-state-icon credit-state-icon-good"><Check size={20} /></span><strong>{search ? "Nenhum inadimplente encontrado" : "Nenhuma inadimplência"}</strong><span>{search ? "Tente outro nome ou telefone." : "Não há clientes com mais de 30 dias de atraso."}</span></div>}
+            </button>; }) : <div className="credit-state"><span className="credit-state-icon credit-state-icon-good"><Check size={20} /></span><strong>{search ? "Nenhum atraso encontrado" : "Nenhum atraso"}</strong><span>{search ? "Tente outro nome ou telefone." : "Não há clientes com atraso recente ou inadimplência."}</span></div>}
         </div>
       </section>
     </div>

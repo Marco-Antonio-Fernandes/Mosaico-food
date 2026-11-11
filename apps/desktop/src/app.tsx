@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Boxes, ChefHat, ClipboardList, FileText, Headset, LayoutDashboard, Package, PackagePlus, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
+import { Bell, Boxes, ClipboardList, FileText, Headset, LayoutDashboard, Package, PackagePlus, Settings, UsersRound, WalletCards, CreditCard } from "lucide-react";
 import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
 import { AccountSetupModal } from "@/components/shared/account-setup-modal";
 import { loadMosaicoAccount, normalizeCnpj, persistMosaicoAccount, type MosaicoAccount } from "@/components/shared/account-context";
@@ -210,7 +210,7 @@ export function App() {
     setUnreadNotifications(0);
   };
 
-  const openAssistantAction = (action: "order" | "sale" | "stock" | "prepare") => {
+  const openAssistantAction = (action: "order" | "sale" | "stock") => {
     window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action } }));
   };
 
@@ -246,7 +246,6 @@ export function App() {
       <button type="button" className="mosaic-top-action is-blue" onClick={() => openAssistantAction("order")} title="Novo pedido"><ClipboardList size={15} /><span>Novo pedido</span></button>
       <button type="button" className="mosaic-top-action is-green" onClick={() => openAssistantAction("sale")} title="Registrar venda"><WalletCards size={15} /><span>Registrar venda</span></button>
       <button type="button" className="mosaic-top-action is-amber" onClick={() => openAssistantAction("stock")} title="Adicionar ao estoque"><PackagePlus size={15} /><span>Adicionar ao estoque</span></button>
-      <button type="button" className="mosaic-top-action is-violet" onClick={() => openAssistantAction("prepare")} title="Preparar"><ChefHat size={15} /><span>Preparar</span></button>
     </div><div className="mosaic-top-icons"><button aria-pressed={dashboardOpen} aria-label="Abrir dashboard" title="Dashboard" className={`flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${dashboardOpen ? "border-brand-500/50 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => setDashboardOpen(current => !current)} type="button"><LayoutDashboard aria-hidden="true" size={17} /></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-red-300/50 bg-red-50 text-red-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={17} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-4 animate-pulse items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></div></div>} connectionStatus={<ConnectionStatus status={connectionStatus} compact />}>
     <FoodRelayAgent />
     <FoodPrinterAgent />

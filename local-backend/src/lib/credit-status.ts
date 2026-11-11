@@ -1,4 +1,5 @@
-const LATE_AFTER_DAYS = 30;
+const WARNING_AFTER_DAYS = 1;
+const LATE_AFTER_DAYS = 7;
 
 type CreditHistoryEntry = {
   type: string;
@@ -9,13 +10,7 @@ type CreditHistoryEntry = {
 export function creditStatusOf(entries: CreditHistoryEntry[], now = new Date()) {
   const sorted = [...entries].sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime());
   const charges: { remainingCents: number; occurredAt: Date }[] = [];
-  let lateDays = 0;
   let lastPaymentAt: Date | null = null;
-
-  const markDelay = (chargeDate: Date, paymentDate: Date) => {
-    const days = Math.floor((paymentDate.getTime() - chargeDate.getTime()) / 86_400_000);
-    if (days > LATE_AFTER_DAYS) lateDays = Math.max(lateDays, days);
-  };
 
   for (const entry of sorted) {
     if (entry.type === "charge") {
@@ -30,18 +25,18 @@ export function creditStatusOf(entries: CreditHistoryEntry[], now = new Date()) 
       const applied = Math.min(remainingPayment, charge.remainingCents);
       charge.remainingCents -= applied;
       remainingPayment -= applied;
-      markDelay(charge.occurredAt, entry.occurredAt);
       if (charge.remainingCents === 0) charges.shift();
     }
   }
 
+  let lateDays = 0;
   for (const charge of charges) {
-    const days = Math.floor((now.getTime() - charge.occurredAt.getTime()) / 86_400_000);
-    if (days > LATE_AFTER_DAYS) lateDays = Math.max(lateDays, days);
+    const days = Math.max(0, Math.floor((now.getTime() - charge.occurredAt.getTime()) / 86_400_000));
+    lateDays = Math.max(lateDays, days);
   }
 
   return {
-    creditStatus: lateDays > 0 ? "late" as const : "on_time" as const,
+    creditStatus: lateDays >= LATE_AFTER_DAYS ? "late" as const : lateDays >= WARNING_AFTER_DAYS ? "warning" as const : "on_time" as const,
     lateDays,
     lastPaymentAt: lastPaymentAt?.toISOString() ?? null,
   };

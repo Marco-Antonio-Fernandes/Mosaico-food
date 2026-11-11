@@ -1197,7 +1197,7 @@ export type CreditCustomerRecord = {
   name: string;
   phone: string | null;
   creditAccount: { id: string; balanceCents: number; creditLimitCents: number | null } | null;
-  creditStatus?: "on_time" | "late";
+  creditStatus?: "on_time" | "warning" | "late";
   lateDays?: number;
   lastPaymentAt?: string | null;
 };
