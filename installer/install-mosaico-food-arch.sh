@@ -101,7 +101,7 @@ show_help() {
     "  $0 /caminho/Mosaico.AppImage instala um AppImage ao lado do instalador" \
     "" \
     "O instalador instala as bibliotecas do sistema com pacman e o aplicativo" \
-    "com backend, banco local, interpretador e módulo/modelo de escuta de áudio." \
+    "com backend, banco local e módulo/modelo de escuta de áudio." \
     "A pasta de instalação pode ser alterada com MOSAICO_INSTALL_DIR."
 }
 
@@ -204,6 +204,17 @@ if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
   say "Aviso: não foi possível atualizar as dependências automaticamente."
   say "Se o aplicativo não abrir, rode 'sudo pacman -Syu' e execute o instalador novamente."
 fi
+
+# O botão Atualizar do aplicativo usa Node/npm do sistema. Garanta que os dois
+# existam mesmo quando o pacman já estava atualizado ou falhou parcialmente.
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 || ! node --version >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
+  say "Node.js/npm ausentes; tentando instalar novamente..."
+  run_pacman -S --needed --noconfirm nodejs npm || true
+fi
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 || ! node --version >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
+  fail "Node.js e npm são obrigatórios para o botão Atualizar. Rode 'sudo pacman -S nodejs npm' e execute o instalador novamente."
+fi
+say "Node.js $(node --version) e npm $(npm --version) prontos para o botão Atualizar."
 
 say "Extraindo o aplicativo para $INSTALL_DIR..."
 install -d -m 0755 "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
