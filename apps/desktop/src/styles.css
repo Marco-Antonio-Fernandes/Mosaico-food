@@ -507,7 +507,9 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .inventory-row.is-clickable:hover { border-color: var(--proto-accent); background: var(--proto-surface); }
 .product-row-actions { display: flex; align-items: center; justify-content: flex-end; align-self: center; gap: 6px; }
 .product-action-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--proto-line); border-radius: 10px; background: var(--proto-control); color: var(--proto-muted); line-height: 1; vertical-align: middle; cursor: pointer; transition: border-color .15s ease, color .15s ease, background .15s ease; }
-.product-action-button svg { display: block; width: 15px; height: 15px; }
+.product-action-button svg { display: block; width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; }
+.product-action-button.with-label { width: auto; gap: 5px; padding: 0 9px; font-size: .68rem; font-weight: 700; }
+.product-action-button.with-label span { line-height: 1; }
 .product-action-button:hover { border-color: var(--proto-accent); color: var(--proto-ink); background: var(--proto-control-hover); }
 .product-action-button.is-danger { color: #e58a96; border-color: #e58a9655; background: transparent; }
 .product-action-button.is-danger:hover { border-color: #e58a96; color: #ffd9dc; background: #e58a9618; }

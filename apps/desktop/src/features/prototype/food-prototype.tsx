@@ -301,7 +301,7 @@ function Inventory() {
           {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
         </dl>
         <div className="product-row-actions">
-          <button type="button" className="product-action-button is-danger" title="Apagar item" aria-label={`Apagar ${product.name}`} onClick={event => { event.stopPropagation(); void removeItem(product); }}><Trash2 size={14} /></button>
+          <button type="button" className="product-action-button is-danger with-label" title="Apagar item" aria-label={`Apagar ${product.name}`} onClick={event => { event.stopPropagation(); void removeItem(product); }}><Trash2 size={14} /><span>Apagar</span></button>
         </div>
       </article>)}
     </div>}
@@ -367,7 +367,7 @@ function ProductTile({ product, onEdit, onDelete }: { product: FoodProduct; onEd
       {isIngredient && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{ingredientPackage(product)}</dd></div>}
     </dl>
     <div className="product-row-actions">
-      <button type="button" className="product-action-button is-danger" title="Apagar produto" aria-label={`Apagar ${product.productName || product.name}`} onClick={event => { event.stopPropagation(); onDelete(product); }}><Trash2 size={14} /></button>
+      <button type="button" className="product-action-button is-danger with-label" title="Apagar produto" aria-label={`Apagar ${product.productName || product.name}`} onClick={event => { event.stopPropagation(); onDelete(product); }}><Trash2 size={14} /><span>Apagar</span></button>
     </div>
   </article>;
 }
