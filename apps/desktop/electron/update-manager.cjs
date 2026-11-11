@@ -104,10 +104,11 @@ function npxCommand() {
   return process.platform === "win32" ? "npx.cmd" : "npx";
 }
 
-function findExecutable(command) {
-  if (path.isAbsolute(command) || command.includes(path.sep)) return command;
+function executableCandidates(command) {
+  if (path.isAbsolute(command) || command.includes(path.sep)) return [command];
   const names = command === "node" ? ["node", "nodejs"] : [command];
   const extensions = process.platform === "win32" ? [".cmd", ".exe", ".bat", ""] : [""];
+  const candidates = [];
   for (const directory of toolPath().split(path.delimiter)) {
     if (!directory) continue;
     for (const name of names) {
@@ -116,7 +117,7 @@ function findExecutable(command) {
         try {
           if (fs.statSync(candidate).isFile()) {
             fs.accessSync(candidate, fs.constants.X_OK);
-            return candidate;
+            candidates.push(candidate);
           }
         } catch {
           // Continua procurando.
@@ -124,30 +125,61 @@ function findExecutable(command) {
       }
     }
   }
-  return command;
+  candidates.push(command);
+  return [...new Set(candidates)];
+}
+
+function findExecutable(command) {
+  return executableCandidates(command)[0] ?? command;
 }
 
 function run(command, args, { cwd, label } = {}) {
-  const executable = findExecutable(command);
+  const candidates = executableCandidates(command);
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, {
-      cwd,
-      env: commandEnvironment(),
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let output = "";
-    const collect = (chunk) => {
-      output += chunk.toString();
-      if (output.length > 12_000) output = output.slice(-12_000);
+    let candidateIndex = 0;
+    let lastError = "";
+
+    const attempt = () => {
+      const executable = candidates[candidateIndex];
+      if (!executable) {
+        reject(new Error(`${label || command}: ${lastError || "nenhum executável válido encontrado"}`));
+        return;
+      }
+      let settled = false;
+      const child = spawn(executable, args, {
+        cwd,
+        env: commandEnvironment(),
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+      let output = "";
+      const collect = (chunk) => {
+        output += chunk.toString();
+        if (output.length > 12_000) output = output.slice(-12_000);
+      };
+      child.stdout.on("data", collect);
+      child.stderr.on("data", collect);
+      child.once("error", (error) => {
+        if (settled) return;
+        settled = true;
+        lastError = `${executable}: ${error.message}`;
+        candidateIndex += 1;
+        attempt();
+      });
+      child.once("close", (code) => {
+        if (settled) return;
+        settled = true;
+        if (code === 0) {
+          resolve(output);
+          return;
+        }
+        lastError = `${executable} falhou (código ${code}).\n${output.slice(-800)}`;
+        candidateIndex += 1;
+        attempt();
+      });
     };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    child.once("error", (error) => reject(new Error(`${label || command}: ${error.message}`)));
-    child.once("close", (code) => {
-      if (code === 0) resolve(output);
-      else reject(new Error(`${label || command} falhou (código ${code}).\n${output.slice(-800)}`));
-    });
+
+    attempt();
   });
 }
 

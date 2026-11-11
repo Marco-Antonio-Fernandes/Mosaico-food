@@ -183,7 +183,6 @@ function Catalog({ pos = false }: { pos?: boolean }) {
   return <div className="proto-stack">
     {!pos && <div className="proto-toolbar products-quick-actions">
       <button type="button" className="proto-subtle" onClick={() => openProductAction("loss")}><Trash2 size={15} />Dar baixa como perda</button>
-      <button type="button" className="proto-subtle" onClick={() => openProductAction("registerIngredient")}><PackagePlus size={15} />Cadastrar insumo</button>
       <small>Clique em um produto para editar.</small>
     </div>}
     <Tabs items={categories} value={category} onChange={setCategory} />

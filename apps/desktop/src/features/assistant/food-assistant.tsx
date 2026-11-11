@@ -952,7 +952,7 @@ export function FoodAssistant() {
         return;
       }
       setEditProductId(null);
-      const actions: GuidedAction[] = ["order", "sale", "stock", "loss", "register", "registerIngredient"];
+      const actions: GuidedAction[] = ["order", "sale", "stock", "loss", "register"];
       setRequestedAction(actions.includes(detail?.action as GuidedAction) ? detail!.action as GuidedAction : null);
     };
     window.addEventListener("food-open-assistant", show);
