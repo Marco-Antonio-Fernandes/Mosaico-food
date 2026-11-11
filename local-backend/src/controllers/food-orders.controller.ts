@@ -150,26 +150,21 @@ export class FoodOrdersController {
           const expectedUnitPrice = item.isGift ? 0 : product.salePriceCents + item.adjustmentCents;
           if (expectedUnitPrice < 0 || expectedUnitPrice !== item.unitPriceCents) throw new Error("ORDER_PRICE_CHANGED");
           if ((item.adjustmentCents !== 0 || item.isGift) && !item.adjustmentNote?.trim()) throw new Error("ORDER_ADJUSTMENT_NOTE_REQUIRED");
-          const readyQuantity = Math.min(product.stockQuantity, item.quantity);
-          const prepareQuantity = item.quantity - readyQuantity;
-          let preparationConsumption: Awaited<ReturnType<typeof consumePreparation>> = { unpreparedQuantity: 0, ingredientDeltas: [], recipeProgressBeforeJson: null, recipeProgressAfterJson: null };
-          if (readyQuantity > 0) {
-            const result = await transaction.foodProduct.updateMany({ where: { id: product.id, active: true, stockQuantity: { gte: readyQuantity } }, data: { stockQuantity: { decrement: readyQuantity } } });
-            if (result.count !== 1) throw new Error("ORDER_READY_STOCK_INSUFFICIENT");
-            product.stockQuantity -= readyQuantity;
-          }
-          if (prepareQuantity > 0) preparationConsumption = await consumePreparation(transaction, product.id, prepareQuantity);
-          const common = {
+          const result = await transaction.foodProduct.updateMany({ where: { id: product.id, active: true, stockQuantity: { gte: item.quantity } }, data: { stockQuantity: { decrement: item.quantity } } });
+          if (result.count !== 1) throw new Error("ORDER_READY_STOCK_INSUFFICIENT");
+          items.push({
             productId: product.id,
             productName: product.name,
             variantName: item.variantName ?? null,
+            quantity: item.quantity,
             unitPriceCents: item.unitPriceCents,
+            totalCents: item.quantity * item.unitPriceCents,
+            fryNow: false,
+            stockReservationJson: JSON.stringify({ readyQuantity: item.quantity }),
             adjustmentCents: item.adjustmentCents,
             adjustmentNote: item.adjustmentNote?.trim() || null,
             isGift: item.isGift,
-          };
-          if (readyQuantity > 0) items.push({ ...common, quantity: readyQuantity, totalCents: readyQuantity * item.unitPriceCents, fryNow: false, stockReservationJson: JSON.stringify({ readyQuantity }) });
-          if (prepareQuantity > 0) items.push({ ...common, quantity: prepareQuantity, totalCents: prepareQuantity * item.unitPriceCents, fryNow: true, stockReservationJson: JSON.stringify(preparationConsumption) });
+          });
         }
         const totalCents = items.reduce((sum, item) => sum + item.totalCents, 0);
         const cashReceivedCents = parsed.data.paymentMethod === "cash"
@@ -200,7 +195,7 @@ export class FoodOrdersController {
         PRODUCT_UNAVAILABLE: [409, "PRODUCT_UNAVAILABLE", "Um dos produtos não está disponível."],
         ORDER_PRICE_CHANGED: [409, "ORDER_PRICE_CHANGED", "O preço de um produto mudou. Confira o pedido novamente."],
         ORDER_ADJUSTMENT_NOTE_REQUIRED: [400, "ORDER_ADJUSTMENT_NOTE_REQUIRED", "Informe o motivo do ajuste ou do brinde."],
-        ORDER_READY_STOCK_INSUFFICIENT: [409, "ORDER_READY_STOCK_INSUFFICIENT", "O estoque pronto mudou. Confira o pedido novamente."],
+        ORDER_READY_STOCK_INSUFFICIENT: [409, "ORDER_READY_STOCK_INSUFFICIENT", "Não há estoque suficiente. Confira o pedido novamente."],
         CASH_RECEIVED_BELOW_TOTAL: [400, "CASH_RECEIVED_BELOW_TOTAL", "O dinheiro entregue precisa ser igual ou maior que o total do pedido."],
       };
       const result = messages[code];

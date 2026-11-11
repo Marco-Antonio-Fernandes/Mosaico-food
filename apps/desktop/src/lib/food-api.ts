@@ -460,6 +460,7 @@ export type FoodCashSnapshot = {
     countedCashCents: number | null;
     differenceCents: number | null;
     openedAt: string;
+    openingRecordedAt: string | null;
     closedAt: string | null;
     notes: string | null;
   } | null;

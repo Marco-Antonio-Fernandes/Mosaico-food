@@ -146,7 +146,7 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
     setCustomerName("");
     setFulfillment("pickup");
     setDeliveryAddress("");
-    setRegistrationMode("frozen");
+    setRegistrationMode("ready");
     setRegistrationStep("basic");
     setRegistrationName("");
     setRegistrationFlavorFields([""]);
@@ -167,7 +167,7 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
     setNewIngredientCost("");
     setOrderAllocation(null);
     if (nextAction === "register" || nextAction === "registerIngredient") {
-      setRegistrationStep(nextAction === "register" ? "mode" : "basic");
+      setRegistrationStep("basic");
       setStep("register");
       if (nextAction === "register") void loadProducts(nextAction);
       return;
@@ -192,7 +192,7 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
     setOrderAllocation(null);
     if (effectiveAction === "edit") {
       const currentFlavor = nextProduct.flavor ?? "";
-      setRegistrationMode(nextProduct.productionMode === "made_here" || nextProduct.productionMode === "recipe" ? "made_here" : nextProduct.productionMode === "ready" ? "ready" : "frozen");
+      setRegistrationMode("ready");
       setRegistrationStep("basic");
       setRegistrationName(nextProduct.productName || nextProduct.name);
       setRegistrationFlavorFields([currentFlavor]);
@@ -381,33 +381,23 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
         setError("Selecione o cliente do crediário.");
         return;
       }
-      const allocations = lines.map(({ product, quantity }) => {
-        const readyQuantity = Math.min(product.stockQuantity, quantity);
-        return {
-          product,
-          quantity,
-          readyQuantity,
-          prepareQuantity: quantity - readyQuantity,
-          availableToPrepare: product.productionMode === "made_here" || product.productionMode === "recipe" ? product.preparationCapacity : product.unpreparedQuantity,
-        };
-      });
-      const unavailable = allocations.find(item => item.prepareQuantity > item.availableToPrepare);
+      const unavailable = lines.find(item => item.quantity > item.product.stockQuantity);
       if (unavailable) {
-        setError(`Não há quantidade suficiente de ${unavailable.product.name} para este pedido.`);
+        setError(`Há apenas ${unavailable.product.stockQuantity} unidade${unavailable.product.stockQuantity === 1 ? "" : "s"} de ${unavailable.product.name} em estoque.`);
         return;
       }
-      const items = allocations.map(item => ({
-        productId: item.product.id,
-        quantity: item.quantity,
-        unitPriceCents: item.product.salePriceCents,
-        fryNow: item.prepareQuantity > 0,
-        readyQuantity: item.readyQuantity,
-        prepareQuantity: item.prepareQuantity,
+      const items = lines.map(({ product, quantity }) => ({
+        productId: product.id,
+        quantity,
+        unitPriceCents: product.salePriceCents,
+        fryNow: false,
+        readyQuantity: quantity,
+        prepareQuantity: 0,
         adjustmentCents: 0,
         adjustmentNote: null,
         isGift: false,
       }));
-      const orderTotalCents = allocations.reduce((sum, item) => sum + item.quantity * item.product.salePriceCents, 0);
+      const orderTotalCents = lines.reduce((sum, item) => sum + item.quantity * item.product.salePriceCents, 0);
       const cashReceivedCents = payment === "cash" ? (cashReceived.trim() ? parseCents(cashReceived) : orderTotalCents) : null;
       if (payment === "cash" && cashReceivedCents !== null && cashReceivedCents < orderTotalCents) {
         setError(`O dinheiro entregue precisa ser pelo menos ${guidedMoney(orderTotalCents)}.`);
@@ -424,10 +414,9 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
           return;
         }
         const order = await createFoodOrder({ source: "balcao", customerName: orderName || null, fulfillment, deliveryAddress: fulfillment === "delivery" ? orderAddress : null, paymentMethod: payment, cashReceivedCents, items });
-        const readyTotal = allocations.reduce((sum, item) => sum + item.readyQuantity, 0);
-        const prepareTotal = allocations.reduce((sum, item) => sum + item.prepareQuantity, 0);
+        const totalItems = lines.reduce((sum, item) => sum + item.quantity, 0);
         const changeLabel = payment === "cash" && order.cashChangeCents ? ` Troco: ${guidedMoney(order.cashChangeCents)}.` : "";
-        setResult(`${orderName ? `Comanda de ${orderName}` : "Comanda"} criada em Recebido. Pagamento: ${payment === "pix" ? "Pix" : payment === "cash" ? "dinheiro" : payment === "card_credit" ? "cartão de crédito" : payment === "card_debit" ? "cartão de débito" : payment === "meal_voucher" ? "vale-alimentação" : "crediário"}.${changeLabel} ${readyTotal} pronta${readyTotal === 1 ? "" : "s"} e ${prepareTotal} para preparar.`);
+        setResult(`${orderName ? `Comanda de ${orderName}` : "Comanda"} criada em Recebido. Pagamento: ${payment === "pix" ? "Pix" : payment === "cash" ? "dinheiro" : payment === "card_credit" ? "cartão de crédito" : payment === "card_debit" ? "cartão de débito" : payment === "meal_voucher" ? "vale-alimentação" : "crediário"}.${changeLabel} ${totalItems} item${totalItems === 1 ? "" : "s"} no estoque.`);
         window.dispatchEvent(new Event("food-open-orders"));
         window.dispatchEvent(new Event("food-stock-changed"));
         setOrderAllocation(null); setSelectedOrderProducts([]); setOrderQuantities({}); setOrderAdjustments({}); setOrderAdjustmentNotes({}); setCashReceived(""); setCustomerName(""); setFulfillment("pickup"); setDeliveryAddress(""); setSearch(""); setStep("product");
@@ -499,37 +488,20 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
     }
     if (!product) return;
     const parsedQuantity = guidedNumber(quantity);
-    const splitLoss = action === "loss" && product.productionMode !== "ingredient";
-    const parsedReadyLoss = guidedNumber(readyLossQuantity || "0");
-    const parsedUnpreparedLoss = guidedNumber(unpreparedLossQuantity || "0");
-    if (splitLoss && (!Number.isInteger(parsedReadyLoss) || parsedReadyLoss < 0 || !Number.isInteger(parsedUnpreparedLoss) || parsedUnpreparedLoss < 0 || parsedReadyLoss + parsedUnpreparedLoss <= 0)) {
-      setError("Informe quanto será retirado do estoque pronto e/ou do estoque para preparar.");
-      return;
-    }
-    if (splitLoss && (parsedReadyLoss > product.stockQuantity || parsedUnpreparedLoss > product.unpreparedQuantity)) {
-      setError(`Confira os limites: há ${product.stockQuantity} prontos e ${product.unpreparedQuantity} para preparar.`);
-      return;
-    }
-    if (!splitLoss && (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0)) {
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
       setError("Informe uma quantidade inteira maior que zero.");
+      return;
+    }
+    if (action === "loss" && parsedQuantity > product.stockQuantity) {
+      setError(`Há apenas ${product.stockQuantity} unidade${product.stockQuantity === 1 ? "" : "s"} de ${product.name} em estoque.`);
       return;
     }
     setError("");
     setSaving(true);
     try {
-      if (splitLoss) {
-        await registerFoodStock(product.id, { operationId: crypto.randomUUID(), action: "loss_split", readyQuantity: parsedReadyLoss, unpreparedQuantity: parsedUnpreparedLoss });
-        setResult(`${parsedReadyLoss} prontos e ${parsedUnpreparedLoss} para preparar foram baixados como perda.`);
-      } else {
-        const stockAction = action === "loss"
-          ? "loss"
-          : product.productionMode === "frozen" || product.productionMode === "resale"
-            ? "receive_unprepared"
-            : "receive_ready";
-        await registerFoodStock(product.id, { operationId: crypto.randomUUID(), action: stockAction, quantity: parsedQuantity });
-        const label = stockAction === "loss" ? "baixado como perda" : stockAction === "receive_unprepared" ? "adicionado para preparar" : "adicionado ao estoque";
-        setResult(`${parsedQuantity} × ${product.name} foi ${label}.`);
-      }
+      const stockAction = action === "loss" ? "loss" : "receive_ready";
+      await registerFoodStock(product.id, { operationId: crypto.randomUUID(), action: stockAction, quantity: parsedQuantity });
+      setResult(`${parsedQuantity} × ${product.name} foi ${action === "loss" ? "baixado como perda" : "adicionado ao estoque"}.`);
       window.dispatchEvent(new Event("food-stock-changed"));
       if (action === "register") {
         resetToMenu();
@@ -694,18 +666,18 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
       setError("Confira preço e quantidades. Use números inteiros para o estoque.");
       return;
     }
-    const modeForSave = action === "edit" && product ? product.productionMode : registrationMode;
+    const modeForSave = action === "edit" && product ? (product.productionMode === "ingredient" ? "ingredient" : "ready") : "ready";
     const aliases = [...new Set(registrationAliases.split(",").map(alias => alias.trim()).filter(Boolean))];
     const variants = registrationVariants
       .map(variant => ({ ...variant, name: variant.name.trim(), aliases: [...new Set(variant.aliases.map(alias => alias.trim()).filter(Boolean))] }))
       .filter(variant => variant.name);
-    const inputs: ProductInput[] = flavorStocks.map(({ flavor, frozen, ready }) => ({
+    const inputs: ProductInput[] = flavorStocks.map(({ flavor, ready }) => ({
       productionMode: modeForSave,
       stockUnit: action === "edit" && product ? product.stockUnit : "un",
       unitWeightGrams: action === "edit" && product ? product.unitWeightGrams : null,
       unitVolumeMl: action === "edit" && product ? product.unitVolumeMl : null,
       recipe: [],
-      unpreparedQuantity: action === "edit" && product ? product.unpreparedQuantity : modeForSave === "frozen" ? frozen : 0,
+      unpreparedQuantity: 0,
       name: [registrationName.trim(), flavor].filter(Boolean).join(" · "),
       productName: registrationName.trim(),
       flavor: flavor || null,
@@ -716,7 +688,7 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
       costPriceCents: Math.round(parsedCost * 100),
       costBreakdown: registrationCostBreakdown,
       stockQuantity: action === "edit" && product ? product.stockQuantity : ready,
-      allowOnDemand: modeForSave === "made_here",
+      allowOnDemand: false,
       fryToOrder: false,
       active: action === "edit" && product ? product.active : true,
       ...(action === "edit" && product ? {
@@ -838,8 +810,8 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
   };
   const actionTitle = action === "order" ? "Novo pedido" : action === "sale" ? "Nova venda" : action === "stock" ? "Adicionar ao estoque" : action === "prepare" ? "Preparar" : action === "loss" ? "Dar baixa como perda" : action === "edit" ? "Editar produto" : action === "registerIngredient" ? "Cadastrar insumo" : "Preparo";
   const supportsMultipleSelection = action === "order" || action === "sale" || action === "prepare";
-  const flowStep = step === "product" ? 1 : step === "details" ? 2 : action === "register" ? registrationStep === "mode" ? 1 : registrationStep === "basic" ? 2 : 3 : registrationStep === "basic" ? 1 : 2;
-  const flowLabels = action === "register" ? ["Tipo", "Dados", "Estoque inicial"] : action === "registerIngredient" ? ["Dados"] : action === "edit" ? ["Dados", "Estoque inicial"] : ["Produto", "Quantidade e confirmação"];
+  const flowStep = step === "product" ? 1 : step === "details" ? 2 : action === "register" ? registrationStep === "basic" ? 1 : 2 : registrationStep === "basic" ? 1 : 2;
+  const flowLabels = action === "register" ? ["Dados", "Estoque inicial"] : action === "registerIngredient" ? ["Dados"] : action === "edit" ? ["Dados", "Estoque inicial"] : ["Produto", "Quantidade e confirmação"];
 
   return <><div className="food-assistant-guided">
     {step !== "menu" && <button type="button" className="food-assistant-back proto-subtle" onClick={goBack} disabled={loading || saving}><ArrowLeft size={16} /> Voltar</button>}
@@ -848,8 +820,7 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
     {step === "menu" && <>
       <div className="food-assistant-intro"><strong>O que você quer fazer agora?</strong><span>Eu vou conduzir você passo a passo. Nada é registrado sem sua confirmação.</span></div>
       <div className="food-assistant-guided-menu">
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("stock")}><Boxes size={22} /><span><strong>Adicionar ao estoque</strong><small>Receber produtos congelados ou já prontos.</small></span></button>
-        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("prepare")}><ChefHat size={22} /><span><strong>Preparar</strong><small>Transformar itens separados em unidades prontas.</small></span></button>
+        <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("stock")}><Boxes size={22} /><span><strong>Adicionar ao estoque</strong><small>Receber unidades no estoque.</small></span></button>
         <button type="button" className="food-assistant-guided-choice" onClick={() => chooseAction("register")}><PackagePlus size={22} /><span><strong>Cadastrar um produto</strong><small>Fazer o cadastro aqui, sem sair do assistente.</small></span></button>
       </div>
       {result && <p className="food-assistant-success" role="status"><Check size={17} /> {result}</p>}
@@ -859,7 +830,7 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
       <label className="food-assistant-search">Buscar produto<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Digite o nome…" autoFocus /></label>
       {familyOptions && <button type="button" className="food-assistant-back proto-subtle" onClick={() => setFamilyOptions(null)}>← Voltar aos produtos</button>}
       {loading && <p className="proto-empty">Carregando produtos…</p>}
-      {!loading && <div className="food-assistant-guided-products">{(familyOptions ? familyOptions.map(item => [item]) : productFamilies).map(group => { const item = group[0]; const isSelected = supportsMultipleSelection && selectedOrderProducts.some(selected => selected.id === item.id); const readyTotal = group.reduce((sum, product) => sum + product.stockQuantity, 0); const unpreparedTotal = group.reduce((sum, product) => sum + product.unpreparedQuantity, 0); return <div className="food-assistant-guided-product-row" key={familyOptions ? item.id : item.productName || item.id}><button type="button" aria-pressed={supportsMultipleSelection ? isSelected : undefined} className={`food-assistant-guided-product-main${isSelected ? " is-selected" : ""}`} onClick={() => familyOptions ? supportsMultipleSelection ? toggleOrderProduct(item) : chooseProduct(item) : chooseFamily(group)}><span><strong>{familyOptions ? item.flavor || "Sem sabor" : item.productName || item.name}</strong><small>{item.productionMode === "made_here" ? `${readyTotal} prontos · preparo livre` : `${readyTotal} prontos · ${unpreparedTotal} congelados`}{!familyOptions && group.length > 1 ? ` · ${group.length} sabores` : ""}</small>{!familyOptions && group.length > 1 && <small>{group.map(product => `${product.flavor || "sem sabor"}: ${product.stockQuantity} prontos · ${product.productionMode === "made_here" ? "preparo livre" : `${product.unpreparedQuantity} congelados`}`).join(" · ")}</small>}</span>{action === "sale" && <b>{item.salePriceCents > 0 ? guidedMoney(item.salePriceCents) : "Sem preço"}</b>}{supportsMultipleSelection && <span className="food-assistant-selection-mark">{isSelected ? "Selecionado" : "Selecionar"}</span>}</button></div>; })}</div>}
+      {!loading && <div className="food-assistant-guided-products">{(familyOptions ? familyOptions.map(item => [item]) : productFamilies).map(group => { const item = group[0]; const isSelected = supportsMultipleSelection && selectedOrderProducts.some(selected => selected.id === item.id); const readyTotal = group.reduce((sum, product) => sum + product.stockQuantity, 0); return <div className="food-assistant-guided-product-row" key={familyOptions ? item.id : item.productName || item.id}><button type="button" aria-pressed={supportsMultipleSelection ? isSelected : undefined} className={`food-assistant-guided-product-main${isSelected ? " is-selected" : ""}`} onClick={() => familyOptions ? supportsMultipleSelection ? toggleOrderProduct(item) : chooseProduct(item) : chooseFamily(group)}><span><strong>{familyOptions ? item.flavor || "Sem sabor" : item.productName || item.name}</strong><small>{readyTotal} em estoque{!familyOptions && group.length > 1 ? ` · ${group.length} sabores` : ""}</small>{!familyOptions && group.length > 1 && <small>{group.map(product => `${product.flavor || "sem sabor"}: ${product.stockQuantity} em estoque`).join(" · ")}</small>}</span>{action === "sale" && <b>{item.salePriceCents > 0 ? guidedMoney(item.salePriceCents) : "Sem preço"}</b>}{supportsMultipleSelection && <span className="food-assistant-selection-mark">{isSelected ? "Selecionado" : "Selecionar"}</span>}</button></div>; })}</div>}
       {supportsMultipleSelection && !loading && <div className="food-assistant-order-selection-footer"><span>{selectedOrderProducts.length} item{selectedOrderProducts.length === 1 ? "" : "s"} selecionado{selectedOrderProducts.length === 1 ? "" : "s"}. Você poderá informar a quantidade de cada um na próxima etapa.</span><button type="button" className="food-assistant-confirm" disabled={!selectedOrderProducts.length} onClick={confirmOrderProductSelection}>Confirmar seleção</button></div>}
       {!loading && !(familyOptions ? familyOptions.length : productFamilies.length) && <p className="proto-empty">Nenhum produto encontrado.</p>}
     </>}
@@ -873,17 +844,13 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
       <div className="food-assistant-order-items">{selectedOrderProducts.map((selectedProduct, index) => {
         const quantity = Number(orderQuantities[selectedProduct.id] ?? 0);
         const requestedQuantity = Number.isInteger(quantity) && quantity > 0 ? quantity : 0;
-        const readyQuantity = Math.min(requestedQuantity, selectedProduct.stockQuantity);
-        const prepareQuantity = Math.max(0, requestedQuantity - readyQuantity);
-        const availableToPrepare = selectedProduct.productionMode === "made_here" || selectedProduct.productionMode === "recipe" ? selectedProduct.preparationCapacity : selectedProduct.unpreparedQuantity;
         return <article className="food-assistant-order-item is-order" key={selectedProduct.id}>
           <header className="food-assistant-order-item-heading"><div><strong>{selectedProduct.productName || selectedProduct.name}{selectedProduct.flavor ? ` · ${selectedProduct.flavor}` : ""}</strong><small>Escolha quantas unidades entram nesta comanda.</small></div><label className="food-assistant-quantity-field">Quantidade<input autoFocus={index === 0} type="number" min="1" step="1" inputMode="numeric" value={orderQuantities[selectedProduct.id] ?? ""} onChange={event => updateOrderQuantity(selectedProduct.id, event.target.value)} placeholder="Ex.: 2" /></label></header>
-          <div className="food-assistant-stock-overview" aria-label={`Estoque de ${selectedProduct.name}`}><div className="food-assistant-stock-stat is-ready"><strong>{selectedProduct.stockQuantity}</strong><span>prontas no estoque</span></div><div className="food-assistant-stock-stat is-preparation"><strong>{selectedProduct.productionMode === "made_here" ? "∞" : availableToPrepare}</strong><span>{selectedProduct.productionMode === "made_here" ? "preparo livre" : "congeladas"}</span></div></div>
-          <div className="food-assistant-order-final"><strong>Distribuição automática</strong><small>{readyQuantity} pronta{readyQuantity === 1 ? "" : "s"} primeiro{prepareQuantity > 0 ? ` e ${prepareQuantity} para preparar` : ""}. Você não precisa escolher a origem.</small></div>
-          {prepareQuantity > availableToPrepare && <small className="food-assistant-stock-warning">Não há quantidade suficiente para preparar o restante. Reduza a quantidade.</small>}
+          <div className="food-assistant-stock-overview" aria-label={`Estoque de ${selectedProduct.name}`}><div className="food-assistant-stock-stat is-ready"><strong>{selectedProduct.stockQuantity}</strong><span>em estoque</span></div></div>
+          {requestedQuantity > selectedProduct.stockQuantity && <small className="food-assistant-stock-warning">Há apenas {selectedProduct.stockQuantity} unidade{selectedProduct.stockQuantity === 1 ? "" : "s"} em estoque. Reduza a quantidade.</small>}
         </article>;
       })}</div>
-      <div className="food-assistant-confirm-box"><strong>Confira antes de confirmar</strong><span>O sistema baixa as unidades prontas primeiro e prepara somente o que faltar.</span><span>O pagamento escolhido ficará visível na comanda para orientar a entrega.</span>{payment === "cash" && <span>{cashReceived.trim() ? `Dinheiro entregue: ${guidedMoney(enteredOrderCashCents)} · troco: ${guidedMoney(selectedOrderChangeCents)}` : "Dinheiro exato: sem troco"}</span>}</div>
+      <div className="food-assistant-confirm-box"><strong>Confira antes de confirmar</strong><span>O estoque é baixado no momento em que a comanda é criada.</span><span>O pagamento escolhido ficará visível na comanda para orientar a entrega.</span>{payment === "cash" && <span>{cashReceived.trim() ? `Dinheiro entregue: ${guidedMoney(enteredOrderCashCents)} · troco: ${guidedMoney(selectedOrderChangeCents)}` : "Dinheiro exato: sem troco"}</span>}</div>
       <button type="button" className="food-assistant-confirm" disabled={saving} onClick={() => void saveOperation()}>{saving ? "Salvando…" : "Confirmar comanda"}</button>
     </>}
     {step === "details" && (action === "sale" || action === "prepare") && selectedOrderProducts.length > 0 && <>
@@ -916,14 +883,6 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
     </form>}
     {step === "register" && action !== "registerIngredient" && <form className="food-assistant-register-form" onSubmit={event => { event.preventDefault(); void saveRegistration(); }}>
       <div className="food-assistant-step-heading"><strong>{action === "edit" ? "Editar produto" : "Cadastrar produto"}</strong><span>{registrationStep === "mode" ? "Primeiro escolha como este item chega até a loja." : registrationStep === "basic" ? action === "edit" ? "Altere os dados principais do produto." : "Agora informe os dados do produto." : "Confira o estoque inicial por sabor antes de salvar."}</span></div>
-      {registrationStep === "mode" && <>
-        <fieldset className="food-assistant-register-modes"><legend>Como este item chega até a loja?</legend><div className="food-assistant-register-mode-grid">
-          <button type="button" className={registrationMode === "frozen" ? "is-selected" : ""} onClick={() => chooseRegistrationMode("frozen")}><strong>Congelado</strong><small>Tem unidades congeladas para preparar e unidades já prontas.</small></button>
-          <button type="button" className={registrationMode === "ready" ? "is-selected" : ""} onClick={() => chooseRegistrationMode("ready")}><strong>Já pronto</strong><small>É comprado pronto e não passa por preparo.</small></button>
-          <button type="button" className={registrationMode === "made_here" ? "is-selected" : ""} onClick={() => chooseRegistrationMode("made_here")}><strong>Faço aqui</strong><small>Preparo na hora ou deixo pronto, sem limite de quantidade.</small></button>
-        </div></fieldset>
-        <button type="button" className="food-assistant-confirm" onClick={continueRegistration}>Continuar</button>
-      </>}
       {registrationStep === "basic" && <>
         <div className="food-assistant-register-grid food-assistant-basic-grid">
           <label>Nome do produto<input required autoFocus value={registrationName} onChange={event => setRegistrationName(event.target.value)} placeholder="Ex.: Pastel" /></label>
@@ -954,8 +913,8 @@ function GuidedAssistant({ editProductId, onEditHandled, requestedAction, onActi
         <button type="button" className="food-assistant-confirm" onClick={continueRegistration}>Continuar</button>
       </>}
       {registrationStep === "source" && <>
-        <section className="food-assistant-register-section"><strong>Estoque inicial por sabor</strong><small>{registrationMode === "frozen" ? "Informe quantos estão congelados e quantos já estão prontos." : registrationMode === "ready" ? "Tudo o que você comprar entra como pronto." : "Este produto pode ser preparado sem limite. Informe apenas o que já está pronto, se houver."}</small>{registrationFlavorRows.map(flavor => <div className="food-assistant-register-flavor-row" key={registrationFlavorKey(flavor)}><strong>{flavor || "Produto sem sabor"}</strong>{registrationMode === "frozen" && <label>Congelados<input type="number" min="0" step="1" value={registrationFlavorStock[registrationFlavorKey(flavor)] ?? "0"} onChange={event => setRegistrationFlavorStock(current => ({ ...current, [registrationFlavorKey(flavor)]: event.target.value }))} /></label>}<label>Já preparados<input type="number" min="0" step="1" value={registrationFlavorReady[registrationFlavorKey(flavor)] ?? "0"} onChange={event => setRegistrationFlavorReady(current => ({ ...current, [registrationFlavorKey(flavor)]: event.target.value }))} /></label></div>)}</section>
-        <div className="food-assistant-review"><strong>Resumo</strong><span><b>Produto:</b> {registrationName || "—"}</span><span><b>Sabores:</b> {registrationFlavors.join(", ") || "sem sabor"}</span><span><b>Tipo:</b> {registrationMode === "frozen" ? "Congelado" : registrationMode === "ready" ? "Já pronto" : "Faço aqui"}</span><span><b>Custo:</b> {registrationCost || "não informado"}</span><span><b>Venda:</b> {registrationPrice || "não informado"}</span><span><b>Fiscal:</b> ficará para uma etapa futura.</span></div>
+        <section className="food-assistant-register-section"><strong>Estoque inicial por sabor</strong><small>Informe quantas unidades já estão disponíveis em estoque. Cada sabor possui controle próprio.</small>{registrationFlavorRows.map(flavor => <div className="food-assistant-register-flavor-row" key={registrationFlavorKey(flavor)}><strong>{flavor || "Produto sem sabor"}</strong><label>Quantidade em estoque<input type="number" min="0" step="1" value={registrationFlavorReady[registrationFlavorKey(flavor)] ?? "0"} onChange={event => setRegistrationFlavorReady(current => ({ ...current, [registrationFlavorKey(flavor)]: event.target.value }))} /></label></div>)}</section>
+        <div className="food-assistant-review"><strong>Resumo</strong><span><b>Produto:</b> {registrationName || "—"}</span><span><b>Sabores:</b> {registrationFlavors.join(", ") || "sem sabor"}</span><span><b>Custo:</b> {registrationCost || "não informado"}</span><span><b>Venda:</b> {registrationPrice || "não informado"}</span><span><b>Fiscal:</b> ficará para uma etapa futura.</span></div>
         <button type="submit" className="food-assistant-confirm" disabled={saving}>{saving ? "Salvando…" : action === "edit" ? "Salvar alterações" : "Confirmar e salvar cadastro"}</button>
       </>}
     </form>}
@@ -993,7 +952,7 @@ export function FoodAssistant() {
         return;
       }
       setEditProductId(null);
-      const actions: GuidedAction[] = ["order", "sale", "stock", "prepare", "loss", "register", "registerIngredient"];
+      const actions: GuidedAction[] = ["order", "sale", "stock", "loss", "register", "registerIngredient"];
       setRequestedAction(actions.includes(detail?.action as GuidedAction) ? detail!.action as GuidedAction : null);
     };
     window.addEventListener("food-open-assistant", show);

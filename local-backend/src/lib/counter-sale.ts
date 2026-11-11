@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { recipeOf, salesProgressOf } from "./food-stock";
 
 export type CounterSaleCustomization = {
   selectedQuantity?: number;
@@ -34,51 +33,6 @@ function parseProductCustomization(value: string): ProductCustomization | null {
   }
 }
 
-async function createStockPrompts(tx: Prisma.TransactionClient, product: { id: string; name: string; recipeJson: string; salesProgressJson: string }, soldQuantity: number) {
-  const recipe = recipeOf(product);
-  if (!recipe.length || soldQuantity <= 0) return;
-
-  const progress = salesProgressOf(product);
-  const nextProgress = { ...progress };
-  for (const row of recipe) {
-    const total = (progress[row.ingredientId] ?? 0) + soldQuantity;
-    const promptQuantity = Math.floor(total / row.quantity);
-    nextProgress[row.ingredientId] = total % row.quantity;
-    if (!promptQuantity) continue;
-
-    const ingredient = await tx.foodProduct.findUnique({ where: { id: row.ingredientId } });
-    const pending = await tx.foodStockPrompt.findFirst({ where: { productId: product.id, ingredientId: row.ingredientId, status: "pending" } });
-    if (pending) {
-      await tx.foodStockPrompt.update({ where: { id: pending.id }, data: { quantity: { increment: promptQuantity } } });
-    } else {
-      await tx.foodStockPrompt.create({ data: {
-        id: randomUUID(),
-        productId: product.id,
-        productName: product.name,
-        ingredientId: row.ingredientId,
-        ingredientName: ingredient?.name ?? "insumo",
-        quantity: promptQuantity,
-        yieldQuantity: row.quantity,
-      } });
-    }
-  }
-
-  await tx.foodProduct.update({ where: { id: product.id }, data: { salesProgressJson: JSON.stringify(nextProgress) } });
-}
-
-async function ensureRecipeSaleCapacity(tx: Prisma.TransactionClient, product: { recipeJson: string; salesProgressJson: string }, quantity: number) {
-  const recipe = recipeOf(product);
-  if (!recipe.length) throw new Error("Sem estoque pronto para vender. Cadastre os insumos e o rendimento do produto.");
-  const progress = salesProgressOf(product);
-  for (const row of recipe) {
-    const ingredient = await tx.foodProduct.findUnique({ where: { id: row.ingredientId } });
-    const capacity = (ingredient?.stockQuantity ?? 0) * row.quantity - (progress[row.ingredientId] ?? 0);
-    if (!ingredient || !ingredient.active || ingredient.productionMode !== "ingredient" || capacity < quantity) {
-      throw new Error(`Insumo insuficiente para vender ${quantity} unidade${quantity === 1 ? "" : "s"}. Confira ${ingredient?.name ?? "a receita"}.`);
-    }
-  }
-}
-
 export async function recordCounterSale(tx: Prisma.TransactionClient, input: {
   operationId: string; source: string;
   id: string; productId: string; quantity: number; totalCents: number;
@@ -103,16 +57,9 @@ export async function recordCounterSale(tx: Prisma.TransactionClient, input: {
   if (input.isGift && (input.unitPriceCents !== 0 || input.totalCents !== 0)) throw new Error("Um brinde precisa ter valor zero.");
   if (!input.isGift && expectedUnitPriceCents !== input.unitPriceCents) throw new Error("O preço mudou. Confira a venda novamente.");
   if ((adjustmentCents !== 0 || (input.customization?.removedQuantity ?? 0) > 0 || (input.customization?.addedItems?.length ?? 0) > 0) && !input.adjustmentNote?.trim()) throw new Error("Informe o motivo do adicional ou remoção.");
-  const stockAlreadyReserved = input.skipStock === true;
-  const fromReady = stockAlreadyReserved ? 0 : Math.min(input.quantity, product.stockQuantity);
-  const fromIngredients = stockAlreadyReserved ? 0 : input.quantity - fromReady;
-  if (fromReady) {
-    const stock = await tx.foodProduct.updateMany({ where: { id: product.id, stockQuantity: { gte: fromReady } }, data: { stockQuantity: { decrement: fromReady } } });
-    if (stock.count !== 1) throw new Error(`O estoque pronto de ${product.name} mudou. Confira a venda novamente.`);
-  }
-  if (fromIngredients) {
-    if (product.productionMode !== "recipe") throw new Error(`Estoque insuficiente de ${product.name}. Registre o preparo antes de vender.`);
-    await ensureRecipeSaleCapacity(tx, product, fromIngredients);
+  if (input.skipStock !== true) {
+    const stock = await tx.foodProduct.updateMany({ where: { id: product.id, stockQuantity: { gte: input.quantity } }, data: { stockQuantity: { decrement: input.quantity } } });
+    if (stock.count !== 1) throw new Error(`Estoque insuficiente de ${product.name}. Registre uma entrada antes de vender.`);
   }
   const sale = await tx.foodCounterSale.create({ data: {
     financialOperationId: input.operationId, source: input.source,
@@ -135,6 +82,5 @@ export async function recordCounterSale(tx: Prisma.TransactionClient, input: {
     isGift: input.isGift ?? false,
     paymentMethod: input.paymentMethod, paymentStatus: input.paymentMethod && input.paymentMethod !== "crediario" ? "paid" : "pending",
   } });
-  await createStockPrompts(tx, product, fromIngredients);
   return sale;
 }

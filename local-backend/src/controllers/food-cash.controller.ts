@@ -57,8 +57,16 @@ export class FoodCashController {
     if (!parsed.success) return response.status(400).json(jsonError("INVALID_CASH_OPEN", "Informe o dinheiro que está no caixa.", 400));
     try {
       const result = await this.database.$transaction(async tx => {
-        const session = await ensureDailyCashSession(tx, new Date(), parsed.data.openingCashCents);
-        if (session.status !== "open") throw new FinancialError("O caixa desta data já foi fechado.");
+        const current = await ensureDailyCashSession(tx, new Date(), parsed.data.openingCashCents);
+        if (current.status !== "open") throw new FinancialError("O caixa desta data já foi fechado.");
+        if (current.openingRecordedAt) {
+          if (current.openingCashCents !== parsed.data.openingCashCents) throw new FinancialError("Este caixa já foi aberto com outro valor inicial.");
+          return cashSnapshot(tx, current);
+        }
+        const session = await tx.foodCashSession.update({
+          where: { id: current.id },
+          data: { openingCashCents: parsed.data.openingCashCents, openingRecordedAt: new Date() },
+        });
         return cashSnapshot(tx, session);
       });
       return response.status(201).json(jsonData(result));

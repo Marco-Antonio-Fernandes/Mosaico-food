@@ -10,7 +10,7 @@ const totalsSchema = z.object({ cash: cents, pix: cents, card_credit: cents, car
 const sessionSchema = z.object({
   id: z.string().uuid(), businessDate: z.string(), status: z.enum(["open", "closed"]), openingCashCents: cents,
   expectedCashCents: cents.nullable(), countedCashCents: cents.nullable(), differenceCents: cents.nullable(),
-  openedAt: timestamp, closedAt: timestamp.nullable(), notes: z.string().nullable(),
+  openedAt: timestamp, openingRecordedAt: timestamp.nullable(), closedAt: timestamp.nullable(), notes: z.string().nullable(),
 });
 const movementSchema = z.object({
   id: z.string().uuid(), referenceType: z.string(), referenceId: z.string(), source: z.string(),

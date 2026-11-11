@@ -407,6 +407,7 @@ model FoodCashSession {
   countedCashCents  Int?
   differenceCents   Int?
   openedAt          DateTime  @default(now())
+  openingRecordedAt DateTime?
   closedAt          DateTime?
   notes             String?
   createdAt         DateTime  @default(now())

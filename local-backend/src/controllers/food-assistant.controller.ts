@@ -4,7 +4,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { PrismaService } from "../lib/prisma.service";
 import { databaseUnavailable, jsonData, jsonError, rejectUnauthorized } from "../lib/http";
-import { consumeLoss, consumePreparation, missingPreparationDependencies, preparationCapacity, productFamilyName } from "../lib/food-stock";
+import { productFamilyName } from "../lib/food-stock";
 import { recordCounterSale } from "../lib/counter-sale";
 import { recordSaleReceipt, salePaymentSchema } from "../lib/financial-movement";
 
@@ -125,7 +125,7 @@ function chooseProduct(text: string, catalog: FoodProduct[], requestedId?: strin
   if (exactMatches.length) {
     const longestPhrase = Math.max(...exactMatches.map(row => productMatchTokens(row.phrase).length));
     const exactProducts = [...new Map(exactMatches.filter(row => productMatchTokens(row.phrase).length === longestPhrase).map(row => [row.product.id, row.product])).values()];
-    const stockedProducts = exactProducts.filter(product => product.stockQuantity > 0 || product.unpreparedQuantity > 0);
+    const stockedProducts = exactProducts.filter(product => product.stockQuantity > 0);
     if (stockedProducts.length === 1) return stockedProducts[0];
     return exactProducts.length === 1 ? exactProducts[0] : exactProducts.map(product => ({ product, score: 0 }));
   }
@@ -153,7 +153,7 @@ function chooseProduct(text: string, catalog: FoodProduct[], requestedId?: strin
   }).filter(row => row.score <= 0.55).sort((a, b) => a.score - b.score);
   if (!ranked.length) return null;
   const candidates = ranked.filter(row => row.score <= (ranked[0]?.score ?? 0) + 0.1);
-  const stockedCandidates = candidates.filter(row => row.product.stockQuantity > 0 || row.product.unpreparedQuantity > 0);
+  const stockedCandidates = candidates.filter(row => row.product.stockQuantity > 0);
   if (stockedCandidates.length === 1) return stockedCandidates[0].product;
   return candidates.length === 1 ? candidates[0].product : candidates;
 }
@@ -173,8 +173,11 @@ function parseCommand(text: string, catalog: FoodProduct[], allProducts: FoodPro
   const loss = lossWords.test(text);
   const prepare = hasPreparationAction(text);
   const receive = !loss && (receiveWords.test(text) || (!sale && !prepare && stockWords.test(text)));
-  if (Number(order) + Number(sale) + Number(loss) + Number(prepare) + Number(receive) !== 1) {
-    return { message: "Diga o que aconteceu: vendi, comprei, preparei, adicionei ao estoque ou dei baixa como perda. Você pode falar várias ações na mesma mensagem." };
+  if (prepare && !sale && !order && !loss) {
+    return { message: "O preparo de produtos foi removido. Registre entrada no estoque, venda ou baixa como perda." };
+  }
+  if (Number(order) + Number(sale) + Number(loss) + Number(receive) !== 1) {
+    return { message: "Diga o que aconteceu: vendi, comprei, adicionei ao estoque ou dei baixa como perda. Você pode falar várias ações na mesma mensagem." };
   }
 
   const quantityToken = text.match(new RegExp(`\\b(?:${actionWords})\\b(?:\\s+(?:ao|a|o|os|as|no|na|nos|nas|em|estoque|stock|de|do|da|dos|das|para|tambem|tbm|mais))*\\s+(${quantityPattern})\\b`))?.[1]
@@ -189,42 +192,27 @@ function parseCommand(text: string, catalog: FoodProduct[], allProducts: FoodPro
     return { message: "Informe o valor total da venda, por exemplo: vendi 5 pães por 30 reais no total." };
   }
 
-  const hasPreparationState = preparationStateWords.test(text);
-
   let action: AssistantAction = order
       ? "order"
       : sale
       ? "sale"
       : loss
         ? "loss"
-      : prepare
-        ? "prepare"
-      : (unpreparedStateWords.test(text) || (receive && !hasPreparationState))
-        ? "receive_unprepared"
         : "receive_ready";
-  const availableCatalog = action === "order" || action === "sale" || action === "loss" || action === "receive_ready" || action === "receive_unprepared"
+  const availableCatalog = action === "order" || action === "sale" || action === "loss" || action === "receive_ready"
     ? catalog
     : catalog.filter(product => product.productionMode !== "ingredient");
   const selected = chooseProduct(text, availableCatalog, requestedId);
   if (Array.isArray(selected)) {
-    return { message: "Qual produto você quis dizer?", choices: selected.map(row => ({ id: row.product.id, name: row.product.name, stockQuantity: row.product.stockQuantity, unpreparedQuantity: row.product.unpreparedQuantity })) };
+    return { message: "Qual produto você quis dizer?", choices: selected.map(row => ({ id: row.product.id, name: row.product.name, stockQuantity: row.product.stockQuantity, unpreparedQuantity: 0 })) };
   }
-  if (!selected) return { message: action === "receive_unprepared"
-    ? `Qual é o produto dessas ${quantity} unidades para preparar? Diga, por exemplo: “${quantity} pastéis de carne congelados”.`
-    : "Não encontrei esse produto. Cadastre o nome ou um alias no catálogo." };
+  if (!selected) return { message: "Não encontrei esse produto. Cadastre o nome ou um alias no catálogo." };
   const product = selected;
-  if (action === "receive_unprepared" && product.productionMode === "ingredient") action = "receive_ready";
   if (allRequested) quantity = product.stockQuantity;
   if (allRequested && quantity <= 0) return { message: `${product.name} está sem estoque pronto para dar baixa.` };
-  if ((sale || order || prepare) && product.productionMode === "ingredient") return { message: "Esse item é um insumo. Escolha o produto que ele ajuda a fazer." };
-  if (sale && quantity > product.stockQuantity) return { message: `Há ${product.stockQuantity} unidades prontas de ${product.name}. Registre o preparo ou a entrada antes da venda.` };
-  if (prepare && quantity > preparationCapacity(product, allProducts)) {
-    const available = preparationCapacity(product, allProducts);
-    const missing = missingPreparationDependencies(product, allProducts);
-    const dependencyMessage = missing.length ? ` Faltam: ${missing.map(item => item.name).join(", ")}.` : "";
-    return { message: `Entendi “preparar ${quantity} ${product.name}”, mas só há ${available} ${available === 1 ? "unidade disponível" : "unidades disponíveis"} separadas para fritar/assar.${dependencyMessage} Adicione primeiro ao estoque; depois use “Fritar / assar” ou confira os insumos da receita.` };
-  }
-  if (loss && quantity > product.stockQuantity + product.unpreparedQuantity) return { message: `Há ${product.stockQuantity + product.unpreparedQuantity} unidade${product.stockQuantity + product.unpreparedQuantity === 1 ? "" : "s"} de ${product.name} para dar baixa.` };
+  if ((sale || order) && product.productionMode === "ingredient") return { message: "Esse item é um insumo e não pode ser vendido." };
+  if (sale && quantity > product.stockQuantity) return { message: `Há ${product.stockQuantity} unidade${product.stockQuantity === 1 ? "" : "s"} de ${product.name} em estoque. Registre uma entrada antes da venda.` };
+  if (loss && quantity > product.stockQuantity) return { message: `Há ${product.stockQuantity} unidade${product.stockQuantity === 1 ? "" : "s"} de ${product.name} para dar baixa.` };
 
   const amount = text.match(/(?:r\$\s*|por\s+)(\d+(?:[.,]\d{1,2})?)|\b(\d+(?:[.,]\d{1,2})?)\s*reais\b/i);
   const spokenAmount = text.match(/\b(um|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+reais\b/)?.[1];
@@ -441,18 +429,15 @@ export class FoodAssistantController {
             });
             orders += 1;
           } else if (draft.action === "prepare") {
-            await consumePreparation(tx, product.id, draft.quantity);
-            await tx.foodProduct.update({ where: { id: product.id }, data: { stockQuantity: { increment: draft.quantity } } });
-            await tx.foodStockOperation.create({ data: { id: draft.id, productId: product.id, action: "prepare", quantity: draft.quantity } });
-            stockChanges += 1;
+            throw new Error("O preparo de produtos foi removido. Registre entrada no estoque.");
           } else if (draft.action === "loss") {
-            await consumeLoss(tx, product.id, draft.quantity);
+            const result = await tx.foodProduct.updateMany({ where: { id: product.id, stockQuantity: { gte: draft.quantity } }, data: { stockQuantity: { decrement: draft.quantity } } });
+            if (result.count !== 1) throw new Error(`Há apenas ${product.stockQuantity} unidade${product.stockQuantity === 1 ? "" : "s"} de ${product.name} para dar baixa.`);
             await tx.foodStockOperation.create({ data: { id: draft.id, productId: product.id, action: "loss", quantity: draft.quantity } });
             stockChanges += 1;
           } else if (draft.action === "receive_ready" || draft.action === "receive_unprepared") {
-            if (draft.action === "receive_unprepared" && product.productionMode === "ingredient") throw new Error(`${product.name} é um insumo e não pode ficar para finalizar.`);
-            await tx.foodProduct.update({ where: { id: product.id }, data: draft.action === "receive_unprepared" ? { unpreparedQuantity: { increment: draft.quantity } } : { stockQuantity: { increment: draft.quantity } } });
-            await tx.foodStockOperation.create({ data: { id: draft.id, productId: product.id, action: draft.action, quantity: draft.quantity } });
+            await tx.foodProduct.update({ where: { id: product.id }, data: { stockQuantity: { increment: draft.quantity } } });
+            await tx.foodStockOperation.create({ data: { id: draft.id, productId: product.id, action: "receive_ready", quantity: draft.quantity } });
             stockChanges += 1;
           } else if (draft.action === "sale") {
             if (product.productionMode === "ingredient") throw new Error("Insumo não pode ser vendido pelo assistente.");

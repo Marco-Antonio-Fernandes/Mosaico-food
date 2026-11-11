@@ -5,7 +5,7 @@ import { z } from "zod";
 import { databaseUnavailable, jsonData, jsonError, rejectUnauthorized } from "../lib/http";
 import { PrismaService } from "../lib/prisma.service";
 import type { FoodProduct } from "@prisma/client";
-import { consumeLoss, consumePreparation, consumeReadyLoss, consumeUnpreparedLoss, preparationCapacity, preparationDependencies, productFamilyName, recipeOf, recipeSchema, salesCapacity } from "../lib/food-stock";
+import { productFamilyName, recipeSchema } from "../lib/food-stock";
 
 const costUnitSchema = z.enum(["g", "kg", "ml", "l", "un"]);
 const costBreakdownItemSchema = z.object({
@@ -39,7 +39,7 @@ const productSchema = z.object({
   salePriceCents: z.coerce.number().int().nonnegative().default(0),
   stockQuantity: z.coerce.number().int().nonnegative().default(0),
   unpreparedQuantity: z.number().int().nonnegative().default(0),
-  productionMode: z.enum(["frozen", "ready", "made_here", "resale", "recipe", "ingredient"]).default("frozen"),
+  productionMode: z.enum(["frozen", "ready", "made_here", "resale", "recipe", "ingredient"]).default("ready"),
   stockUnit: z.enum(["un", "g", "ml"]).default("un"),
   unitWeightGrams: z.coerce.number().int().positive().max(100000000).nullable().optional().default(null),
   unitVolumeMl: z.coerce.number().int().positive().max(100000000).nullable().optional().default(null),
@@ -170,15 +170,15 @@ function productCreateData(input: ProductPayload) {
     costBreakdownJson: JSON.stringify(input.costBreakdown),
     salePriceCents: input.salePriceCents,
     stockQuantity: input.stockQuantity,
-    unpreparedQuantity: input.productionMode === "frozen" || input.productionMode === "resale" ? input.unpreparedQuantity : 0,
-    productionMode: input.productionMode,
+    unpreparedQuantity: 0,
+    productionMode: input.productionMode === "ingredient" ? "ingredient" : "resale",
     stockUnit: input.productionMode === "ingredient" ? input.stockUnit : "un",
     unitWeightGrams: input.productionMode === "ingredient" ? input.unitWeightGrams : null,
     unitVolumeMl: input.productionMode === "ingredient" ? input.unitVolumeMl : null,
-    recipeJson: JSON.stringify(["recipe", "resale", "ingredient"].includes(input.productionMode) ? input.recipe : []),
+    recipeJson: "[]",
     recipeProgressJson: "{}",
     salesProgressJson: "{}",
-    allowOnDemand: input.productionMode === "made_here" ? true : input.allowOnDemand,
+    allowOnDemand: false,
     fryToOrder: false,
     active: input.active,
     fiscalNcm: input.fiscalNcm,
@@ -195,9 +195,9 @@ function productCreateData(input: ProductPayload) {
   };
 }
 
-function serializeProduct(product: FoodProduct, catalog: FoodProduct[] = []) {
+function serializeProduct(product: FoodProduct, _catalog: FoodProduct[] = []) {
   const productName = product.productName.trim() || productFamilyName(product.name);
-  const acceptsPreparation = product.productionMode === "made_here" || product.allowOnDemand || product.fryToOrder;
+  const isIngredient = product.productionMode === "ingredient";
   return {
     ...product,
     productName,
@@ -207,11 +207,13 @@ function serializeProduct(product: FoodProduct, catalog: FoodProduct[] = []) {
     variants: parseVariants(product.variantsJson),
     customization: parseCustomization(product.customizationJson),
     costBreakdown: parseCostBreakdown(product.costBreakdownJson),
-    recipe: recipeOf(product),
-    ingredientDependencies: preparationDependencies(product, catalog),
-    preparationCapacity: preparationCapacity(product, catalog),
-    saleCapacity: salesCapacity(product, catalog),
-    allowOnDemand: acceptsPreparation,
+    productionMode: isIngredient ? "ingredient" : "ready",
+    unpreparedQuantity: 0,
+    recipe: [],
+    ingredientDependencies: [],
+    preparationCapacity: 0,
+    saleCapacity: isIngredient ? 0 : product.stockQuantity,
+    allowOnDemand: false,
     fryToOrder: false,
   };
 }
@@ -219,21 +221,6 @@ function serializeProduct(product: FoodProduct, catalog: FoodProduct[] = []) {
 @Controller("api/v1/food/products")
 export class FoodProductsController {
   constructor(private readonly database: PrismaService) {}
-
-  private async validRecipe(rows: z.infer<typeof recipeSchema>) {
-    if (!rows.length) return true;
-    const count = await this.database.foodProduct.count({ where: { id: { in: rows.map(row => row.ingredientId) }, active: true, productionMode: "ingredient" } });
-    return count === rows.length;
-  }
-
-  private async validateCreateProducts(products: ProductPayload[]) {
-    for (const product of products) {
-      if (product.productionMode === "recipe" && (!(await this.validRecipe(product.recipe)) || product.stockQuantity !== 0 || product.unpreparedQuantity !== 0)) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   @Get()
   async list(
@@ -255,7 +242,7 @@ export class FoodProductsController {
       orderBy: { name: "asc" },
     });
     const catalog = await this.database.foodProduct.findMany();
-    return response.json(jsonData({ products: products.map(product => serializeProduct(product, catalog)).filter(product => available !== "true" || (product.active && product.productionMode !== "ingredient" && (product.stockQuantity > 0 || product.unpreparedQuantity > 0 || ((product.allowOnDemand || product.fryToOrder) && (product.productionMode === "recipe" ? product.saleCapacity > 0 : product.preparationCapacity > 0))))) }));
+    return response.json(jsonData({ products: products.map(product => serializeProduct(product, catalog)).filter(product => available !== "true" || (product.active && product.productionMode !== "ingredient" && product.stockQuantity > 0)) }));
   }
 
   @Get(":id/loss-summary")
@@ -281,10 +268,6 @@ export class FoodProductsController {
     if (!parsed.success) {
       return response.status(400).json(jsonError("VALIDATION_ERROR", "Confira os dados do produto.", 400));
     }
-    if (parsed.data.productionMode === "recipe" && (!(await this.validRecipe(parsed.data.recipe)) || parsed.data.stockQuantity !== 0 || parsed.data.unpreparedQuantity !== 0)) {
-      return response.status(400).json(jsonError("INVALID_RECIPE", "Corrija os ingredientes da receita e registre a produção depois de salvar.", 400));
-    }
-
     try {
       const product = await this.database.foodProduct.create({
         data: productCreateData(parsed.data),
@@ -305,10 +288,6 @@ export class FoodProductsController {
 
     const parsed = createProductsSchema.safeParse(request.body);
     if (!parsed.success) return response.status(400).json(jsonError("VALIDATION_ERROR", "Confira os dados dos produtos.", 400));
-    if (!(await this.validateCreateProducts(parsed.data.products))) {
-      return response.status(400).json(jsonError("INVALID_RECIPE", "Corrija os ingredientes da receita e registre a produção depois de salvar.", 400));
-    }
-
     try {
       const products = await this.database.$transaction(async transaction => {
         const created = [];
@@ -340,20 +319,17 @@ export class FoodProductsController {
     try {
       const existing = await this.database.foodProduct.findUnique({ where: { id } });
       if (!existing) return response.status(404).json(jsonError("NOT_FOUND", "Produto não encontrado.", 404));
-      if (parsed.data.productionMode && parsed.data.productionMode !== existing.productionMode) return response.status(400).json(jsonError("MODE_LOCKED", "Cadastre outro item para mudar o tipo de controle de estoque.", 400));
-      if (existing.productionMode === "recipe" && parsed.data.recipe && !(await this.validRecipe(parsed.data.recipe))) return response.status(400).json(jsonError("INVALID_RECIPE", "Selecione ingredientes ativos para a receita.", 400));
-      if ((parsed.data.stockQuantity !== undefined && parsed.data.stockQuantity !== existing.stockQuantity) || (parsed.data.unpreparedQuantity !== undefined && parsed.data.unpreparedQuantity !== existing.unpreparedQuantity)) {
-        return response.status(400).json(jsonError("USE_STOCK_ACTION", "Use Registrar estoque para receber ou preparar unidades.", 400));
+      if (parsed.data.stockQuantity !== undefined && parsed.data.stockQuantity !== existing.stockQuantity) {
+        return response.status(400).json(jsonError("USE_STOCK_ACTION", "Use Registrar estoque para receber ou dar baixa em unidades.", 400));
       }
-      if (parsed.data.stockUnit && parsed.data.stockUnit !== existing.stockUnit && (existing.productionMode !== "ingredient" || existing.stockQuantity > 0 || existing.unpreparedQuantity > 0)) return response.status(400).json(jsonError("UNIT_LOCKED", "A unidade de um ingrediente com estoque não pode ser alterada.", 400));
+      if (parsed.data.stockUnit && parsed.data.stockUnit !== existing.stockUnit && (existing.productionMode !== "ingredient" || existing.stockQuantity > 0)) return response.status(400).json(jsonError("UNIT_LOCKED", "A unidade de um insumo com estoque não pode ser alterada.", 400));
       const nextProductName = parsed.data.productName !== undefined ? parsed.data.productName : existing.productName.trim() || productFamilyName(existing.name);
       const nextFlavor = parsed.data.flavor !== undefined ? parsed.data.flavor : existing.flavor;
       const product = await this.database.foodProduct.update({
         where: { id },
         data: {
           ...(parsed.data.category === undefined ? {} : { category: parsed.data.category }),
-          ...(parsed.data.productionMode === undefined ? {} : { productionMode: parsed.data.productionMode, allowOnDemand: parsed.data.productionMode === "made_here" ? true : parsed.data.allowOnDemand ?? existing.allowOnDemand }),
-          ...(parsed.data.recipe === undefined ? {} : { recipeJson: JSON.stringify(parsed.data.recipe), recipeProgressJson: "{}", salesProgressJson: "{}" }),
+          ...(parsed.data.productionMode === undefined ? {} : { productionMode: parsed.data.productionMode === "ingredient" ? "ingredient" : "resale", allowOnDemand: false, unpreparedQuantity: 0, recipeJson: "[]", recipeProgressJson: "{}", salesProgressJson: "{}" }),
           ...(parsed.data.aliases === undefined ? {} : { aliasesJson: JSON.stringify(parsed.data.aliases) }),
           ...(parsed.data.variants === undefined ? {} : { variantsJson: JSON.stringify(parsed.data.variants) }),
           ...(parsed.data.costPriceCents === undefined ? {} : { costPriceCents: parsed.data.costPriceCents }),
@@ -426,13 +402,14 @@ export class FoodProductsController {
       readyQuantity: z.number().int().nonnegative().max(1000000).default(0),
       unpreparedQuantity: z.number().int().nonnegative().max(1000000).default(0),
     }).superRefine((value, context) => {
-      if (value.action !== "loss_split" && !value.quantity) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quantity"], message: "Informe uma quantidade." });
       if (value.action === "loss_split" && value.readyQuantity + value.unpreparedQuantity <= 0) context.addIssue({ code: z.ZodIssueCode.custom, path: ["readyQuantity"], message: "Informe ao menos uma quantidade para dar baixa." });
+      if (value.action !== "loss_split" && !value.quantity) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quantity"], message: "Informe uma quantidade." });
     }).safeParse(request.body);
     if (!parsed.success) return response.status(400).json(jsonError("VALIDATION_ERROR", "Informe uma quantidade inteira maior que zero.", 400));
     try {
       const { operationId, action } = parsed.data;
       const quantity = action === "loss_split" ? parsed.data.readyQuantity + parsed.data.unpreparedQuantity : parsed.data.quantity ?? 0;
+      const isLoss = action === "loss" || action === "loss_ready" || action === "loss_unprepared" || action === "loss_split";
       await this.database.$transaction(async tx => {
         const previous = await tx.foodStockOperation.findUnique({ where: { id: operationId } });
         if (previous) {
@@ -440,19 +417,14 @@ export class FoodProductsController {
           return;
         }
         const product = await tx.foodProduct.findUniqueOrThrow({ where: { id } });
-        if (!product.active) throw new Error("Ative o produto antes de registrar estoque.");
-        if (product.productionMode === "ingredient" && action !== "receive_ready" && action !== "loss" && action !== "loss_ready") throw new Error("Ingredientes recebem entrada na unidade cadastrada.");
-        if (product.productionMode === "recipe" && action === "receive_ready") throw new Error("Produtos feitos na loja entram como unidades para finalizar ou são registrados pela produção.");
-        if (action === "prepare") await consumePreparation(tx, id, quantity);
-        if (action === "loss") await consumeLoss(tx, id, quantity);
-        else if (action === "loss_ready") await consumeReadyLoss(tx, id, quantity);
-        else if (action === "loss_unprepared") await consumeUnpreparedLoss(tx, id, quantity);
-        else if (action === "loss_split") {
-          if (parsed.data.readyQuantity) await consumeReadyLoss(tx, id, parsed.data.readyQuantity);
-          if (parsed.data.unpreparedQuantity) await consumeUnpreparedLoss(tx, id, parsed.data.unpreparedQuantity);
+        if (!product.active) throw new Error("Ative o item antes de registrar estoque.");
+        if (action === "prepare") throw new Error("O preparo foi removido. Registre apenas entrada e baixa de estoque.");
+        if (isLoss) {
+          const result = await tx.foodProduct.updateMany({ where: { id, stockQuantity: { gte: quantity } }, data: { stockQuantity: { decrement: quantity } } });
+          if (result.count !== 1) throw new Error(`Há apenas ${product.stockQuantity} unidade${product.stockQuantity === 1 ? "" : "s"} em estoque para dar baixa.`);
+        } else {
+          await tx.foodProduct.update({ where: { id }, data: { stockQuantity: { increment: quantity } } });
         }
-        else if (action === "prepare") await tx.foodProduct.update({ where: { id }, data: { stockQuantity: { increment: quantity } } });
-        else await tx.foodProduct.update({ where: { id }, data: action === "receive_unprepared" ? { unpreparedQuantity: { increment: quantity } } : { stockQuantity: { increment: quantity } } });
         await tx.foodStockOperation.create({ data: { id: operationId, productId: id, action, quantity } });
       });
       const product = await this.database.foodProduct.findUniqueOrThrow({ where: { id } });

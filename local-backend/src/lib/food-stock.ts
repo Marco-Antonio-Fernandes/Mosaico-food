@@ -80,31 +80,14 @@ export function missingPreparationDependencies(product: FoodProduct, catalog: Fo
   return preparationDependencies(product, catalog).filter(dependency => !dependency.available);
 }
 
-export function preparationCapacity(product: FoodProduct, catalog: FoodProduct[]): number {
-  if (!product.active || product.productionMode === "ingredient") return 0;
-  // Produtos feitos na loja não dependem de entrada ou insumo cadastrado.
-  // Eles podem ser preparados na hora ou antecipadamente sem limite de produção.
-  if (product.productionMode === "made_here") return 1_000_000_000;
-  const recipe = recipeOf(product);
-  const capacity = product.productionMode === "recipe" && recipe.length
-    ? Math.min(...recipe.map(row => {
-      const ingredient = catalog.find(item => item.id === row.ingredientId && item.active && item.productionMode === "ingredient");
-      const progress = recipeProgressOf(product)[row.ingredientId] ?? 0;
-      return Math.max(0, (ingredient?.stockQuantity ?? 0) * row.quantity - progress);
-    })) : 0;
-  return product.unpreparedQuantity + capacity;
+export function preparationCapacity(_product: FoodProduct, _catalog: FoodProduct[]): number {
+  // O fluxo atual controla apenas uma quantidade de estoque por item.
+  // Não existe mais separação entre pronto, congelado ou preparo.
+  return 0;
 }
 
-export function salesCapacity(product: FoodProduct, catalog: FoodProduct[]): number {
-  if (!product.active || product.productionMode !== "recipe") return product.stockQuantity;
-  const recipe = recipeOf(product);
-  if (!recipe.length) return product.stockQuantity;
-  const progress = salesProgressOf(product);
-  const ingredientCapacity = Math.min(...recipe.map(row => {
-    const ingredient = catalog.find(item => item.id === row.ingredientId && item.active && item.productionMode === "ingredient");
-    return Math.max(0, (ingredient?.stockQuantity ?? 0) * row.quantity - (progress[row.ingredientId] ?? 0));
-  }));
-  return product.stockQuantity + ingredientCapacity;
+export function salesCapacity(product: FoodProduct, _catalog: FoodProduct[]): number {
+  return product.active && product.productionMode !== "ingredient" ? product.stockQuantity : 0;
 }
 
 export type PreparationConsumption = {
