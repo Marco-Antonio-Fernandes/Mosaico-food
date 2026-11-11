@@ -124,8 +124,6 @@ if ! command -v pacman >/dev/null 2>&1; then
 fi
 
 PACMAN_PACKAGES=(
-  nodejs
-  npm
   git
   fuse2
   gtk3
@@ -147,9 +145,6 @@ PACMAN_PACKAGES=(
   libdrm
   mesa
   alsa-lib
-  pipewire
-  pipewire-pulse
-  libpulse
   at-spi2-core
   cups
   pango
@@ -162,6 +157,14 @@ PACMAN_PACKAGES=(
   squashfs-tools
 )
 
+# Áudio é opcional: em muitos Arch já existe PipeWire configurado e uma
+# instalação forçada pode conflitar e abortar toda a transação do pacman.
+PACMAN_AUDIO_PACKAGES=(
+  pipewire
+  pipewire-pulse
+  libpulse
+)
+
 run_pacman() {
   if [[ "${EUID}" -eq 0 ]]; then
     pacman "$@"
@@ -170,6 +173,24 @@ run_pacman() {
   else
     fail "sudo é necessário para instalar as dependências do Arch."
   fi
+}
+
+node_ready() {
+  local node_bin npm_bin
+  node_bin="$(command -v node 2>/dev/null || true)"
+  npm_bin="$(command -v npm 2>/dev/null || true)"
+  for candidate in /usr/bin/node /usr/local/bin/node /usr/sbin/node; do
+    if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then node_bin="$candidate"; break; fi
+  done
+  for candidate in /usr/bin/npm /usr/local/bin/npm /usr/sbin/npm; do
+    if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then npm_bin="$candidate"; break; fi
+  done
+  if [[ -n "$node_bin" && -x "$node_bin" && -n "$npm_bin" && -x "$npm_bin" ]] && "$node_bin" --version >/dev/null 2>&1 && "$npm_bin" --version >/dev/null 2>&1; then
+    NODE_BIN="$node_bin"
+    NPM_BIN="$npm_bin"
+    return 0
+  fi
+  return 1
 }
 
 find_payload_source() {
@@ -199,22 +220,27 @@ find_payload_source() {
 APPIMAGE_SOURCE="$(find_payload_source "${1:-}")"
 [[ -f "$APPIMAGE_SOURCE" ]] || fail "não foi possível acessar o AppImage."
 
+# Node e npm são obrigatórios para o botão Atualizar. Instale-os primeiro,
+# separados do restante, para que um conflito de áudio/vídeo não impeça isso.
+say "Verificando Node.js e npm..."
+if ! node_ready; then
+  say "Node.js/npm ausentes; instalando nodejs e npm..."
+  run_pacman -S --needed --noconfirm nodejs npm || true
+  if ! node_ready; then
+    fail "Node.js e npm são obrigatórios para o botão Atualizar. Rode 'sudo pacman -S nodejs npm' e execute o instalador novamente."
+  fi
+fi
+say "Node.js $("$NODE_BIN" --version) e npm $("$NPM_BIN" --version) prontos para o botão Atualizar."
+
 say "Verificando dependências do Arch Linux..."
 if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
-  say "Aviso: não foi possível atualizar as dependências automaticamente."
-  say "Se o aplicativo não abrir, rode 'sudo pacman -Syu' e execute o instalador novamente."
+  say "Aviso: alguns pacotes do sistema não puderam ser atualizados automaticamente."
+  say "O aplicativo pode abrir mesmo assim. Se algo faltar, rode 'sudo pacman -Syu' e execute o instalador novamente."
 fi
 
-# O botão Atualizar do aplicativo usa Node/npm do sistema. Garanta que os dois
-# existam mesmo quando o pacman já estava atualizado ou falhou parcialmente.
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 || ! node --version >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
-  say "Node.js/npm ausentes; tentando instalar novamente..."
-  run_pacman -S --needed --noconfirm nodejs npm || true
-fi
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 || ! node --version >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
-  fail "Node.js e npm são obrigatórios para o botão Atualizar. Rode 'sudo pacman -S nodejs npm' e execute o instalador novamente."
-fi
-say "Node.js $(node --version) e npm $(npm --version) prontos para o botão Atualizar."
+for package in "${PACMAN_AUDIO_PACKAGES[@]}"; do
+  run_pacman -S --needed --noconfirm "$package" >/dev/null 2>&1 || true
+done
 
 say "Extraindo o aplicativo para $INSTALL_DIR..."
 install -d -m 0755 "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
