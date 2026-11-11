@@ -9,6 +9,19 @@ const MAX_TEXT_LENGTH = 12_000;
 let interpreterProcess = null;
 let interpreterStarted = false;
 let startPromise = null;
+let idleTimer = null;
+const INTERPRETER_IDLE_MS = Number(process.env.MOSAICO_INTERPRETER_IDLE_MS || 120_000);
+
+function scheduleInterpreterIdleStop() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (interpreterProcess) {
+      console.log("[Mosaico interpretação] Interpretador parado por inatividade para liberar memória.");
+      stopLocalInterpreter();
+    }
+  }, INTERPRETER_IDLE_MS);
+}
 
 function interpreterRoot() {
   const root = app.isPackaged
@@ -189,10 +202,13 @@ async function interpretFoodText(text, products = []) {
   } catch (error) {
     console.error(`[Mosaico interpretação] Falha ao interpretar: ${error instanceof Error ? error.message : String(error)}`);
     return { available: true, text: null, understood: false };
+  } finally {
+    scheduleInterpreterIdleStop();
   }
 }
 
 function stopLocalInterpreter() {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
   if (!interpreterProcess || interpreterProcess.killed) return;
   interpreterProcess.kill();
   interpreterProcess = null;

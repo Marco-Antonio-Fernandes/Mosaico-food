@@ -7,8 +7,8 @@ if (defaultUserDataPath !== stableUserDataPath) process.env.MOSAICO_LEGACY_USER_
 const { createNewLocalDatabase, getBackendDiagnostic, getBackendUrl, startLocalBackend, stopLocalBackend } = require("./local-backend.cjs");
 const { getBackupSettings, readBackupFile, saveBackupFile } = require("./backup-manager.cjs");
 const { checkForUpdates, installUpdate } = require("./update-manager.cjs");
-const { startLocalSpeech, stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
-const { startLocalInterpreter, stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
+const { stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
+const { stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
 const { getPrinterSettings, printFoodOrder, printTestOrder, savePrinterSettings } = require("./printer.cjs");
 
 const isDevelopment = !app.isPackaged;
@@ -280,11 +280,9 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
   ipcMain.handle("mosaico:print-food-order", (_event, order) => printFoodOrder(order));
   createWindow({ loading: true });
 
-  // A interface não precisa esperar o motor de voz e o interpretador local.
-  // Eles continuam subindo em segundo plano enquanto o usuário já vê o
-  // carregamento e, depois, a tela principal.
-  void Promise.all([startLocalSpeech(), startLocalInterpreter()])
-    .catch((error) => console.error("[Mosaico Food] Falha ao iniciar recursos auxiliares", error));
+  // Motores locais de voz e interpretação sobem sob demanda, na primeira
+  // mensagem de áudio ou texto que precisar deles. Em computadores com pouca
+  // RAM, manter o modelo de linguagem sempre carregado consumia ~2 GB.
   void startLocalBackend()
     .catch((error) => console.error("[Mosaico Food] Falha ao iniciar o backend local", error))
     .finally(() => {

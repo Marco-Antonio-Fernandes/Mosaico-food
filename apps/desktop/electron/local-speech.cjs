@@ -9,6 +9,19 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 let speechProcess = null;
 let speechStarted = false;
 let startPromise = null;
+let idleTimer = null;
+const SPEECH_IDLE_MS = Number(process.env.MOSAICO_SPEECH_IDLE_MS || 180_000);
+
+function scheduleSpeechIdleStop() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (speechProcess) {
+      console.log("[Mosaico voz] Motor de voz parado por inatividade para liberar memória.");
+      stopLocalSpeech();
+    }
+  }, SPEECH_IDLE_MS);
+}
 
 function speechRoot() {
   const root = app.isPackaged
@@ -115,10 +128,13 @@ async function transcribeAudio(audio, mimeType = "audio/wav", prompt = "") {
     return { available: true, text: text || null, understood: Boolean(text) };
   } catch {
     return { available: true, text: null, understood: false };
+  } finally {
+    scheduleSpeechIdleStop();
   }
 }
 
 function stopLocalSpeech() {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
   if (!speechProcess || speechProcess.killed) return;
   speechProcess.kill();
   speechProcess = null;
