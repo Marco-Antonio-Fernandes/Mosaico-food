@@ -60,18 +60,46 @@ export class FoodOrderSuggestionsController {
       if (existingOrder) continue;
 
       const draft = await suggestOrderFromText(this.database, text);
-      if (!draft.items.length) continue;
+      if (draft.items.length) {
+        suggestions.push({
+          id: `${conversation.id}:${block.map(message => message.id).join(",")}`,
+          conversationId: conversation.id,
+          customerName: draft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
+          remoteJid: conversation.remoteJid,
+          messageIds: block.map(message => message.id),
+          answeredAt: messages[humanIndex].createdAt,
+          origin: "customer",
+          text,
+          ...draft,
+        });
+      }
 
-      suggestions.push({
-        id: `${conversation.id}:${block.map(message => message.id).join(",")}`,
-        conversationId: conversation.id,
-        customerName: conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
-        remoteJid: conversation.remoteJid,
-        messageIds: block.map(message => message.id),
-        answeredAt: messages[humanIndex].createdAt,
-        text,
-        ...draft,
-      });
+      // Anotações enviadas pela própria loja (texto ou áudio transcrito).
+      // Elas viram prévias de pedido para o operador aprovar/editar.
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const note = messages[index];
+        if (note.direction !== "outbound" || note.source !== "human") continue;
+        const noteText = note.body?.trim();
+        if (!noteText) continue;
+        const orderAfterNote = await this.database.foodOrder.findFirst({
+          where: { conversationId: conversation.id, createdAt: { gte: note.createdAt } },
+        });
+        if (orderAfterNote) break;
+        const noteDraft = await suggestOrderFromText(this.database, noteText);
+        if (!noteDraft.items.length) continue;
+        suggestions.push({
+          id: `owner:${conversation.id}:${note.id}`,
+          conversationId: conversation.id,
+          customerName: noteDraft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
+          remoteJid: conversation.remoteJid,
+          messageIds: [note.id],
+          answeredAt: note.createdAt,
+          origin: "owner",
+          text: noteText,
+          ...noteDraft,
+        });
+        break;
+      }
     }
 
     return response.json(jsonData({ suggestions }));

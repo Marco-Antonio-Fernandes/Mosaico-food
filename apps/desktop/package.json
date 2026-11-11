@@ -11,9 +11,8 @@
     "typecheck": "tsc --noEmit",
     "update:ncm": "node scripts/update-ncm-catalog.mjs",
     "prepare:speech": "node scripts/prepare-speech-runtime.mjs",
-    "prepare:interpreter": "node scripts/prepare-local-interpreter.mjs",
-    "package:linux": "npm --prefix ../../local-backend run build && npm run prepare:build-info && npm run prepare:speech && npm run prepare:interpreter && npm run build && npx --yes electron-builder --linux AppImage --config electron-builder.yml",
-    "package:win": "npm --prefix ../../local-backend run build && npm run prepare:build-info && npm run prepare:speech && npm run prepare:interpreter && npm run build && npx --yes electron-builder --win --config electron-builder.yml",
+    "package:linux": "npm --prefix ../../local-backend run build && npm run prepare:build-info && npm run prepare:speech && npm run build && npx --yes electron-builder --linux AppImage --config electron-builder.yml",
+    "package:win": "npm --prefix ../../local-backend run build && npm run prepare:build-info && npm run prepare:speech && npm run build && npx --yes electron-builder --win --config electron-builder.yml",
     "preview": "vite preview",
     "prepare:build-info": "node scripts/write-build-info.mjs"
   },

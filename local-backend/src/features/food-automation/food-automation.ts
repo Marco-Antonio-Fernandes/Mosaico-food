@@ -1379,6 +1379,7 @@ export type OrderSuggestionDraft = {
   }>;
   fulfillment: "pickup" | "delivery" | null;
   paymentMethod: string | null;
+  customerName?: string | null;
   totalCents: number;
 };
 
@@ -1389,7 +1390,7 @@ export type OrderSuggestionDraft = {
 export async function suggestOrderFromText(database: PrismaClient, text: string): Promise<OrderSuggestionDraft> {
   const normalizedText = normalizeText(text);
   const hasQuantity = /\b\d+\b/.test(normalizedText);
-  const hasOrderIntent = /\b(quero|queria|vou querer|me ve|me manda|manda|mandar|pedir|pedido|separa|separe|traz|trazer|vou de|coloca|quero dois|quero duas|quero um|quero uma)\b/.test(normalizedText);
+  const hasOrderIntent = /\b(quero|queria|vou querer|me ve|me manda|manda|mandar|pedir|pedido|separa|separe|traz|trazer|vou de|coloca|quero dois|quero duas|quero um|quero uma|vendi|venda|vender|vendeu|vendendo|vendo|saiu|sairam|deu|marcar|marca|conta|fiado|entregar|entrega)\b/.test(normalizedText);
   if (!hasQuantity) {
     return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0 };
   }
@@ -1414,17 +1415,23 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
   const matches: Array<{ product: Product; start: number; end: number; quantity: number; explicit: boolean }> = [];
   for (const product of products) {
     const firstWord = normalizeText(product.name).split(" ")[0];
-    const aliases = [...new Set([
+    const baseAliases = [
       normalizeText(product.name),
       ...product.aliases.map(normalizeText),
       ...(firstWord && firstWord.length >= 4 ? [firstWord] : []),
-    ])].filter(Boolean).sort((left, right) => right.length - left.length);
+    ].filter(Boolean);
+    const aliases = [...new Set(baseAliases.flatMap(alias => [
+      alias,
+      alias.replace(/\bpastel\b/g, "pasteis"),
+      alias.replace(/\bao\b/g, "aes"),
+      alias.replace(/ao(?=\s|$)/g, "aes"),
+    ]))].sort((left, right) => right.length - left.length);
     for (const alias of aliases) {
-      const regex = new RegExp(`(^|[^a-z0-9])(${escape(alias)})(?=$|[^a-z0-9])`, "g");
+      const regex = new RegExp(`(^|[^a-z0-9])(${escape(alias)})(s|es)?(?=$|[^a-z0-9])`, "g");
       let result: RegExpExecArray | null;
       while ((result = regex.exec(normalizedText))) {
         const start = result.index + result[1].length;
-        const end = start + alias.length;
+        const end = start + result[2].length + (result[3]?.length ?? 0);
         const before = normalizedText.slice(0, start);
         const quantityMatch = before.match(/(\d+)\s*(?:x|un|unidades?|und)?\s*$/);
         matches.push({
@@ -1481,11 +1488,21 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
     }
   }
   const items = [...grouped.values()];
-  const payment = paymentMethodFromText(text);
+  const accountMatch = text.match(/\b(?:conta|fiado|crediario|crediário)\s+(?:d[oa]s?|para|pra)\s+([\p{L}][\p{L}\s]{2,60})/iu);
+  let customerName = accountMatch ? accountMatch[1].trim() : null;
+  if (customerName) {
+    customerName = customerName.replace(/\b(?:no|na|de|do|da|por|em|pix|dinheiro|cartao|cartão|crediario|crediário|fiado|total|deu|que|e|pra|para)\b.*$/i, "").trim();
+    if (!customerName) customerName = null;
+  }
+  const totalMatch = text.match(/\b(?:deu|total|ficou|fechou|foi|valor)\s*(?:em|de|por)?\s*(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)/i)
+    ?? text.match(/\b(\d+(?:[.,]\d{1,2})?)\s*reais\b/i);
+  const informedTotal = totalMatch ? Math.round(Number(totalMatch[1].replace(",", ".")) * 100) : null;
+  const payment = accountMatch ? "crediario" : paymentMethodFromText(text);
   return {
     items,
     fulfillment: requestsDelivery(text) ? "delivery" : requestsPickup(text) ? "pickup" : null,
     paymentMethod: payment === "card" ? null : payment,
-    totalCents: items.reduce((sum, item) => sum + item.totalCents, 0),
+    customerName,
+    totalCents: informedTotal ?? items.reduce((sum, item) => sum + item.totalCents, 0),
   };
 }

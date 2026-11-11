@@ -19,8 +19,6 @@ extraResources:
     to: backend/prisma
   - from: electron/speech-runtime
     to: speech
-  - from: electron/interpreter-runtime
-    to: interpreter
 linux:
   target:
     - AppImage

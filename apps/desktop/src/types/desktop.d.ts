@@ -54,7 +54,6 @@ interface MosaicoDesktopBridge {
   getBackendDiagnostic: () => Promise<DesktopBackendDiagnostic>;
   createNewDatabase: () => Promise<{ archivePath: string | null }>;
   transcribeAudio: (audio: ArrayBuffer, mimeType: string, prompt?: string) => Promise<{ available: boolean; text: string | null; understood: boolean }>;
-  interpretText: (text: string, products: { name: string; aliases: string[] }[]) => Promise<{ available: boolean; text: string | null; understood: boolean }>;
   getPlatform: () => string;
   getBackupSettings: () => Promise<{ lastBackupAt: string | null }>;
   saveBackupFile: (input: { content: string }) => Promise<{ path: string; createdAt: string } | null>;

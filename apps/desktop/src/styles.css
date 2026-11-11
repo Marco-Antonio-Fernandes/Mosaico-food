@@ -2981,7 +2981,20 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 }
 
 
-.order-suggestions { border: 1px solid var(--proto-line); border-radius: 14px; background: var(--proto-surface); overflow: hidden; }
+.orders-module { display: grid; gap: 10px; min-width: 0; }
+.orders-suggestions-slot { display: flex; justify-content: flex-end; min-height: 0; }
+.orders-suggestions-slot:empty { display: none; }
+.orders-suggestions-slot .order-suggestions { width: min(430px, 100%); }
+.order-suggestions { border: 1px solid var(--proto-line); border-radius: 14px; background: var(--proto-surface); overflow: hidden; box-shadow: 0 8px 24px #00000018; }
+.order-suggestions > header { padding: 7px 10px; }
+.order-suggestions-list { max-height: 190px; }
+.order-suggestion-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; margin: 0 0 8px; }
+.order-suggestion-edit label { display: grid; gap: 3px; font-size: .66rem; color: var(--proto-muted); }
+.order-suggestion-edit input, .order-suggestion-edit select { min-height: 30px; padding: 4px 7px; font-size: .72rem; }
+.order-suggestion-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin: 0 0 8px; }
+.order-suggestion-facts > div { display: flex; justify-content: space-between; gap: 8px; min-width: 0; padding: 3px 0; border-bottom: 1px solid var(--proto-line); font-size: .68rem; }
+.order-suggestion-facts dt { color: var(--proto-muted); }
+.order-suggestion-facts dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .order-suggestions > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--proto-line); }
 .order-suggestions > header > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .order-suggestions > header strong { color: var(--proto-ink); font-size: .78rem; }

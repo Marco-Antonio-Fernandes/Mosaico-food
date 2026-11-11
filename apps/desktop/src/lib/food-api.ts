@@ -428,14 +428,6 @@ export function transcribeFoodAudio(audio: Blob, prompt = ""): Promise<FoodTrans
   return foodApi<FoodTranscriptionResult>("/api/v1/food/speech", { method: "POST", headers: { "Content-Type": audio.type || "application/octet-stream", ...(prompt ? { "X-Whisper-Prompt": prompt } : {}) }, body: audio });
 }
 
-export function interpretFoodText(text: string, products: FoodProduct[]): Promise<FoodTranscriptionResult> {
-  const localInterpreter = window.mosaicoDesktop?.interpretText;
-  if (!localInterpreter) return Promise.resolve({ available: false, text: null, understood: false });
-  return localInterpreter(text, products.map(product => ({ name: product.name, aliases: product.aliases })))
-    .then(result => ({ available: result.available, text: result.text, understood: result.understood }))
-    .catch(() => ({ available: true, text: null, understood: false }));
-}
-
 export type CounterSaleItemInput = {
   productId: string;
   quantity: number;
@@ -1136,6 +1128,7 @@ export type FoodOrderSuggestion = {
   remoteJid: string;
   messageIds: string[];
   answeredAt: string;
+  origin?: "customer" | "owner";
   text: string;
   items: FoodOrderSuggestionItem[];
   fulfillment: "pickup" | "delivery" | null;

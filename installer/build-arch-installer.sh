@@ -11,7 +11,7 @@ MKSQUASHFS="${MOSAICO_MKSQUASHFS:-${XDG_CACHE_HOME:-${HOME}/.cache}/electron-bui
 
 [[ -f "$TEMPLATE" ]] || { printf 'Template não encontrado: %s\n' "$TEMPLATE" >&2; exit 1; }
 
-printf '[Mosaico Food] Gerando o AppImage com backend, interpretador e áudio...\n'
+printf '[Mosaico Food] Gerando o AppImage com backend e áudio...\n'
 NEEDS_LOCAL_APPIMAGE=0
 if [[ "${MOSAICO_SKIP_ELECTRON_PACKAGE:-0}" == "1" ]]; then
   printf '[Mosaico Food] Usando o linux-unpacked já preparado.\n'

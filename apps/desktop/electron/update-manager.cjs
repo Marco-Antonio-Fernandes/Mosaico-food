@@ -217,7 +217,6 @@ function copyRuntimeAssets(appDir) {
   const desktop = path.join(appDir, "apps", "desktop");
   const pairs = [
     ["speech", path.join(desktop, "electron", "speech-runtime")],
-    ["interpreter", path.join(desktop, "electron", "interpreter-runtime")],
   ];
   for (const [name, destination] of pairs) {
     const source = path.join(resources, name);

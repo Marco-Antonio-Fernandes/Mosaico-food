@@ -53,7 +53,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "pos" && <header className="proto-heading proto-heading-compact"><h1>{foodModules[module][0]}</h1><p>{foodModules[module][1]}</p></header>}
     {module === "pos" && <Catalog pos />}
     {module === "products" && <Catalog />}
-    {module === "orders" && <div className="proto-stack"><FoodOrderSuggestions /><Orders /></div>}
+    {module === "orders" && <div className="orders-module"><div className="orders-suggestions-slot"><FoodOrderSuggestions /></div><Orders /></div>}
     {module === "service" && <FoodServicePanel />}
     {module === "credit" && <CreditPage />}
     {module === "inventory" && <Inventory />}

@@ -8,7 +8,6 @@ const { createNewLocalDatabase, getBackendDiagnostic, getBackendUrl, startLocalB
 const { getBackupSettings, readBackupFile, saveBackupFile } = require("./backup-manager.cjs");
 const { checkForUpdates, installUpdate } = require("./update-manager.cjs");
 const { stopLocalSpeech, transcribeAudio } = require("./local-speech.cjs");
-const { stopLocalInterpreter, interpretFoodText } = require("./local-interpreter.cjs");
 const { getPrinterSettings, printFoodOrder, printTestOrder, savePrinterSettings } = require("./printer.cjs");
 
 const isDevelopment = !app.isPackaged;
@@ -264,7 +263,6 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
 
   ipcMain.handle("mosaico:create-new-database", () => createNewLocalDatabase());
   ipcMain.handle("mosaico:transcribe-audio", (_event, audio, mimeType, prompt) => transcribeAudio(audio, mimeType, prompt));
-  ipcMain.handle("mosaico:interpret-text", (_event, text, products) => interpretFoodText(text, products));
   ipcMain.handle("mosaico:get-backup-settings", () => getBackupSettings());
   ipcMain.handle("mosaico:save-backup-file", (_event, input) => saveBackupFile(input));
   ipcMain.handle("mosaico:read-backup-file", () => readBackupFile());
@@ -307,6 +305,5 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopLocalSpeech();
-  stopLocalInterpreter();
   stopLocalBackend();
 });
