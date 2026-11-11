@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Alguns ambientes (principalmente ao abrir pelo gerenciador de arquivos)
+# chegam com PATH reduzido. Garanta os diretórios padrão do Arch.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 APP_NAME="Mosaico Food"
 INSTALL_DIR="${MOSAICO_INSTALL_DIR:-${HOME}/.local/opt/mosaico-food}"
 BIN_DIR="${HOME}/.local/bin"
@@ -183,9 +187,9 @@ node_ready() {
     if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then node_bin="$candidate"; break; fi
   done
   for candidate in /usr/bin/npm /usr/local/bin/npm /usr/sbin/npm; do
-    if [[ -x "$candidate" ]] && "$candidate" --version >/dev/null 2>&1; then npm_bin="$candidate"; break; fi
+    if [[ -x "$candidate" ]]; then npm_bin="$candidate"; break; fi
   done
-  if [[ -n "$node_bin" && -x "$node_bin" && -n "$npm_bin" && -x "$npm_bin" ]] && "$node_bin" --version >/dev/null 2>&1 && "$npm_bin" --version >/dev/null 2>&1; then
+  if [[ -n "$node_bin" && -x "$node_bin" && -n "$npm_bin" && -x "$npm_bin" ]] && "$node_bin" --version >/dev/null 2>&1 && "$node_bin" "$npm_bin" --version >/dev/null 2>&1; then
     NODE_BIN="$node_bin"
     NPM_BIN="$npm_bin"
     return 0
@@ -230,7 +234,7 @@ if ! node_ready; then
     fail "Node.js e npm são obrigatórios para o botão Atualizar. Rode 'sudo pacman -S nodejs npm' e execute o instalador novamente."
   fi
 fi
-say "Node.js $("$NODE_BIN" --version) e npm $("$NPM_BIN" --version) prontos para o botão Atualizar."
+say "Node.js $("$NODE_BIN" --version) e npm $("$NODE_BIN" "$NPM_BIN" --version) prontos para o botão Atualizar."
 
 say "Verificando dependências do Arch Linux..."
 if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
