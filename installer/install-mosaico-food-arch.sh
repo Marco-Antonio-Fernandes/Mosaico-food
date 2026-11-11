@@ -221,6 +221,7 @@ find_payload_source() {
   printf '%s\n' "$embedded"
 }
 
+say "Instalador Mosaico Food NOVO 2026-11-11 - Node/npm absoluto e sem bloqueio"
 APPIMAGE_SOURCE="$(find_payload_source "${1:-}")"
 [[ -f "$APPIMAGE_SOURCE" ]] || fail "não foi possível acessar o AppImage."
 
@@ -230,11 +231,13 @@ say "Verificando Node.js e npm..."
 if ! node_ready; then
   say "Node.js/npm ausentes; instalando nodejs e npm..."
   run_pacman -S --needed --noconfirm nodejs npm || true
-  if ! node_ready; then
-    fail "Node.js e npm são obrigatórios para o botão Atualizar. Rode 'sudo pacman -S nodejs npm' e execute o instalador novamente."
-  fi
 fi
-say "Node.js $("$NODE_BIN" --version) e npm $("$NODE_BIN" "$NPM_BIN" --version) prontos para o botão Atualizar."
+if node_ready; then
+  say "Node.js $("$NODE_BIN" --version) e npm $("$NODE_BIN" "$NPM_BIN" --version) prontos para o botão Atualizar."
+else
+  say "Aviso: Node.js/npm não foram detectados. O aplicativo será instalado mesmo assim."
+  say "Depois instale com 'sudo pacman -S nodejs npm' para o botão Atualizar funcionar."
+fi
 
 say "Verificando dependências do Arch Linux..."
 if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
