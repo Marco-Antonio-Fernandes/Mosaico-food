@@ -111,7 +111,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action: "edit", productId } }));
   };
 
-  const openProductAction = (action: "loss" | "registerIngredient") => {
+  const openProductAction = (action: "loss" | "register" | "registerIngredient") => {
     window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action } }));
   };
 
@@ -182,6 +182,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
 
   return <div className="proto-stack">
     {!pos && <div className="proto-toolbar products-quick-actions">
+      <button type="button" className="proto-subtle" onClick={() => openProductAction("register")}><PackagePlus size={15} />Cadastrar produto</button>
       <button type="button" className="proto-subtle" onClick={() => openProductAction("loss")}><Trash2 size={15} />Dar baixa como perda</button>
       <small>Clique em um produto para editar.</small>
     </div>}
