@@ -15,8 +15,19 @@ function whatsappAccountId(): string {
 export function FoodServicePanel() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<{ state: string; message: string }>({ state: "loading", message: "Carregando WhatsApp Web…" });
+  const [apiStatus, setApiStatus] = useState("verificando…");
   const isDesktop = Boolean(window.mosaicoDesktop?.showWhatsApp);
   const accountId = whatsappAccountId();
+
+  useEffect(() => {
+    const onRelayStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ state?: string }>).detail;
+      if (!detail) return;
+      setApiStatus(detail.state === "online" ? "conectada" : detail.state === "unknown" ? "reconectando…" : "offline");
+    };
+    window.addEventListener("food-relay-status", onRelayStatus);
+    return () => window.removeEventListener("food-relay-status", onRelayStatus);
+  }, []);
 
   useEffect(() => {
     const bridge = window.mosaicoDesktop;
@@ -69,7 +80,7 @@ export function FoodServicePanel() {
     <header>
       <div>
         <strong>WhatsApp Web</strong>
-        <small>{isDesktop ? status.state === "error" ? status.message : "Atendimento manual · o robô não responde mais" : "Disponível no aplicativo desktop"}</small>
+        <small>{isDesktop ? `${status.state === "error" ? status.message : "WhatsApp Web manual"} · API do bot: ${apiStatus}` : "Disponível no aplicativo desktop"}</small>
       </div>
       <button type="button" className="service-wa-reload" onClick={reload} aria-label="Recarregar WhatsApp Web"><RefreshCw size={15} /></button>
     </header>

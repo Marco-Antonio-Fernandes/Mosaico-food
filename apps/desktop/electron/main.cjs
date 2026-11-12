@@ -19,6 +19,7 @@ let whatsappBrowserAccountId = null;
 let whatsappBrowserBounds = null;
 let whatsappBrowserVisible = false;
 let whatsappShowToken = 0;
+let whatsappLastLoadFailed = false;
 
 const WHATSAPP_URL = "https://web.whatsapp.com/";
 const WHATSAPP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -86,10 +87,13 @@ async function createWhatsappBrowserView(accountId) {
     notifyWhatsappStatus({ state: "loading", message: "Carregando WhatsApp Web…" });
   });
   view.webContents.on("did-finish-load", () => {
+    whatsappLastLoadFailed = false;
     notifyWhatsappStatus({ state: "ready", message: "WhatsApp Web pronto para uso." });
   });
   view.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame) return;
+    whatsappLastLoadFailed = true;
+    console.error("[Mosaico Food] Falha ao carregar o WhatsApp Web", { errorCode, errorDescription, validatedURL });
     notifyWhatsappStatus({ state: "error", message: `Falha ao carregar o WhatsApp Web (${errorCode}: ${errorDescription}).`, url: validatedURL });
   });
   view.webContents.on("render-process-gone", (_event, details) => {
@@ -128,6 +132,7 @@ function setWhatsappBrowserBounds(input) {
     width: Math.max(2, Math.round(width)),
     height: Math.max(2, Math.round(height)),
   });
+  if (!whatsappBrowserView.webContents.isDestroyed()) whatsappBrowserView.webContents.invalidate();
 }
 
 if (isDevelopment) {
@@ -259,6 +264,10 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
     // a visualização por cima da nova tela.
     if (token !== whatsappShowToken) return { ready: false };
     whatsappBrowserVisible = true;
+    if (whatsappLastLoadFailed && whatsappBrowserView && !whatsappBrowserView.webContents.isDestroyed()) {
+      whatsappLastLoadFailed = false;
+      void whatsappBrowserView.webContents.loadURL(WHATSAPP_URL);
+    }
     if (whatsappBrowserBounds) setWhatsappBrowserBounds(whatsappBrowserBounds);
     return { ready: true };
   });
