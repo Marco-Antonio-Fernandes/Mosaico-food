@@ -11,6 +11,7 @@ type Draft = {
   customerName: string;
   fulfillment: "pickup" | "delivery" | "";
   paymentMethod: string;
+  deliveryAddress: string;
   items: FoodOrderSuggestionItem[];
 };
 
@@ -33,6 +34,7 @@ function draftFrom(suggestion: FoodOrderSuggestion): Draft {
     customerName: suggestion.customerName || "",
     fulfillment: suggestion.fulfillment ?? "",
     paymentMethod: suggestion.paymentMethod ?? "",
+    deliveryAddress: suggestion.deliveryAddress ?? "",
     items: suggestion.items.map(item => ({ ...item })),
   };
 }
@@ -41,6 +43,7 @@ function missingFields(draft: Draft, intent: "sale" | "order") {
   const missing: string[] = [];
   if (!draft.paymentMethod) missing.push("pagamento");
   if (!draft.fulfillment) missing.push("modalidade");
+  if (draft.fulfillment === "delivery" && !draft.deliveryAddress.trim()) missing.push("endereço");
   return missing;
 }
 
@@ -130,6 +133,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
           source: suggestion.origin === "owner" ? "balcao" : "whatsapp",
           customerName: source.customerName.trim() || null,
           fulfillment: source.fulfillment || "pickup",
+          deliveryAddress: source.fulfillment === "delivery" ? source.deliveryAddress.trim() || null : null,
           paymentMethod: (source.paymentMethod || null) as SalePaymentMethod | null,
           items: source.items.map(item => ({ productId: item.productId, quantity: item.quantity, unitPriceCents: item.unitPriceCents, variantName: item.variantName })),
         });
@@ -209,6 +213,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
       <div className="order-preview-fields">
         <label>Modalidade<select value={activeDraft.fulfillment} onChange={event => setDraft({ ...activeDraft, fulfillment: event.target.value as "pickup" | "delivery" | "" })}><option value="">Não informado</option><option value="pickup">Retirada</option><option value="delivery">Entrega</option></select></label>
         <label>Pagamento<select value={activeDraft.paymentMethod} onChange={event => setDraft({ ...activeDraft, paymentMethod: event.target.value })}><option value="">Não informado</option>{paymentOptions(current.intent).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        {activeDraft.fulfillment === "delivery" && <label className="order-preview-address">Endereço de entrega<input value={activeDraft.deliveryAddress} onChange={event => setDraft({ ...activeDraft, deliveryAddress: event.target.value })} placeholder="Informe o endereço" /></label>}
       </div>
       {missing.length > 0 && <p className="order-preview-missing">Faltando: {missing.join(", ")}</p>}
       <div className="order-preview-total">Total dos itens: <strong>{money(itemsTotal)}</strong></div>
@@ -227,6 +232,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
             <label>Modalidade<select value={editDraft.fulfillment} onChange={event => setEditDraft({ ...editDraft, fulfillment: event.target.value as "pickup" | "delivery" | "" })}><option value="">Não informado</option><option value="pickup">Retirada</option><option value="delivery">Entrega</option></select></label>
           </div>
           <label>Pagamento<select value={editDraft.paymentMethod} onChange={event => setEditDraft({ ...editDraft, paymentMethod: event.target.value })}><option value="">{editing.intent === "sale" ? "Informe o pagamento" : "Não informado"}</option>{paymentOptions(editing.intent).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          {editDraft.fulfillment === "delivery" && <label>Endereço de entrega<input value={editDraft.deliveryAddress} onChange={event => setEditDraft({ ...editDraft, deliveryAddress: event.target.value })} placeholder="Rua, número, bairro" /></label>}
           <div className="order-preview-edit-items">
             <strong>Itens do {editing.intent === "sale" ? "venda" : "pedido"}</strong>
             {editDraft.items.map(item => <div key={`${item.productId}:${item.variantId ?? ""}`}>

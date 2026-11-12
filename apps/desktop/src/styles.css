@@ -3028,7 +3028,8 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .order-preview-missing { margin: 0; color: #e6c06a; font-size: .7rem; }
 .order-preview-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .order-preview-fields label { display: grid; gap: 3px; font-size: .68rem; color: var(--proto-muted); }
-.order-preview-fields select { background: var(--proto-canvas); color: var(--proto-ink); border: 1px solid var(--proto-line); border-radius: 8px; min-height: 32px; padding: 4px 7px; }
+.order-preview-fields select, .order-preview-address input { background: var(--proto-canvas); color: var(--proto-ink); border: 1px solid var(--proto-line); border-radius: 8px; min-height: 32px; padding: 4px 7px; }
+.order-preview-address { grid-column: 1 / -1; }
 .order-preview-edit { padding: 18px; }
 .order-preview-edit > header h3 { font-size: 1.05rem; margin-top: 2px; }
 .order-preview-edit-body { gap: 12px; }

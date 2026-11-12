@@ -1390,6 +1390,7 @@ export type OrderSuggestionDraft = {
   fulfillment: "pickup" | "delivery" | null;
   paymentMethod: string | null;
   customerName?: string | null;
+  deliveryAddress?: string | null;
   totalCents: number;
   intent: "sale" | "order";
 };
@@ -1402,6 +1403,24 @@ function closeWord(left: string, right: string) {
   if (left === right) return true;
   if (left.length < 4 || right.length < 4) return false;
   return editDistance(left, right) <= 1;
+}
+
+function deliveryAddressFromText(value: string) {
+  const patterns = [
+    /\b(?:entrega|entregar|leva|levar|manda|mandar|traz|trazer)\s+(?:na|no|em|para|pra)\s+([^.;\n()]{3,120})/i,
+    /\b(?:entrega|entregar|leva|levar|manda|mandar|traz|trazer)\s+(?:aqui|ai|aí)\s+(?:na|no|em)\s+([^.;\n()]{3,120})/i,
+    /\b(?:aqui|ai|aí)\s+(?:na|no|em)\s+([^.;\n()]{3,120})/i,
+  ];
+  for (const pattern of patterns) {
+    const match = value.match(pattern);
+    if (!match?.[1]) continue;
+    const cleaned = match[1]
+      .replace(/\b(?:por favor|obrigado|obrigada|valeu|ta bom|tá bom|ok|blz|beleza)\b.*$/i, "")
+      .replace(/[,\s]+$/, "")
+      .trim();
+    if (cleaned.length >= 3) return cleaned;
+  }
+  return null;
 }
 
 function resolveFlavorProduct(product: Product, text: string, end: number, products: Product[]) {
@@ -1579,6 +1598,7 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
     fulfillment: requestsDelivery(text) ? "delivery" : requestsPickup(text) ? "pickup" : null,
     paymentMethod: payment === "card" ? null : payment,
     customerName,
+    deliveryAddress: deliveryAddressFromText(text),
     totalCents: informedTotal ?? items.reduce((sum, item) => sum + item.totalCents, 0),
     intent: hasSaleIntent ? "sale" as const : "order" as const,
   };

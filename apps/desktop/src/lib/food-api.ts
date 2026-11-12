@@ -1133,6 +1133,7 @@ export type FoodOrderSuggestion = {
   items: FoodOrderSuggestionItem[];
   fulfillment: "pickup" | "delivery" | null;
   paymentMethod: string | null;
+  deliveryAddress?: string | null;
   totalCents: number;
   intent: "sale" | "order";
 };
