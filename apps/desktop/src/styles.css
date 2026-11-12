@@ -3019,7 +3019,7 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .order-preview-meta { display: flex; justify-content: space-between; gap: 10px; font-size: .72rem; }
 .order-preview-meta span { color: var(--proto-muted); }
 .order-preview-meta strong { color: var(--proto-ink); }
-.order-preview-source { margin: 0; padding: 8px 10px; border-left: 3px solid #e6c06a; border-radius: 0 8px 8px 0; background: var(--proto-canvas); color: var(--proto-ink); font-size: .76rem; line-height: 1.45; white-space: pre-wrap; max-height: 80px; overflow: auto; }
+.order-preview-source { margin: 0; padding: 8px 10px; border-left: 3px solid #e6c06a; border-radius: 0 8px 8px 0; background: var(--proto-canvas); color: var(--proto-ink); font-size: .76rem; line-height: 1.45; white-space: pre-wrap; max-height: 140px; overflow: auto; }
 .order-preview-items { display: grid; gap: 4px; }
 .order-preview-items > div { display: flex; gap: 7px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--proto-line); font-size: .78rem; color: var(--proto-ink); }
 .order-preview-items strong { color: #e6c06a; min-width: 30px; }

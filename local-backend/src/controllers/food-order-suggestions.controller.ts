@@ -43,12 +43,17 @@ export class FoodOrderSuggestionsController {
     const suggestions: Array<Record<string, unknown>> = [];
     for (const conversation of conversations) {
       const messages = conversation.messages;
-      // Últimas mensagens do cliente, mesmo que ainda não tenham sido
-      // respondidas manualmente. É isso que permite a prévia aparecer assim
-      // que o cliente pede algo.
+      // Só considera mensagens novas depois do último pedido já criado
+      // nesta conversa. Assim itens de um pedido já finalizado não voltam.
+      const latestOrder = await this.database.foodOrder.findFirst({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
       const block: typeof messages = [];
       for (let index = messages.length - 1; index >= 0 && block.length < 5; index -= 1) {
         const message = messages[index];
+        if (latestOrder && message.createdAt <= latestOrder.createdAt) break;
         if (message.direction === "inbound") {
           block.unshift(message);
           continue;

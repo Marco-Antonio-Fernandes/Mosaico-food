@@ -135,6 +135,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
         });
         setNotice("Pedido aprovado.");
       }
+      saveDismissed([...loadDismissed(), suggestion.id]);
       remove(suggestion);
       window.dispatchEvent(new Event("food-stock-changed"));
     } catch (cause) {

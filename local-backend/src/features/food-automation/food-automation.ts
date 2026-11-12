@@ -1398,6 +1398,12 @@ export type OrderSuggestionDraft = {
  * Interpreta um texto de conversa e devolve apenas uma sugestão de pedido.
  * Não envia mensagens, não altera o estado do diálogo e não cria pedidos.
  */
+function closeWord(left: string, right: string) {
+  if (left === right) return true;
+  if (left.length < 4 || right.length < 4) return false;
+  return editDistance(left, right) <= 1;
+}
+
 function resolveFlavorProduct(product: Product, text: string, end: number, products: Product[]) {
   const base = normalizeText(product.productName || product.name.split(" · ")[0]);
   const family = products.filter(candidate => normalizeText(candidate.productName || candidate.name.split(" · ")[0]) === base);
@@ -1507,8 +1513,27 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
     return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0, intent: "order" as const };
   }
 
+  const familyOf = (product: Product) => normalizeText(product.productName || product.name.split(" · ")[0]);
+  const elidedFlavorPattern = /(\d+)\s+(?:de|do|da)\s+([a-z0-9]+)/g;
+  const extraMatches: typeof selected = [];
+  let flavorMatch: RegExpExecArray | null;
+  while ((flavorMatch = elidedFlavorPattern.exec(normalizedText))) {
+    const quantity = Number(flavorMatch[1]);
+    const flavor = flavorMatch[2];
+    const start = flavorMatch.index;
+    const end = start + flavorMatch[0].length;
+    if (!Number.isInteger(quantity) || quantity <= 0) continue;
+    if (selected.some(match => start < match.end && end > match.start)) continue;
+    const previous = [...selected].reverse().find(match => match.end <= start);
+    if (!previous) continue;
+    const family = familyOf(previous.product);
+    const sibling = products.find(product => familyOf(product) === family && product.flavor && (normalizeText(product.flavor) === flavor || closeWord(normalizeText(product.flavor), flavor)));
+    if (sibling) extraMatches.push({ product: sibling, start, end, quantity, explicit: true });
+  }
+  const matchedItems = [...selected, ...extraMatches].sort((left, right) => left.start - right.start);
+
   const grouped = new Map<string, { productId: string; name: string; variantId: string | null; variantName: string | null; quantity: number; unitPriceCents: number; totalCents: number }>();
-  for (const match of selected) {
+  for (const match of matchedItems) {
     let unitPriceCents = match.product.salePriceCents;
     let variantId: string | null = null;
     let variantName: string | null = null;
