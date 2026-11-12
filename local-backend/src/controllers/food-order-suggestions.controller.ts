@@ -41,20 +41,17 @@ export class FoodOrderSuggestionsController {
     const suggestions: Array<Record<string, unknown>> = [];
     for (const conversation of conversations) {
       const messages = conversation.messages;
-      let humanIndex = -1;
-      for (let index = messages.length - 1; index >= 0; index -= 1) {
-        if (messages[index].direction === "outbound" && messages[index].source === "human") {
-          humanIndex = index;
-          break;
-        }
-      }
-      if (humanIndex < 0) continue;
-
+      // Últimas mensagens do cliente, mesmo que ainda não tenham sido
+      // respondidas manualmente. É isso que permite a prévia aparecer assim
+      // que o cliente pede algo.
       const block: typeof messages = [];
-      for (let index = humanIndex - 1; index >= 0; index -= 1) {
-        if (messages[index].direction === "outbound") break;
-        block.unshift(messages[index]);
-        if (block.length >= 5) break;
+      for (let index = messages.length - 1; index >= 0 && block.length < 5; index -= 1) {
+        const message = messages[index];
+        if (message.direction === "inbound") {
+          block.unshift(message);
+          continue;
+        }
+        if (block.length) break;
       }
 
       if (block.length) {
@@ -77,7 +74,7 @@ export class FoodOrderSuggestionsController {
                 customerName: customerNameFor(draft.customerName, conversation),
                 remoteJid: conversation.remoteJid,
                 messageIds: block.map(message => message.id),
-                answeredAt: messages[humanIndex].createdAt,
+                answeredAt: block[block.length - 1].createdAt,
                 origin: "customer",
                 text,
               });
