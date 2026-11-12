@@ -221,33 +221,22 @@ find_payload_source() {
   printf '%s\n' "$embedded"
 }
 
-say "Instalador Mosaico Food NOVO 2026-11-11 - Node/npm absoluto e sem bloqueio"
+say "Instalador Mosaico Food NOVO 2026-11-11 v3 - instala primeiro, Node opcional"
 APPIMAGE_SOURCE="$(find_payload_source "${1:-}")"
 [[ -f "$APPIMAGE_SOURCE" ]] || fail "não foi possível acessar o AppImage."
 
-# Node e npm são obrigatórios para o botão Atualizar. Instale-os primeiro,
-# separados do restante, para que um conflito de áudio/vídeo não impeça isso.
-say "Verificando Node.js e npm..."
-if ! node_ready; then
-  say "Node.js/npm ausentes; instalando nodejs e npm..."
-  run_pacman -S --needed --noconfirm nodejs npm || true
+# Dependências do sistema são opcionais para a instalação do app.
+# Nunca bloqueiam: qualquer falha do pacman vira apenas aviso.
+if [[ "${MOSAICO_SKIP_SYSTEM_DEPS:-0}" != "1" ]]; then
+  say "Verificando dependências do Arch Linux (opcional)..."
+  run_pacman -S --needed --noconfirm nodejs npm >/dev/null 2>&1 || true
+  if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
+    say "Aviso: alguns pacotes do sistema não puderam ser atualizados automaticamente."
+  fi
+  for package in "${PACMAN_AUDIO_PACKAGES[@]}"; do
+    run_pacman -S --needed --noconfirm "$package" >/dev/null 2>&1 || true
+  done
 fi
-if node_ready; then
-  say "Node.js $("$NODE_BIN" --version) e npm $("$NODE_BIN" "$NPM_BIN" --version) prontos para o botão Atualizar."
-else
-  say "Aviso: Node.js/npm não foram detectados. O aplicativo será instalado mesmo assim."
-  say "Depois instale com 'sudo pacman -S nodejs npm' para o botão Atualizar funcionar."
-fi
-
-say "Verificando dependências do Arch Linux..."
-if ! run_pacman -S --needed --noconfirm "${PACMAN_PACKAGES[@]}"; then
-  say "Aviso: alguns pacotes do sistema não puderam ser atualizados automaticamente."
-  say "O aplicativo pode abrir mesmo assim. Se algo faltar, rode 'sudo pacman -Syu' e execute o instalador novamente."
-fi
-
-for package in "${PACMAN_AUDIO_PACKAGES[@]}"; do
-  run_pacman -S --needed --noconfirm "$package" >/dev/null 2>&1 || true
-done
 
 say "Extraindo o aplicativo para $INSTALL_DIR..."
 install -d -m 0755 "$INSTALL_DIR" "$BIN_DIR" "$APPLICATIONS_DIR"
@@ -292,6 +281,12 @@ fi
 say "Instalação concluída."
 say "Abra pelo menu de aplicativos ou execute: $LAUNCHER"
 say "O áudio usa o whisper-server e o modelo local incluídos no aplicativo."
+
+if node_ready; then
+  say "Node.js $("$NODE_BIN" --version) e npm $("$NODE_BIN" "$NPM_BIN" --version) prontos para o botão Atualizar."
+else
+  say "Aviso: Node.js/npm não detectados. O app já está instalado; para o botão Atualizar rode 'sudo pacman -S nodejs npm'."
+fi
 
 exit 0
 
