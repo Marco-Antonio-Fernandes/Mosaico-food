@@ -1,8 +1,9 @@
-import { Controller, Get, Req, Res } from "@nestjs/common";
+import { Controller, Get, Post, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { z } from "zod";
 
 import { suggestOrderFromText } from "../features/food-automation/food-automation";
-import { databaseUnavailable, jsonData, rejectUnauthorized } from "../lib/http";
+import { databaseUnavailable, jsonData, jsonError, rejectUnauthorized } from "../lib/http";
 import { PrismaService } from "../lib/prisma.service";
 import { businessDate } from "../lib/cash-session";
 
@@ -42,7 +43,7 @@ export class FoodOrderSuggestionsController {
     const startOfToday = new Date(`${businessDate()}T00:00:00-03:00`);
     const suggestions: Array<Record<string, unknown>> = [];
     for (const conversation of conversations) {
-      const messages = conversation.messages;
+      const messages = conversation.messages.filter(message => !message.suggestionResolvedAt);
       // Só considera mensagens novas depois do último pedido já criado
       // nesta conversa. Assim itens de um pedido já finalizado não voltam.
       const latestOrder = await this.database.foodOrder.findFirst({
@@ -123,5 +124,15 @@ export class FoodOrderSuggestionsController {
     }
 
     return response.json(jsonData({ suggestions }));
+  }
+
+  @Post("resolve")
+  async resolve(@Req() request: Request, @Res() response: Response) {
+    if (rejectUnauthorized(request, response)) return;
+    if (!this.database.isConfigured) return databaseUnavailable(response);
+    const parsed = z.object({ messageIds: z.array(z.string().uuid()).min(1).max(20) }).safeParse(request.body);
+    if (!parsed.success) return response.status(400).json(jsonError("INVALID_MESSAGES", "Informe as mensagens da prévia.", 400));
+    await this.database.foodMessage.updateMany({ where: { id: { in: parsed.data.messageIds } }, data: { suggestionResolvedAt: new Date() } });
+    return response.json(jsonData({ ok: true }));
   }
 }

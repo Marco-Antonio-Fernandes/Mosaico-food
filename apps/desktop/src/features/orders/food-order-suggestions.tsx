@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
-import { createFoodOrder, getFoodOrderSuggestions, getFoodProducts, registerCounterSale, type FoodOrderSuggestion, type FoodOrderSuggestionItem, type FoodProduct, type SalePaymentMethod } from "@/lib/food-api";
+import { createFoodOrder, getFoodOrderSuggestions, getFoodProducts, registerCounterSale, resolveFoodOrderSuggestion, type FoodOrderSuggestion, type FoodOrderSuggestionItem, type FoodProduct, type SalePaymentMethod } from "@/lib/food-api";
 
 const DISMISSED_KEY = "mosaico-dismissed-order-suggestions";
 const paymentLabels: Record<string, string> = { pix: "Pix", cash: "Dinheiro", card_credit: "Crédito", card_debit: "Débito", meal_voucher: "Vale-alimentação", crediario: "Crediário", brinde: "Brinde" };
@@ -136,6 +136,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
         setNotice("Pedido aprovado.");
       }
       saveDismissed([...loadDismissed(), suggestion.id]);
+      await resolveFoodOrderSuggestion(suggestion.messageIds).catch(() => undefined);
       remove(suggestion);
       window.dispatchEvent(new Event("food-stock-changed"));
     } catch (cause) {

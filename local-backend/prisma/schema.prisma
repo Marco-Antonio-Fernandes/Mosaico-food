@@ -306,6 +306,7 @@ model FoodMessage {
   locationLongitude   Float?
   locationAddress     String?
   transcriptionStatus String?
+  suggestionResolvedAt DateTime?
   createdAt           DateTime         @default(now())
   processedAt         DateTime?
   needsHuman          Boolean          @default(false)
