@@ -6,6 +6,7 @@ import { databaseUnavailable, jsonData, rejectUnauthorized } from "../lib/http";
 import { PrismaService } from "../lib/prisma.service";
 
 const LOOKBACK_DAYS = 7;
+const RECENT_CUSTOMER_MS = 48 * 60 * 60 * 1000;
 
 // Número da própria loja. Somente mensagens enviadas para esse número (a loja
 // escrevendo para si mesma) são tratadas como anotação de venda/pedido.
@@ -60,7 +61,9 @@ export class FoodOrderSuggestionsController {
           .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
           .join("\n");
         const lastInbound = block[block.length - 1];
-        if (text.trim()) {
+        const recent = lastInbound.createdAt.getTime() >= Date.now() - RECENT_CUSTOMER_MS;
+        const handledByHuman = messages.some(message => message.direction === "outbound" && message.source === "human" && message.createdAt > lastInbound.createdAt);
+        if (recent && !handledByHuman && text.trim()) {
           const existingOrder = await this.database.foodOrder.findFirst({
             where: { conversationId: conversation.id, createdAt: { gte: lastInbound.createdAt } },
           });
