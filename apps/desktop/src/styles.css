@@ -3026,6 +3026,21 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .order-preview-total { text-align: right; font-size: .72rem; color: var(--proto-muted); }
 .order-preview-total strong { color: var(--proto-ink); }
 .order-preview-missing { margin: 0; color: #e6c06a; font-size: .7rem; }
+.order-preview-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.order-preview-fields label { display: grid; gap: 3px; font-size: .68rem; color: var(--proto-muted); }
+.order-preview-fields select { background: var(--proto-canvas); color: var(--proto-ink); border: 1px solid var(--proto-line); border-radius: 8px; min-height: 32px; padding: 4px 7px; }
+.order-preview-edit { padding: 18px; }
+.order-preview-edit > header h3 { font-size: 1.05rem; margin-top: 2px; }
+.order-preview-edit-body { gap: 12px; }
+.order-preview-edit-items > div { grid-template-columns: minmax(0, 1fr) 64px 82px 30px; }
+.order-preview-edit-items > div > button { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; }
+.order-preview-add-product { display: grid; gap: 6px; padding: 10px; border: 1px dashed var(--proto-line); border-radius: 10px; background: var(--proto-canvas); }
+.order-preview-add-product > label { display: flex; align-items: center; gap: 7px; color: var(--proto-muted); }
+.order-preview-add-product > label input { flex: 1; min-width: 0; }
+.order-preview-add-results { display: grid; gap: 4px; max-height: 160px; overflow-y: auto; }
+.order-preview-add-results button { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 1px solid var(--proto-line); border-radius: 8px; background: var(--proto-surface); color: var(--proto-ink); text-align: left; font-size: .74rem; }
+.order-preview-add-results button span { margin-left: auto; color: var(--proto-muted); }
+.order-preview-add-results small { color: var(--proto-muted); font-size: .7rem; }
 .order-preview-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .order-preview-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; font-size: .74rem; }
 .order-preview-notice { margin: 0; color: #91dfb4; font-size: .7rem; }

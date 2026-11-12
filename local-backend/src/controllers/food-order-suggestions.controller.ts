@@ -4,9 +4,9 @@ import type { Request, Response } from "express";
 import { suggestOrderFromText } from "../features/food-automation/food-automation";
 import { databaseUnavailable, jsonData, rejectUnauthorized } from "../lib/http";
 import { PrismaService } from "../lib/prisma.service";
+import { businessDate } from "../lib/cash-session";
 
 const LOOKBACK_DAYS = 7;
-const RECENT_CUSTOMER_MS = 48 * 60 * 60 * 1000;
 
 // Número da própria loja. Somente mensagens enviadas para esse número (a loja
 // escrevendo para si mesma) são tratadas como anotação de venda/pedido.
@@ -39,6 +39,7 @@ export class FoodOrderSuggestionsController {
       },
     });
 
+    const startOfToday = new Date(`${businessDate()}T00:00:00-03:00`);
     const suggestions: Array<Record<string, unknown>> = [];
     for (const conversation of conversations) {
       const messages = conversation.messages;
@@ -61,7 +62,7 @@ export class FoodOrderSuggestionsController {
           .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
           .join("\n");
         const lastInbound = block[block.length - 1];
-        const recent = lastInbound.createdAt.getTime() >= Date.now() - RECENT_CUSTOMER_MS;
+        const recent = lastInbound.createdAt >= startOfToday;
         const handledByHuman = messages.some(message => message.direction === "outbound" && message.source === "human" && message.createdAt > lastInbound.createdAt);
         if (recent && !handledByHuman && text.trim()) {
           const existingOrder = await this.database.foodOrder.findFirst({
@@ -94,7 +95,7 @@ export class FoodOrderSuggestionsController {
         const note = messages[index];
         if (note.direction !== "outbound" || note.source !== "human") continue;
         const noteText = note.body?.trim();
-        if (!noteText) continue;
+        if (!noteText || note.createdAt < startOfToday) continue;
         const orderAfterNote = await this.database.foodOrder.findFirst({
           where: { conversationId: conversation.id, createdAt: { gte: note.createdAt } },
         });

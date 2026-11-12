@@ -204,7 +204,7 @@ const greetingForNow = () => {
 const greetingIntro = () => `${greetingForNow()}! Aqui é o ${env.FOOD_AUTOMATION_BUSINESS_NAME}. 🤖 Você será atendido por um robô.\nSe preferir falar com um funcionário, é só responder "quero falar com um atendente".`;
 
 const requestsDelivery = (value: string) =>
-  /\b(entrega|delivery|entregar|trazer)\b/i.test(value);
+  /\b(entrega|delivery|entregar|trazer|manda|mandar|leva|levar)\b/i.test(value);
 
 const requestsPickup = (value: string) =>
   /\b(retirada|retirar|buscar|busco|balcao|balcão)\b/i.test(value) || /\b(aqui(?: mesmo| na loja)?|na loja)\b/i.test(value);
@@ -1409,7 +1409,7 @@ function resolveFlavorProduct(product: Product, text: string, end: number, produ
 
 export async function suggestOrderFromText(database: PrismaClient, text: string): Promise<OrderSuggestionDraft> {
   const normalizedText = normalizeText(text);
-  const hasQuantity = /\b\d+\b/.test(normalizedText);
+  const hasQuantity = /\b\d+\b|\b(um|uma)\b/.test(normalizedText);
   const hasSaleIntent = /\b(vendi|vendeu|vendendo|vendo|venda|vender)\b/.test(normalizedText);
   const hasOrderIntent = /\b(quero|queria|vou\s+querer|me\s+ve|me\s+manda|manda|mandar|pedir|pedido|pedidos|separa|separe|traz|trazer|vou\s+de|coloca|faca|faz|fazer|me\s+faz|me\s+traga|quero\s+dois|quero\s+duas|quero\s+um|quero\s+uma)\b/.test(normalizedText);
   if (!hasQuantity) {
@@ -1456,15 +1456,25 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
         const start = result.index + result[1].length;
         const end = start + result[2].length + (result[3]?.length ?? 0);
         const before = normalizedText.slice(0, start);
-        const quantityMatch = before.match(/(\d+)\s*(?:x|un|unidades?|und)?\s*$/);
+        const beforeMatch = before.match(/(\d+|um|uma)\s*(?:x|un|unidades?|und)?\s*$/i);
+        const after = normalizedText.slice(end, Math.min(normalizedText.length, end + 12));
+        const afterMatch = after.match(/^\s*(?:x|de)?\s*(\d+)\b/i);
+        const quantity = beforeMatch && /^\d+$/.test(beforeMatch[1])
+          ? Number(beforeMatch[1])
+          : afterMatch
+            ? Number(afterMatch[1])
+            : beforeMatch
+              ? 1
+              : 1;
+        const explicit = Boolean(beforeMatch || afterMatch);
         const resolvedProduct = resolveFlavorProduct(product, normalizedText, end, products);
         if (!resolvedProduct) continue;
         matches.push({
           product: resolvedProduct,
           start,
           end,
-          quantity: quantityMatch ? Math.max(1, Number(quantityMatch[1])) : 1,
-          explicit: Boolean(quantityMatch),
+          quantity: Math.max(1, quantity),
+          explicit,
         });
       }
     }
