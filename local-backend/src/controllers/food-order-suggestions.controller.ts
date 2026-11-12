@@ -7,6 +7,13 @@ import { PrismaService } from "../lib/prisma.service";
 
 const LOOKBACK_DAYS = 7;
 
+function customerNameFor(draftName: string | null | undefined, conversation: { remoteJid: string; customer?: { name: string } | null }) {
+  const name = draftName || conversation.customer?.name || null;
+  if (!name) return null;
+  const phone = conversation.remoteJid.replace(/@.*$/, "");
+  return name.replace(/\D/g, "") === phone || /^\d+$/.test(name) ? null : name;
+}
+
 @Controller("api/v1/food/order-suggestions")
 export class FoodOrderSuggestionsController {
   constructor(private readonly database: PrismaService) {}
@@ -63,7 +70,7 @@ export class FoodOrderSuggestionsController {
                 ...draft,
                 id: `${conversation.id}:${block.map(message => message.id).join(",")}`,
                 conversationId: conversation.id,
-                customerName: draft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
+                customerName: customerNameFor(draft.customerName, conversation),
                 remoteJid: conversation.remoteJid,
                 messageIds: block.map(message => message.id),
                 answeredAt: messages[humanIndex].createdAt,
@@ -92,7 +99,7 @@ export class FoodOrderSuggestionsController {
           ...noteDraft,
           id: `owner:${conversation.id}:${note.id}`,
           conversationId: conversation.id,
-          customerName: noteDraft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
+          customerName: customerNameFor(noteDraft.customerName, conversation),
           remoteJid: conversation.remoteJid,
           messageIds: [note.id],
           answeredAt: note.createdAt,

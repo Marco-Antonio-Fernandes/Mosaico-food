@@ -8,6 +8,7 @@ import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNoti
 import { NotificationList, type NotificationEntry } from "@/components/shared/prototype-kit";
 import { FoodAssistant } from "@/features/assistant/food-assistant";
 import { OrderAlerts } from "@/features/assistant/order-alerts";
+import { FoodOrderSuggestions } from "@/features/orders/food-order-suggestions";
 import { FoodOverviewPage } from "@/components/shared/food-overview-page";
 import { ConnectionStatus, type DesktopConnectionStatus } from "@/components/shared/connection-status";
 import { FoodRelayAgent } from "@/features/service/food-relay-agent";
@@ -251,7 +252,7 @@ export function App() {
     <FoodPrinterAgent />
     {connectionStatus.state === "offline" && <div className="mosaic-system-alert" role="alert">{connectionStatus.label}. Avise o suporte técnico.</div>}
     {dashboardOpen ? <FoodOverviewPage onOpenNotifications={() => { setDashboardOpen(false); openNotifications(); }} /> : <FoodPrototype key={`${account?.id ?? "sem-conta"}:${activeView}`} module={activeView} />}
-    {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
+    {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><div className="mosaic-order-previews"><FoodOrderSuggestions /></div><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
     <FoodAssistant />
     <OrderAlerts onOpen={() => navigate("orders")} />
     </AppShell>

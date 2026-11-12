@@ -3,7 +3,6 @@ import { Boxes, CalendarClock, CheckCircle2, CircleAlert, GripVertical, LoaderCi
 import { Badge, Panel, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
-import { FoodOrderSuggestions } from "@/features/orders/food-order-suggestions";
 import { CustomersPage } from "@/features/customers/customers-page";
 import { CreditPage } from "@/features/credit/credit-page";
 import { FinancePage } from "@/features/finance/finance-page";
@@ -53,7 +52,7 @@ export function FoodPrototype({ module }: { module: FoodModule }) {
     {module === "pos" && <header className="proto-heading proto-heading-compact"><h1>{foodModules[module][0]}</h1><p>{foodModules[module][1]}</p></header>}
     {module === "pos" && <Catalog pos />}
     {module === "products" && <Catalog />}
-    {module === "orders" && <div className="orders-module"><div className="orders-suggestions-slot"><FoodOrderSuggestions /></div><Orders /></div>}
+    {module === "orders" && <Orders />}
     {module === "service" && <FoodServicePanel />}
     {module === "credit" && <CreditPage />}
     {module === "inventory" && <Inventory />}
