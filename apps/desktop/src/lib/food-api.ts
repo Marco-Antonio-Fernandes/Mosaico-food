@@ -1147,6 +1147,10 @@ export async function resolveFoodOrderSuggestion(messageIds: string[]) {
   return foodApi<{ ok: boolean }>("/api/v1/food/order-suggestions/resolve", { method: "POST", body: JSON.stringify({ messageIds }) });
 }
 
+export async function processFoodOwnerNotes() {
+  return foodApi<{ actions: Array<Record<string, unknown>> }>("/api/v1/food/owner-notes/process", { method: "POST", body: JSON.stringify({}) });
+}
+
 export function createFoodOrder(input: { source?: string; customerName?: string | null; fulfillment?: "pickup" | "delivery"; deliveryAddress?: string | null; paymentMethod?: SalePaymentMethod | null; cashReceivedCents?: number | null; items: FoodOrderItemInput[] }) {
   return foodApi<{ order: FoodOrder }>("/api/v1/food/orders", {
     method: "POST",

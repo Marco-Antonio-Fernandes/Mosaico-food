@@ -8,6 +8,7 @@ import {
   getFoodProducts,
   getFoodRemoteWhatsappStatus,
   ingestFoodRelayMessage,
+  processFoodOwnerNotes,
   sendFoodRelayMessage,
   transcribeFoodAudio,
 } from "@/lib/food-api";
@@ -93,6 +94,7 @@ export function FoodRelayAgent() {
         }));
       } finally {
         draining = false;
+        void processFoodOwnerNotes().catch(() => undefined);
       }
     };
 

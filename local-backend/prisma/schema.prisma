@@ -307,6 +307,7 @@ model FoodMessage {
   locationAddress     String?
   transcriptionStatus String?
   suggestionResolvedAt DateTime?
+  ownerProcessedAt    DateTime?
   createdAt           DateTime         @default(now())
   processedAt         DateTime?
   needsHuman          Boolean          @default(false)

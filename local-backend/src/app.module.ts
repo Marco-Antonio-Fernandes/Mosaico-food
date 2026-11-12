@@ -10,6 +10,7 @@ import { FoodConversationsController } from "./controllers/food-conversations.co
 import { FoodOrdersController } from "./controllers/food-orders.controller";
 import { FoodOrderSchedulesController } from "./controllers/food-order-schedules.controller";
 import { FoodOrderSuggestionsController } from "./controllers/food-order-suggestions.controller";
+import { FoodOwnerNotesController } from "./controllers/food-owner-notes.controller";
 import { FoodProductsController } from "./controllers/food-products.controller";
 import { FoodSpeechController } from "./controllers/food-speech.controller";
 import { FoodAssistantController } from "./controllers/food-assistant.controller";
@@ -38,6 +39,7 @@ const foodBusinessControllers = [
   FoodStockNotificationsController,
   FoodOrdersController,
   FoodOrderSuggestionsController,
+  FoodOwnerNotesController,
   FoodOrderSchedulesController,
   FoodBackupController,
   FoodCashController,
