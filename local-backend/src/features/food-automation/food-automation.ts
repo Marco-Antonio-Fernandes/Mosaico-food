@@ -1277,8 +1277,13 @@ async function runFoodAutomationInternal(
     orderBy: { lastMessageAt: "asc" },
     include: { customer: true },
   });
-  const catalog = await database.foodProduct.findMany({ where: { active: true } });
-  const products = catalog.filter(product => product.productionMode !== "ingredient").map((product) => ({
+  const catalog = await database.foodProduct.findMany();
+  const allProductNames = new Set(
+    catalog.flatMap(product => [product.name, product.productName, ...parseAliases(product.aliasesJson)])
+      .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+      .map(name => normalizeText(name)),
+  );
+  const products = catalog.filter(product => product.active && product.productionMode !== "ingredient").map((product) => ({
     id: product.id,
     name: product.name,
     aliases: parseAliases(product.aliasesJson),
@@ -1415,8 +1420,13 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
   if (!hasQuantity) {
     return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0, intent: "order" as const };
   }
-  const catalog = await database.foodProduct.findMany({ where: { active: true } });
-  const products = catalog.filter(product => product.productionMode !== "ingredient").map((product) => ({
+  const catalog = await database.foodProduct.findMany();
+  const allProductNames = new Set(
+    catalog.flatMap(product => [product.name, product.productName, ...parseAliases(product.aliasesJson)])
+      .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+      .map(name => normalizeText(name)),
+  );
+  const products = catalog.filter(product => product.active && product.productionMode !== "ingredient").map((product) => ({
     id: product.id,
     name: product.name,
     aliases: parseAliases(product.aliasesJson),
@@ -1463,11 +1473,7 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
           // Se "alias + número" forma o nome de um produto cadastrado, o
           // número pertence ao nome (ex.: "Francês 2") e não é quantidade.
           const combined = normalizeText(`${alias} ${afterMatch[1]}`);
-          const numberIsName = products.some(candidate => {
-            const names = [candidate.name, candidate.productName ?? "", ...candidate.aliases].filter(Boolean).map(name => normalizeText(name));
-            return names.includes(combined);
-          });
-          if (numberIsName) afterMatch = null;
+          if (allProductNames.has(combined)) afterMatch = null;
         }
         const quantity = beforeMatch && /^\d+$/.test(beforeMatch[1])
           ? Number(beforeMatch[1])
