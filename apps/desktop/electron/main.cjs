@@ -18,6 +18,7 @@ let whatsappBrowserView = null;
 let whatsappBrowserAccountId = null;
 let whatsappBrowserBounds = null;
 let whatsappBrowserVisible = false;
+let whatsappShowToken = 0;
 
 const WHATSAPP_URL = "https://web.whatsapp.com/";
 const WHATSAPP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -252,13 +253,20 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
   });
   ipcMain.handle("mosaico:backend-diagnostic", () => getBackendDiagnostic());
   ipcMain.handle("mosaico:whatsapp-show", async (_event, accountId) => {
+    const token = ++whatsappShowToken;
     await createWhatsappBrowserView(accountId);
+    // Se o usuário trocou de tela enquanto o WhatsApp carregava, não mostre
+    // a visualização por cima da nova tela.
+    if (token !== whatsappShowToken) return { ready: false };
     whatsappBrowserVisible = true;
     if (whatsappBrowserBounds) setWhatsappBrowserBounds(whatsappBrowserBounds);
     return { ready: true };
   });
   ipcMain.on("mosaico:whatsapp-bounds", (_event, bounds) => setWhatsappBrowserBounds(bounds));
-  ipcMain.handle("mosaico:whatsapp-hide", () => removeWhatsappBrowserView());
+  ipcMain.handle("mosaico:whatsapp-hide", () => {
+    whatsappShowToken += 1;
+    removeWhatsappBrowserView();
+  });
   ipcMain.handle("mosaico:whatsapp-reload", () => whatsappBrowserView?.webContents.reload());
 
   ipcMain.handle("mosaico:create-new-database", () => createNewLocalDatabase());

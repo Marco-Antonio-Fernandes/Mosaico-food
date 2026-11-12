@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Calculator, Plus, Trash2, X } from "lucide-react";
-import { createFoodProduct, getFoodProductLossSummary, getFoodProducts, updateFoodProduct, type FoodCostBreakdown, type FoodCostBreakdownItem, type FoodCostUnit, type FoodProduct, type FoodLossSummary } from "@/lib/food-api";
+import { createFoodProduct, getFoodProductLossSummary, getFoodProducts, type FoodCostBreakdown, type FoodCostBreakdownItem, type FoodCostUnit, type FoodProduct, type FoodLossSummary } from "@/lib/food-api";
 
 type CostCalculatorResult = {
   breakdown: FoodCostBreakdown;
@@ -131,20 +131,11 @@ export function CostCalculator({ initial, productId, productName, onApply, onClo
       const loadedIngredients = products.filter(product => product.productionMode === "ingredient");
       setIngredients(loadedIngredients);
       setRows(current => current.map(row => {
-        const ingredient = row.ingredientId
-          ? loadedIngredients.find(item => item.id === row.ingredientId)
-          : loadedIngredients.find(item => normalizeIngredientName(item.productName || item.name) === normalizeIngredientName(row.name));
-        if (!ingredient) return row;
-        const measurement = ingredientMeasurement(ingredient);
-        return {
-          ...row,
-          ingredientId: ingredient.id,
-          name: ingredient.productName || ingredient.name,
-          packageQuantity: String(measurement.packageQuantity).replace(".", ","),
-          packageUnit: measurement.packageUnit,
-          packageCost: (ingredient.costPriceCents / 100).toFixed(2).replace(".", ","),
-          usedUnit: unitDefinition(measurement.packageUnit).dimension === unitDefinition(row.usedUnit).dimension ? row.usedUnit : measurement.packageUnit,
-        };
+        // Não sobrescreve o que já está salvo no produto. Apenas liga o
+        // insumo cadastrado pelo nome quando o vínculo ainda não existe.
+        if (row.ingredientId) return row;
+        const ingredient = loadedIngredients.find(item => normalizeIngredientName(item.productName || item.name) === normalizeIngredientName(row.name));
+        return ingredient ? { ...row, ingredientId: ingredient.id } : row;
       }));
     }).catch(() => {
       // O preenchimento manual continua disponível mesmo se o cadastro não carregar.
@@ -225,19 +216,9 @@ export function CostCalculator({ initial, productId, productName, onApply, onClo
           ? ingredients.find(ingredient => ingredient.id === row.ingredientId)
           : ingredients.find(ingredient => normalizeIngredientName(ingredient.productName || ingredient.name) === normalizeIngredientName(row.name));
         const measurement = baseMeasurement(packageQuantity, row.packageUnit);
-        const syncedIngredient = selectedIngredient
-          ? await updateFoodProduct(selectedIngredient.id, {
-            productionMode: "ingredient",
-            stockUnit: measurement.stockUnit,
-            unitWeightGrams: measurement.unitWeightGrams,
-            unitVolumeMl: measurement.unitVolumeMl,
-            name: row.name.trim(),
-            productName: row.name.trim(),
-            category: "Insumos",
-            costPriceCents: packageCostCents,
-            active: true,
-          })
-          : await createFoodProduct({
+        // Insumo existente não é alterado: a embalagem e o custo desta receita
+        // ficam salvos somente no produto que está sendo calculado.
+        const syncedIngredient = selectedIngredient ?? await createFoodProduct({
             productionMode: "ingredient",
             stockUnit: measurement.stockUnit,
             unitWeightGrams: measurement.unitWeightGrams,
@@ -308,7 +289,7 @@ export function CostCalculator({ initial, productId, productName, onApply, onClo
               <label>Valor pago<div className="cost-calculator-currency"><span>R$</span><input required inputMode="decimal" value={row.packageCost} onChange={event => updateRow(row.id, { packageCost: event.target.value })} placeholder="15,00" /></div></label>
               <label>Quantidade usada<div className="cost-calculator-input-pair"><input required type="text" inputMode="decimal" value={row.usedQuantity} onChange={event => updateRow(row.id, { usedQuantity: event.target.value })} placeholder="1" /><select value={row.usedUnit} onChange={event => updateRow(row.id, { usedUnit: event.target.value as FoodCostUnit })}>{unitOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div></label>
             </div>
-            {row.ingredientId && <small className="cost-calculator-ingredient-note">Insumo cadastrado. Ao confirmar, o valor e a embalagem editados aqui também serão atualizados no cadastro.</small>}
+            {row.ingredientId && <small className="cost-calculator-ingredient-note">Insumo já cadastrado. A embalagem e o custo informados aqui valem para esta receita e não alteram o cadastro do insumo.</small>}
             {lineCostCents(row) !== null && <small className="cost-calculator-line-total">Custo usado nesta receita: {money(lineCostCents(row) ?? 0)}</small>}
           </article>)}
           <datalist id="cost-calculator-ingredients">{ingredients.map(ingredient => <option key={ingredient.id} value={ingredient.productName || ingredient.name} />)}</datalist>

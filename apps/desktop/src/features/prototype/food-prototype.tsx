@@ -298,6 +298,10 @@ function Inventory() {
         </div>
         <dl className="inventory-quantities">
           <div><dt>Disponível</dt><dd>{product.stockQuantity} {product.productionMode === "ingredient" ? product.stockUnit : "un"}</dd></div>
+          {product.productionMode !== "ingredient" && <>
+            <div><dt>Custo</dt><dd>{product.costPriceCents > 0 ? money(product.costPriceCents) : "Não informado"}</dd></div>
+            <div><dt>Lucro/un.</dt><dd>{product.salePriceCents > 0 && product.costPriceCents > 0 ? money(product.salePriceCents - product.costPriceCents) : "Não calculado"}</dd></div>
+          </>}
           {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
         </dl>
         <div className="product-row-actions">
@@ -363,6 +367,8 @@ function ProductTile({ product, onEdit, onDelete }: { product: FoodProduct; onEd
       {!isIngredient && <div><dt>Preço de venda</dt><dd>{product.salePriceCents > 0 ? money(product.salePriceCents) : "Não informado"}</dd></div>}
       <div><dt>Disponível</dt><dd>{product.stockQuantity} {isIngredient ? product.stockUnit : "un"}</dd></div>
       <div><dt>{isIngredient ? "Custo da embalagem" : "Custo"}</dt><dd>{product.costPriceCents > 0 ? money(product.costPriceCents) : "Não informado"}</dd></div>
+      {!isIngredient && <div><dt>Lucro por unidade</dt><dd>{product.salePriceCents > 0 && product.costPriceCents > 0 ? money(product.salePriceCents - product.costPriceCents) : "Não calculado"}</dd></div>}
+      {!isIngredient && product.salePriceCents > 0 && product.costPriceCents > 0 && <div className="inventory-unit-detail"><dt>Margem</dt><dd>{(((product.salePriceCents - product.costPriceCents) / product.salePriceCents) * 100).toFixed(1).replace(".", ",")}%</dd></div>}
       {!isIngredient && <div className="inventory-unit-detail"><dt>Fiscal</dt><dd>{product.fiscalNcm ? `NCM ${product.fiscalNcm} · CFOP ${product.fiscalCfop ?? "—"}` : "Perfil fiscal pendente"}</dd></div>}
       {isIngredient && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{ingredientPackage(product)}</dd></div>}
     </dl>
