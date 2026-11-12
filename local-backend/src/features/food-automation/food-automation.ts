@@ -1458,7 +1458,17 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
         const before = normalizedText.slice(0, start);
         const beforeMatch = before.match(/(\d+|um|uma)\s*(?:x|un|unidades?|und)?\s*$/i);
         const after = normalizedText.slice(end, Math.min(normalizedText.length, end + 12));
-        const afterMatch = after.match(/^\s*(?:x|de)?\s*(\d+)\b/i);
+        let afterMatch = after.match(/^\s*(?:x|de)?\s*(\d+)\b/i);
+        if (afterMatch) {
+          // Se "alias + número" forma o nome de um produto cadastrado, o
+          // número pertence ao nome (ex.: "Francês 2") e não é quantidade.
+          const combined = normalizeText(`${alias} ${afterMatch[1]}`);
+          const numberIsName = products.some(candidate => {
+            const names = [candidate.name, candidate.productName ?? "", ...candidate.aliases].filter(Boolean).map(name => normalizeText(name));
+            return names.includes(combined);
+          });
+          if (numberIsName) afterMatch = null;
+        }
         const quantity = beforeMatch && /^\d+$/.test(beforeMatch[1])
           ? Number(beforeMatch[1])
           : afterMatch
