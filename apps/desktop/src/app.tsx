@@ -4,7 +4,7 @@ import { AppShell, type NavigationItem } from "@/components/shared/app-shell";
 import { AccountSetupModal } from "@/components/shared/account-setup-modal";
 import { loadMosaicoAccount, normalizeCnpj, persistMosaicoAccount, type MosaicoAccount } from "@/components/shared/account-context";
 import { FoodPrototype, type FoodModule } from "@/features/prototype/food-prototype";
-import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNotifications, getFoodOrders, getFoodProducts, getFoodStockNotifications, type FoodNotification, type FoodOrder, type FoodProduct, type FoodStockNotification, upsertMosaicoAccount } from "@/lib/food-api";
+import { confirmFoodStockNotification, dismissFoodStockNotification, getFoodNotifications, getFoodOrders, getFoodProducts, getFoodOrderSuggestions, getFoodStockNotifications, type FoodNotification, type FoodOrder, type FoodProduct, type FoodStockNotification, upsertMosaicoAccount } from "@/lib/food-api";
 import { NotificationList, type NotificationEntry } from "@/components/shared/prototype-kit";
 import { FoodAssistant } from "@/features/assistant/food-assistant";
 import { OrderAlerts } from "@/features/assistant/order-alerts";
@@ -126,6 +126,7 @@ export function App() {
   const [connectionStatus, setConnectionStatus] = useState<DesktopConnectionStatus>({ state: "unknown", label: "Iniciando Food local" });
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [pendingOrderPreviews, setPendingOrderPreviews] = useState(0);
   const notificationCursorRef = useRef(new Date(Date.now() - 15_000).toISOString());
   const seenNotificationIdsRef = useRef(new Set<string>());
   const notificationPollInitializedRef = useRef(false);
@@ -206,6 +207,22 @@ export function App() {
     return () => { active = false; window.clearInterval(timer); };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadPreviewCount = async () => {
+      try {
+        const dismissed = new Set<string>(JSON.parse(window.localStorage.getItem("mosaico-dismissed-order-suggestions") || "[]") as string[]);
+        const suggestions = await getFoodOrderSuggestions();
+        if (active) setPendingOrderPreviews(suggestions.filter(suggestion => !dismissed.has(suggestion.id)).length);
+      } catch {
+        if (active) setPendingOrderPreviews(0);
+      }
+    };
+    void loadPreviewCount();
+    const timer = window.setInterval(() => void loadPreviewCount(), 15_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
   const openNotifications = () => {
     setNotificationsOpen(true);
     setUnreadNotifications(0);
@@ -247,12 +264,12 @@ export function App() {
       <button type="button" className="mosaic-top-action is-blue" onClick={() => openAssistantAction("order")} title="Novo pedido"><ClipboardList size={15} /><span>Novo pedido</span></button>
       <button type="button" className="mosaic-top-action is-green" onClick={() => openAssistantAction("sale")} title="Registrar venda"><WalletCards size={15} /><span>Registrar venda</span></button>
       <button type="button" className="mosaic-top-action is-amber" onClick={() => openAssistantAction("stock")} title="Adicionar ao estoque"><PackagePlus size={15} /><span>Adicionar ao estoque</span></button>
-    </div><div className="mosaic-top-icons"><button aria-pressed={dashboardOpen} aria-label="Abrir dashboard" title="Dashboard" className={`flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${dashboardOpen ? "border-brand-500/50 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => setDashboardOpen(current => !current)} type="button"><LayoutDashboard aria-hidden="true" size={17} /></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${notificationsOpen ? "border-red-300/50 bg-red-50 text-red-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={17} />{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-4 animate-pulse items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></div></div>} connectionStatus={<ConnectionStatus status={connectionStatus} compact />}>
+    </div><div className="mosaic-top-icons"><button aria-pressed={dashboardOpen} aria-label="Abrir dashboard" title="Dashboard" className={`flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${dashboardOpen ? "border-brand-500/50 bg-brand-50 text-brand-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => setDashboardOpen(current => !current)} type="button"><LayoutDashboard aria-hidden="true" size={17} /></button><button aria-pressed={notificationsOpen} aria-label="Abrir notificações" className={`relative flex size-9 items-center justify-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-brand-500 ${pendingOrderPreviews > 0 ? "mosaic-bell-pending" : ""} ${notificationsOpen ? "border-red-300/50 bg-red-50 text-red-700" : "border-line bg-canvas text-muted hover:bg-white/[0.06] hover:text-ink"}`} onClick={() => notificationsOpen ? setNotificationsOpen(false) : openNotifications()} type="button"><Bell aria-hidden="true" size={17} />{pendingOrderPreviews > 0 && <span aria-hidden="true" className="mosaic-bell-pending-dot" />}{unreadNotifications > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex min-w-4 animate-pulse items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}<span className="sr-only">{pendingOrderPreviews ? `${pendingOrderPreviews} prévias de pedido pendentes` : unreadNotifications ? `${unreadNotifications} notificações novas` : "Abrir notificações"}</span></button></div></div>} connectionStatus={<ConnectionStatus status={connectionStatus} compact />}>
     <FoodRelayAgent />
     <FoodPrinterAgent />
     {connectionStatus.state === "offline" && <div className="mosaic-system-alert" role="alert">{connectionStatus.label}. Avise o suporte técnico.</div>}
     {dashboardOpen ? <FoodOverviewPage onOpenNotifications={() => { setDashboardOpen(false); openNotifications(); }} /> : <FoodPrototype key={`${account?.id ?? "sem-conta"}:${activeView}`} module={activeView} />}
-    {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><div className="mosaic-order-previews"><FoodOrderSuggestions /></div><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
+    {notificationsOpen && <div className="mosaic-top-popover mosaic-notifications-popover"><div className="mosaic-order-previews"><FoodOrderSuggestions onPendingChange={setPendingOrderPreviews} /></div><NotificationList notifications={notifications} onReadAll={() => setUnreadNotifications(0)} onConfirmStock={confirmStockNotification} onDismissStock={dismissStockNotification} /></div>}
     <FoodAssistant />
     <OrderAlerts onOpen={() => navigate("orders")} />
     </AppShell>
