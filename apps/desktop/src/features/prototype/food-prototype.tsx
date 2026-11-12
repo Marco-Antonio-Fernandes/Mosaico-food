@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { Boxes, CalendarClock, CircleAlert, GripVertical, LoaderCircle, PackagePlus, Trash2, X } from "lucide-react";
+import { Boxes, CalendarClock, CheckCircle2, CircleAlert, GripVertical, LoaderCircle, PackagePlus, Trash2, X } from "lucide-react";
 import { Badge, Panel, Records, Tabs, type RecordItem } from "@/components/shared/prototype-kit";
 import { EmptyState, ErrorState, LoadingState } from "@/components/shared/ui-states";
 import { FoodServicePanel } from "@/features/service/food-service-panel";
@@ -9,7 +9,7 @@ import { CreditPage } from "@/features/credit/credit-page";
 import { FinancePage } from "@/features/finance/finance-page";
 import { FoodSettingsPanel } from "@/features/system/food-settings-panel";
 import { FiscalPage } from "@/features/fiscal/fiscal-page";
-import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type SalePaymentMethod } from "@/lib/food-api";
+import { cancelFoodOrder, closeFoodCash, createFoodOrderSchedule, deleteFoodOrderSchedule, deleteFoodProduct, finalizeFoodOrder, getCreditLedger, getFoodCashToday, getFoodOrderSchedules, getFoodOrders, getFoodProducts, getFoodSales, openFoodCash, PRICE_ADJUSTMENT_REASONS, registerCounterSale, updateFoodOrderSchedule, updateFoodOrderStatus, type CreditCustomerRecord, type FoodCashSnapshot, type FoodCounterSale, type FoodOrder, type FoodOrderSchedule, type FoodProduct, type SalePaymentMethod, updateFoodProduct } from "@/lib/food-api";
 import { CreditCustomerPicker } from "@/components/shared/credit-customer-picker";
 
 export const foodModules = {
@@ -115,6 +115,17 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action } }));
   };
 
+  const reactivateProduct = async (product: FoodProduct) => {
+    try {
+      await updateFoodProduct(product.id, { active: true });
+      setNotice(`${product.productName || product.name} reativado.`);
+      window.dispatchEvent(new Event("food-stock-changed"));
+      await loadProducts();
+    } catch (reactivateError) {
+      setError(reactivateError instanceof Error ? reactivateError.message : "Não foi possível reativar o produto.");
+    }
+  };
+
   const removeProduct = async (product: FoodProduct) => {
     const label = `${product.productName || product.name}${product.flavor ? ` · ${product.flavor}` : ""}`;
     if (!window.confirm(`Apagar ${label}? O item será desativado e não aparecerá mais no catálogo.`)) return;
@@ -189,7 +200,7 @@ function Catalog({ pos = false }: { pos?: boolean }) {
     <Tabs items={categories} value={category} onChange={setCategory} />
     <div className="proto-toolbar"><label>Buscar produto ou sabor<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: esfi… ou carne" /></label></div>
     {!pos && search.trim() && familyEntries.some((group) => group.length > 1) && <div className="food-family-summary"><strong>Sabores encontrados</strong>{familyEntries.filter(group => group.length > 1).map(group => <span key={group[0].productName}><b>{group[0].productName}</b>: {group.map(product => product.flavor || "sem sabor").join(", ")}</span>)}</div>}
-    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : "products-list-shell"}>{pos ? <div className="proto-three">{familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />)}</div> : <div className="inventory-list products-list" aria-label="Produtos cadastrados">{filtered.map(product => <ProductTile key={product.id} product={product} onEdit={openProductEditor} onDelete={product => void removeProduct(product)} />)}</div>}
+    {loading ? <p className="proto-empty">Carregando catálogo…</p> : <div className={pos ? "proto-two" : "products-list-shell"}>{pos ? <div className="proto-three">{familyEntries.map(group => <ProductFamilyTile key={group[0].productName} products={group} selling={selling} onAdd={product => setCart(current => ({ ...current, [product.id]: current[product.id] ? { ...current[product.id], quantity: current[product.id].quantity + 1 } : newCartLine(product) }))} />)}</div> : <div className="inventory-list products-list" aria-label="Produtos cadastrados">{filtered.map(product => <ProductTile key={product.id} product={product} onEdit={openProductEditor} onDelete={product => void removeProduct(product)} onReactivate={product => void reactivateProduct(product)} />)}</div>}
       {!filtered.length && <p className="proto-empty">{pos ? "Nenhum produto disponível para venda no momento." : "Nenhum produto ativo encontrado. Use o Assistente da loja para cadastrar o primeiro."}</p>}
       {pos && <Panel title="Venda de balcão" subtitle="Ajuste adicionais, remoções ou escolha Brinde no pagamento antes de confirmar.">
         <div className="proto-stack" style={{ marginTop: 16 }}>
@@ -261,6 +272,16 @@ function Inventory() {
     window.dispatchEvent(new CustomEvent("food-open-assistant", { detail: { action: "edit", productId } }));
   };
 
+  const reactivateItem = async (product: FoodProduct) => {
+    try {
+      await updateFoodProduct(product.id, { active: true });
+      window.dispatchEvent(new Event("food-stock-changed"));
+      await loadProducts();
+    } catch (reactivateError) {
+      setError(reactivateError instanceof Error ? reactivateError.message : "Não foi possível reativar o item.");
+    }
+  };
+
   const removeItem = async (product: FoodProduct) => {
     const label = `${product.name}${product.flavor ? ` · ${product.flavor}` : ""}`;
     if (!window.confirm(`Apagar ${label} do estoque? O item será desativado.`)) return;
@@ -305,6 +326,7 @@ function Inventory() {
           {product.productionMode === "ingredient" && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{[product.unitWeightGrams && `${product.unitWeightGrams} g`, product.unitVolumeMl && `${product.unitVolumeMl} ml`].filter(Boolean).join(" · ")}</dd></div>}
         </dl>
         <div className="product-row-actions">
+          {!product.active && <button type="button" className="product-action-button is-reactivate with-label" title="Reativar item" aria-label={`Reativar ${product.name}`} onClick={event => { event.stopPropagation(); void reactivateItem(product); }}><CheckCircle2 size={14} /><span>Reativar</span></button>}
           <button type="button" className="product-action-button is-danger with-label" title="Apagar item" aria-label={`Apagar ${product.name}`} onClick={event => { event.stopPropagation(); void removeItem(product); }}><Trash2 size={14} /><span>Apagar</span></button>
         </div>
       </article>)}
@@ -355,7 +377,7 @@ function lineUnitPrice(product: FoodProduct, line: CartLine) {
   return Math.max(0, line.unitPriceCents ?? baseLineUnitPrice(product, line));
 }
 
-function ProductTile({ product, onEdit, onDelete }: { product: FoodProduct; onEdit: (id: string) => void; onDelete: (product: FoodProduct) => void }) {
+function ProductTile({ product, onEdit, onDelete, onReactivate }: { product: FoodProduct; onEdit: (id: string) => void; onDelete: (product: FoodProduct) => void; onReactivate: (product: FoodProduct) => void }) {
   const isIngredient = product.productionMode === "ingredient";
   const typeLabel = isIngredient ? "Insumo" : "Produto";
   return <article className="inventory-row product-row is-clickable" role="button" tabIndex={0} onClick={() => onEdit(product.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEdit(product.id); } }}>
@@ -373,6 +395,7 @@ function ProductTile({ product, onEdit, onDelete }: { product: FoodProduct; onEd
       {isIngredient && (product.unitWeightGrams || product.unitVolumeMl) && <div className="inventory-unit-detail"><dt>Por unidade</dt><dd>{ingredientPackage(product)}</dd></div>}
     </dl>
     <div className="product-row-actions">
+      {!product.active && <button type="button" className="product-action-button is-reactivate with-label" title="Reativar produto" aria-label={`Reativar ${product.productName || product.name}`} onClick={event => { event.stopPropagation(); onReactivate(product); }}><CheckCircle2 size={14} /><span>Reativar</span></button>}
       <button type="button" className="product-action-button is-danger with-label" title="Apagar produto" aria-label={`Apagar ${product.productName || product.name}`} onClick={event => { event.stopPropagation(); onDelete(product); }}><Trash2 size={14} /><span>Apagar</span></button>
     </div>
   </article>;

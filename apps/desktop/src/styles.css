@@ -512,6 +512,8 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .product-action-button.with-label span { line-height: 1; }
 .product-action-button:hover { border-color: var(--proto-accent); color: var(--proto-ink); background: var(--proto-control-hover); }
 .product-action-button.is-danger { color: #e58a96; border-color: #e58a9655; background: transparent; }
+.product-action-button.is-reactivate { color: #59c38a; border-color: #59c38a66; background: transparent; }
+.product-action-button.is-reactivate:hover { color: #b9f6d3; border-color: #59c38a; background: #59c38a18; }
 .product-action-button.is-danger:hover { border-color: #e58a96; color: #ffd9dc; background: #e58a9618; }
 @media(max-width:700px) { .inventory-row { grid-template-columns: minmax(0,1fr); } }
 .proto-paper { background: #edeae1; color: #26333c; padding: clamp(20px,4vw,50px); min-height: 320px; border-radius: 4px; box-shadow: 0 12px 24px #0003; }

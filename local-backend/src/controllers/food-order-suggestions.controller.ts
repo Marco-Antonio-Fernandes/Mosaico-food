@@ -60,6 +60,7 @@ export class FoodOrderSuggestionsController {
             const draft = await suggestOrderFromText(this.database, text);
             if (draft.items.length) {
               suggestions.push({
+                ...draft,
                 id: `${conversation.id}:${block.map(message => message.id).join(",")}`,
                 conversationId: conversation.id,
                 customerName: draft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
@@ -68,7 +69,6 @@ export class FoodOrderSuggestionsController {
                 answeredAt: messages[humanIndex].createdAt,
                 origin: "customer",
                 text,
-                ...draft,
               });
             }
           }
@@ -89,6 +89,7 @@ export class FoodOrderSuggestionsController {
         const noteDraft = await suggestOrderFromText(this.database, noteText);
         if (!noteDraft.items.length) continue;
         suggestions.push({
+          ...noteDraft,
           id: `owner:${conversation.id}:${note.id}`,
           conversationId: conversation.id,
           customerName: noteDraft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
@@ -97,7 +98,6 @@ export class FoodOrderSuggestionsController {
           answeredAt: note.createdAt,
           origin: "owner",
           text: noteText,
-          ...noteDraft,
         });
         break;
       }
