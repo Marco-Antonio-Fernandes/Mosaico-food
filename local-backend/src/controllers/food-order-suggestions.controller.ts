@@ -45,33 +45,34 @@ export class FoodOrderSuggestionsController {
         block.unshift(messages[index]);
         if (block.length >= 5) break;
       }
-      if (!block.length) continue;
 
-      const text = block
-        .map(message => message.body)
-        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        .join("\n");
-      if (!text.trim()) continue;
-
-      const lastInbound = block[block.length - 1];
-      const existingOrder = await this.database.foodOrder.findFirst({
-        where: { conversationId: conversation.id, createdAt: { gte: lastInbound.createdAt } },
-      });
-      if (existingOrder) continue;
-
-      const draft = await suggestOrderFromText(this.database, text);
-      if (draft.items.length) {
-        suggestions.push({
-          id: `${conversation.id}:${block.map(message => message.id).join(",")}`,
-          conversationId: conversation.id,
-          customerName: draft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
-          remoteJid: conversation.remoteJid,
-          messageIds: block.map(message => message.id),
-          answeredAt: messages[humanIndex].createdAt,
-          origin: "customer",
-          text,
-          ...draft,
-        });
+      if (block.length) {
+        const text = block
+          .map(message => message.body)
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          .join("\n");
+        const lastInbound = block[block.length - 1];
+        if (text.trim()) {
+          const existingOrder = await this.database.foodOrder.findFirst({
+            where: { conversationId: conversation.id, createdAt: { gte: lastInbound.createdAt } },
+          });
+          if (!existingOrder) {
+            const draft = await suggestOrderFromText(this.database, text);
+            if (draft.items.length) {
+              suggestions.push({
+                id: `${conversation.id}:${block.map(message => message.id).join(",")}`,
+                conversationId: conversation.id,
+                customerName: draft.customerName || conversation.customer?.name || conversation.remoteJid.replace(/@.*$/, ""),
+                remoteJid: conversation.remoteJid,
+                messageIds: block.map(message => message.id),
+                answeredAt: messages[humanIndex].createdAt,
+                origin: "customer",
+                text,
+                ...draft,
+              });
+            }
+          }
+        }
       }
 
       // Anotações enviadas pela própria loja (texto ou áudio transcrito).
