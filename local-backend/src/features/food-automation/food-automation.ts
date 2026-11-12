@@ -57,6 +57,8 @@ type Product = {
   productionMode: string;
   category: string;
   customizationJson: string;
+  productName?: string;
+  flavor?: string | null;
 };
 type ConversationRecord = {
   id: string;
@@ -1290,6 +1292,8 @@ async function runFoodAutomationInternal(
     customizationJson: product.customizationJson,
     variants: parseVariants(product.variantsJson),
     active: product.active,
+    productName: product.productName,
+    flavor: product.flavor,
   } satisfies Product));
   result.conversations = conversations.length;
 
@@ -1313,6 +1317,7 @@ async function runFoodAutomationInternal(
           preparationCapacity: preparationCapacity(product, freshCatalog), allowOnDemand: product.allowOnDemand,
           fryToOrder: product.fryToOrder, productionMode: product.productionMode, category: product.category,
           customizationJson: product.customizationJson, variants: parseVariants(product.variantsJson), active: product.active,
+          productName: product.productName, flavor: product.flavor,
         })));
         if (!options.force && Date.now() - rawMessage.createdAt.getTime() > env.FOOD_AUTOMATION_MAX_MESSAGE_AGE_MINUTES * 60_000) {
           await database.foodMessage.update({ where: { id: rawMessage.id }, data: { processedAt: new Date() } });
@@ -1387,6 +1392,20 @@ export type OrderSuggestionDraft = {
  * Interpreta um texto de conversa e devolve apenas uma sugestão de pedido.
  * Não envia mensagens, não altera o estado do diálogo e não cria pedidos.
  */
+function resolveFlavorProduct(product: Product, text: string, end: number, products: Product[]) {
+  const base = normalizeText(product.productName || product.name.split(" · ")[0]);
+  const family = products.filter(candidate => normalizeText(candidate.productName || candidate.name.split(" · ")[0]) === base);
+  const after = normalizeText(text.slice(end, Math.min(text.length, end + 30)));
+  const flavorWord = after.match(/(?:de|do|da|com|sabor)\s+([a-z0-9]+)/)?.[1] ?? null;
+  const productFlavor = product.flavor ? normalizeText(product.flavor) : null;
+  if (flavorWord) {
+    const sibling = family.find(candidate => candidate.flavor && normalizeText(candidate.flavor) === flavorWord);
+    if (sibling) return sibling;
+    if (productFlavor && flavorWord !== productFlavor) return null;
+  }
+  return product;
+}
+
 export async function suggestOrderFromText(database: PrismaClient, text: string): Promise<OrderSuggestionDraft> {
   const normalizedText = normalizeText(text);
   const hasQuantity = /\b\d+\b/.test(normalizedText);
@@ -1409,6 +1428,8 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
     customizationJson: product.customizationJson,
     variants: parseVariants(product.variantsJson),
     active: product.active,
+    productName: product.productName,
+    flavor: product.flavor,
   } satisfies Product));
 
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1434,8 +1455,10 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
         const end = start + result[2].length + (result[3]?.length ?? 0);
         const before = normalizedText.slice(0, start);
         const quantityMatch = before.match(/(\d+)\s*(?:x|un|unidades?|und)?\s*$/);
+        const resolvedProduct = resolveFlavorProduct(product, normalizedText, end, products);
+        if (!resolvedProduct) continue;
         matches.push({
-          product,
+          product: resolvedProduct,
           start,
           end,
           quantity: quantityMatch ? Math.max(1, Number(quantityMatch[1])) : 1,
