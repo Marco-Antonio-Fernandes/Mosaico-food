@@ -1134,6 +1134,7 @@ export type FoodOrderSuggestion = {
   fulfillment: "pickup" | "delivery" | null;
   paymentMethod: string | null;
   totalCents: number;
+  intent: "sale" | "order";
 };
 
 export async function getFoodOrderSuggestions() {

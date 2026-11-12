@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Pencil, X } from "lucide-react";
 
-import { createFoodOrder, getFoodOrderSuggestions, type FoodOrderSuggestion, type FoodOrderSuggestionItem, type SalePaymentMethod } from "@/lib/food-api";
+import { createFoodOrder, getFoodOrderSuggestions, registerCounterSale, type FoodOrderSuggestion, type FoodOrderSuggestionItem, type SalePaymentMethod } from "@/lib/food-api";
 
 const DISMISSED_KEY = "mosaico-dismissed-order-suggestions";
 const paymentLabels: Record<string, string> = { pix: "Pix", cash: "Dinheiro", card_credit: "Crédito", card_debit: "Débito", meal_voucher: "Vale-alimentação", crediario: "Crediário", brinde: "Brinde" };
@@ -91,27 +91,46 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
       setError("A prévia não tem itens. Edite ou ignore.");
       return;
     }
+    if (suggestion.intent === "sale" && !source.paymentMethod) {
+      setEditing(suggestion);
+      setDraft(source);
+      setError("Informe o método de pagamento para registrar a venda.");
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await createFoodOrder({
-        source: suggestion.origin === "owner" ? "balcao" : "whatsapp",
-        customerName: source.customerName.trim() || null,
-        fulfillment: source.fulfillment,
-        paymentMethod: (source.paymentMethod || null) as SalePaymentMethod | null,
-        items: source.items.map(item => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPriceCents: item.unitPriceCents,
-          variantName: item.variantName,
-        })),
-      });
-      setNotice("Pedido aprovado.");
+      if (suggestion.intent === "sale") {
+        await registerCounterSale({
+          operationId: crypto.randomUUID(),
+          paymentMethod: source.paymentMethod as SalePaymentMethod,
+          items: source.items.map(item => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceCents: item.unitPriceCents,
+          })),
+        });
+        setNotice("Venda registrada.");
+      } else {
+        await createFoodOrder({
+          source: suggestion.origin === "owner" ? "balcao" : "whatsapp",
+          customerName: source.customerName.trim() || null,
+          fulfillment: source.fulfillment,
+          paymentMethod: (source.paymentMethod || null) as SalePaymentMethod | null,
+          items: source.items.map(item => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceCents: item.unitPriceCents,
+            variantName: item.variantName,
+          })),
+        });
+        setNotice("Pedido aprovado.");
+      }
       remove(suggestion);
       window.dispatchEvent(new Event("food-stock-changed"));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível aprovar o pedido.");
+      setError(cause instanceof Error ? cause.message : "Não foi possível aprovar.");
     } finally {
       setBusy(false);
     }
@@ -126,7 +145,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
   return <section className="order-preview-panel" aria-label="Prévia de pedido">
     <header>
       <div>
-        <span className="order-preview-eyebrow">Prévia de pedido</span>
+        <span className="order-preview-eyebrow">Prévia de {current.intent === "sale" ? "venda" : "pedido"}</span>
         <strong>{current.origin === "owner" ? "Anotação da loja" : "Mensagem do cliente"}</strong>
       </div>
       <span className="order-preview-count">{suggestions.length} pendente{suggestions.length === 1 ? "" : "s"}</span>
@@ -143,6 +162,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
         </div>)}
       </div>
       <div className="order-preview-total">Total dos itens: <strong>{money(itemsTotal)}</strong></div>
+      {(() => { const missing: string[] = []; if (!current.paymentMethod) missing.push("pagamento"); if (!current.fulfillment) missing.push("modalidade"); return missing.length ? <p className="order-preview-missing">Faltando: {missing.join(", ")}</p> : null; })()}
       <div className="order-preview-actions">
         <button type="button" onClick={() => void approve(current)} disabled={busy}><Check size={15} />{busy ? "Aprovando…" : "Aprovar"}</button>
         <button type="button" className="proto-subtle" onClick={() => { setEditing(current); setDraft(draftFrom(current)); }} disabled={busy}><Pencil size={15} />Editar</button>
@@ -156,7 +176,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
           <label>Cliente<input value={draft.customerName} onChange={event => setDraft({ ...draft, customerName: event.target.value })} placeholder="Nome do cliente (opcional)" /></label>
           <div className="order-preview-edit-row">
             <label>Modalidade<select value={draft.fulfillment} onChange={event => setDraft({ ...draft, fulfillment: event.target.value as "pickup" | "delivery" })}><option value="pickup">Retirada</option><option value="delivery">Entrega</option></select></label>
-            <label>Pagamento<select value={draft.paymentMethod} onChange={event => setDraft({ ...draft, paymentMethod: event.target.value })}><option value="">Não informado</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Pagamento<select value={draft.paymentMethod} onChange={event => setDraft({ ...draft, paymentMethod: event.target.value })}><option value="">{editing.intent === "sale" ? "Informe o pagamento" : "Não informado"}</option>{Object.entries(paymentLabels).filter(([value]) => editing.intent !== "sale" || !["crediario", "brinde"].includes(value)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           </div>
           <div className="order-preview-edit-items">
             <strong>Itens</strong>
@@ -168,7 +188,7 @@ export function FoodOrderSuggestions({ onPendingChange }: { onPendingChange?: (c
           </div>
           <p className="order-preview-edit-total">Total: <strong>{money(draft.items.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0))}</strong></p>
           <blockquote className="order-preview-source">{editing.text}</blockquote>
-          <div className="proto-toolbar"><button type="button" disabled={busy} onClick={() => void approve(editing, draft)}>{busy ? "Aprovando…" : "Aprovar pedido editado"}</button><button type="button" className="proto-subtle" disabled={busy} onClick={() => { setEditing(null); setDraft(null); }}>Cancelar</button></div>
+          <div className="proto-toolbar"><button type="button" disabled={busy} onClick={() => void approve(editing, draft)}>{busy ? "Aprovando…" : editing.intent === "sale" ? "Aprovar venda editada" : "Aprovar pedido editado"}</button><button type="button" className="proto-subtle" disabled={busy} onClick={() => { setEditing(null); setDraft(null); }}>Cancelar</button></div>
         </div>
       </section>
     </div>}

@@ -3025,6 +3025,7 @@ html, * { scrollbar-width: thin; scrollbar-color: var(--mosaic-scrollbar-thumb) 
 .order-preview-items strong { color: #e6c06a; min-width: 30px; }
 .order-preview-total { text-align: right; font-size: .72rem; color: var(--proto-muted); }
 .order-preview-total strong { color: var(--proto-ink); }
+.order-preview-missing { margin: 0; color: #e6c06a; font-size: .7rem; }
 .order-preview-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .order-preview-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px; font-size: .74rem; }
 .order-preview-notice { margin: 0; color: #91dfb4; font-size: .7rem; }

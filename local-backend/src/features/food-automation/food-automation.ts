@@ -1386,6 +1386,7 @@ export type OrderSuggestionDraft = {
   paymentMethod: string | null;
   customerName?: string | null;
   totalCents: number;
+  intent: "sale" | "order";
 };
 
 /**
@@ -1409,9 +1410,10 @@ function resolveFlavorProduct(product: Product, text: string, end: number, produ
 export async function suggestOrderFromText(database: PrismaClient, text: string): Promise<OrderSuggestionDraft> {
   const normalizedText = normalizeText(text);
   const hasQuantity = /\b\d+\b/.test(normalizedText);
-  const hasOrderIntent = /\b(quero|queria|vou querer|me ve|me manda|manda|mandar|pedir|pedido|separa|separe|traz|trazer|vou de|coloca|quero dois|quero duas|quero um|quero uma|vendi|venda|vender|vendeu|vendendo|vendo|saiu|sairam|deu|marcar|marca|conta|fiado|entregar|entrega)\b/.test(normalizedText);
+  const hasSaleIntent = /\b(vendi|vendeu|vendendo|vendo|venda|vender)\b/.test(normalizedText);
+  const hasOrderIntent = /\b(quero|queria|vou\s+querer|me\s+ve|me\s+manda|manda|mandar|pedir|pedido|pedidos|separa|separe|traz|trazer|vou\s+de|coloca|faca|faz|fazer|me\s+faz|me\s+traga|quero\s+dois|quero\s+duas|quero\s+um|quero\s+uma)\b/.test(normalizedText);
   if (!hasQuantity) {
-    return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0 };
+    return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0, intent: "order" as const };
   }
   const catalog = await database.foodProduct.findMany({ where: { active: true } });
   const products = catalog.filter(product => product.productionMode !== "ingredient").map((product) => ({
@@ -1475,8 +1477,8 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
     selected.push(match);
     lastEnd = match.end;
   }
-  if (!hasOrderIntent && !selected.some(match => match.explicit)) {
-    return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0 };
+  if (!hasSaleIntent && !hasOrderIntent && !selected.some(match => match.explicit)) {
+    return { items: [], fulfillment: null, paymentMethod: null, totalCents: 0, intent: "order" as const };
   }
 
   const grouped = new Map<string, { productId: string; name: string; variantId: string | null; variantName: string | null; quantity: number; unitPriceCents: number; totalCents: number }>();
@@ -1527,5 +1529,6 @@ export async function suggestOrderFromText(database: PrismaClient, text: string)
     paymentMethod: payment === "card" ? null : payment,
     customerName,
     totalCents: informedTotal ?? items.reduce((sum, item) => sum + item.totalCents, 0),
+    intent: hasSaleIntent ? "sale" as const : "order" as const,
   };
 }
