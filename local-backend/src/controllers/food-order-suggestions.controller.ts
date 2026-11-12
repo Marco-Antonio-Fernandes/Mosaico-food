@@ -7,6 +7,10 @@ import { PrismaService } from "../lib/prisma.service";
 
 const LOOKBACK_DAYS = 7;
 
+// Número da própria loja. Somente mensagens enviadas para esse número (a loja
+// escrevendo para si mesma) são tratadas como anotação de venda/pedido.
+const SELF_NOTE_PHONES = new Set(["554498838778"]);
+
 function customerNameFor(draftName: string | null | undefined, conversation: { remoteJid: string; customer?: { name: string } | null }) {
   const name = draftName || conversation.customer?.name || null;
   if (!name) return null;
@@ -84,6 +88,8 @@ export class FoodOrderSuggestionsController {
 
       // Anotações enviadas pela própria loja (texto ou áudio transcrito).
       // Elas viram prévias de pedido para o operador aprovar/editar.
+      const selfNote = SELF_NOTE_PHONES.has(conversation.remoteJid.replace(/@.*$/, ""));
+      if (!selfNote) continue;
       for (let index = messages.length - 1; index >= 0; index -= 1) {
         const note = messages[index];
         if (note.direction !== "outbound" || note.source !== "human") continue;
